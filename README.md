@@ -1,56 +1,80 @@
-# Project Title
+# Quester
 
-> A short description of the project.
+> A modern, visually rich MPD client built with Qt 6 and QML.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Table of Contents
 
 - [About](#about)
-- [Getting Started](#getting-started)
+- [Features](#features)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Running Tests](#running-tests)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## About
 
-Describe the project here. What problem does it solve? What technologies does it use?
+Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your music library.
 
-## Getting Started
+## Features
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+- **Album Browser:** Cover-flow style navigation for your music library.
+- **Automatic Artwork:** Fetches album art from MPD (embedded/local) or TheAudioDB API.
+- **Audio Visualizer:** Real-time audio visualization shader.
+- **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
+- **Tracklist:** View and play specific tracks from the selected album.
+- **Fullscreen Mode:** Immersive listening experience.
 
-### Prerequisites
+## Prerequisites
 
-What things you need to install the software and how to install them.
+To build Quester, you need the following dependencies installed on your system:
+
+- **C++ Compiler** (supporting C++17)
+- **CMake** (3.16 or higher)
+- **Qt 6** (6.2 or higher; Core, Gui, Qml, Quick, Network)
+- **libmpdclient**
+
+### Ubuntu/Debian
 
 ```bash
-# Example
-npm install npm@latest -g
+sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev
 ```
 
-### Installation
+## Installation
 
-A step-by-step series of examples that tell you how to get a development env running.
-
-1. Clone the repo
+1. Clone the repository:
    ```bash
-   git clone https://github.com/your_username/repo_name.git
+   git clone https://github.com/your_username/Quester.git
+   cd Quester
    ```
-2. Install dependencies
+
+2. Create a build directory and configure with CMake:
    ```bash
-   npm install
+   mkdir build
+   cd build
+   cmake ..
+   ```
+
+3. Build the application:
+   ```bash
+   make
+   ```
+
+4. (Optional) Install system-wide:
+   ```bash
+   sudo make install
    ```
 
 ## Usage
 
-Add notes about how to use the system.
+Ensure your MPD server is running. By default, Quester attempts to connect to `localhost` on port `6600`.
+
+Run the application from the build directory:
 
 ```bash
-npm run start
+./quester
 ```
 
 ## Running Tests
