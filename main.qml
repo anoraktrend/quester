@@ -184,11 +184,11 @@ ApplicationWindow {
                 anchors.leftMargin: 20
                 anchors.rightMargin: 20
                 from: 0
-                to: mpdClient.duration
+                to: mpdClient.duration > 0 ? mpdClient.duration : 1
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: "transparent" // Let the visualizer show through
+                    color: "#80000000" // Darker than background
                 }
             }
 
