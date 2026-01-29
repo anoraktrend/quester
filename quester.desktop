@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Quester
+Comment=A QML client for MPD
+Exec=quester
+Icon=quester
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
