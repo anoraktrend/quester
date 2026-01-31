@@ -8,7 +8,7 @@
 #include <QStandardPaths>
 #include <QFileInfo>
 #include "quester.h"
-#include "audioprocessor.h"
+#include "audiovisualizer.h"
 
 using namespace Qt::StringLiterals;
 
@@ -17,13 +17,12 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setWindowIcon(QIcon("/usr/share/icons/hicolor/scalable/apps/quester.svg"));
 
-    QQmlApplicationEngine engine;
-
     MpdClient mpdClient;
-    engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
+    AudioVisualizer audioVisualizer;
 
-    AudioProcessor audioProcessor;
-    engine.rootContext()->setContextProperty("audioProcessor", &audioProcessor);
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
+    engine.rootContext()->setContextProperty("AudioVisualizer", &audioVisualizer);
 
     QUrl url;
     // The QT_QML_SOURCE_DIR macro is set by CMake to the project's source directory.

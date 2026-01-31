@@ -82,7 +82,7 @@ ApplicationWindow {
     }
     
     Component.onCompleted: {
-        audioProcessor.start()
+        AudioVisualizer.start()
     }
 
     function goToVisualizer() {
@@ -196,9 +196,12 @@ ApplicationWindow {
         VisualizerView {
             id: visualizerView
             anchors.fill: parent
-            magnitudes: audioProcessor.magnitudes
+            magnitudes: AudioVisualizer.magnitudes
             albumArt: mpdClient.albumArt
             contentBottomMargin: 100
+            active: AudioVisualizer.active
+            z: 10
+            onClicked: coverFlow.state = "libraryView"
         }
 
         Rectangle {
@@ -220,6 +223,7 @@ ApplicationWindow {
             width: parent.width
             height: 100
             y: parent.height - height
+            z: 20
 
             Behavior on y {
                 NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
@@ -270,7 +274,7 @@ ApplicationWindow {
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
-                                height: (audioProcessor.magnitudes[index] || 0) * parent.height
+                                height: (AudioVisualizer.magnitudes[index] || 0) * parent.height
                                 color: Material.accent
 
                                 Behavior on height {

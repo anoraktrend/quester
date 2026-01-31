@@ -28,6 +28,7 @@ qt_policy(SET QTP0001 NEW)
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
+pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 
 qt_add_resources(quester_resources resources.qrc)
 
@@ -35,8 +36,8 @@ qt_add_executable(quester
     main.cpp
     quester.cpp
     quester.h
-    audioprocessor.cpp
-    audioprocessor.h
+    audiovisualizer.cpp
+    audiovisualizer.h
     ${quester_resources}
 )
 
@@ -59,6 +60,7 @@ target_link_libraries(quester
     Qt6::Network
     Qt6::Multimedia
     PkgConfig::MPDCLIENT
+    PkgConfig::FFTW3
 )
 
 # --- Installation Rules ---

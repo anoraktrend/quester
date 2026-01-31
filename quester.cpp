@@ -128,8 +128,6 @@ MpdClient::~MpdClient()
     if (m_notifier)
         delete m_notifier;
     if (m_connection) {
-        if (m_isIdle)
-            mpd_run_noidle(m_connection);
         mpd_connection_free(m_connection);
     }
 }
