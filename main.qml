@@ -6,7 +6,7 @@ import QtQuick.Controls
 
 
 import QtQuick.Controls.Material 2.15
-import Qt.labs.platform 1.1
+import Qt.labs.platform 1.1 as Platform
 
 ApplicationWindow {
     id: window
@@ -16,8 +16,8 @@ ApplicationWindow {
     title: qsTr("Quester")
 
     SystemPalette { id: palette }
-    Material.theme: palette.window.color.luma > 0.5 ? Material.Light : Material.Dark
-    Material.accent: palette.highlight.color
+    Material.theme: palette.window.hslLightness > 0.5 ? Material.Light : Material.Dark
+    Material.accent: palette.highlight
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
     // many Wayland desktops like GNOME. It also provides a place for window controls.
@@ -70,20 +70,19 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
+            onClicked: appMenu.open()
+
             Menu {
                 id: appMenu
-                x: parent.width - width
-
+                y: parent.height
                 MenuItem { action: fullscreenAction }
                 MenuItem { action: quitAction }
             }
-
-            onClicked: appMenu.open()
         }
     }
     
     Component.onCompleted: {
-        audioVisualiser.start()
+        audioProcessor.start()
     }
 
     function goToVisualizer() {
@@ -142,13 +141,13 @@ ApplicationWindow {
             delegate: Rectangle {
                 width: 200
                 height: 200
-                color: Material.cardColor
-                scale: PathView.iconScale
-                opacity: PathView.iconOpacity
-                z: PathView.z
+                color: Material.background
+                scale: PathView.iconScale !== undefined ? PathView.iconScale : 1.0
+                opacity: PathView.iconOpacity !== undefined ? PathView.iconOpacity : 1.0
+                z: PathView.z !== undefined ? PathView.z : 0
                 radius: 5
                 border.width: model.art ? 2 : 0 // Hide border when there's no art
-                border.color: Material.accentColor
+                border.color: Material.accent
                 antialiasing: true
                 
                 Image {
@@ -162,7 +161,7 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     width: parent.width - 10
                     text: model.name
-                    color: Material.primaryTextColor
+                    color: Material.foreground
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                     visible: !model.art
@@ -197,9 +196,9 @@ ApplicationWindow {
         VisualizerView {
             id: visualizerView
             anchors.fill: parent
-            anchors.bottomMargin: 100
-            magnitudes: audioVisualiser.magnitudes
+            magnitudes: audioProcessor.magnitudes
             albumArt: mpdClient.albumArt
+            contentBottomMargin: 100
         }
 
         Rectangle {
@@ -210,7 +209,7 @@ ApplicationWindow {
             height: 250
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "#00000000" }
-                GradientStop { position: 1.0; color: Material.backgroundColor }
+                GradientStop { position: 1.0; color: Material.background }
             }
             z: pathView.z - 1
         }
@@ -247,7 +246,7 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: Material.dividerColor
+                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.12)
                 }
             }
 
@@ -271,8 +270,12 @@ ApplicationWindow {
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
-                                height: (audioVisualiser.magnitudes[index] || 0) * parent.height
-                                color: Qt.hsla(Material.accentHue, 0.6, 0.5 + (index/64.0), 0.8)
+                                height: (audioProcessor.magnitudes[index] || 0) * parent.height
+                                color: Material.accent
+
+                                Behavior on height {
+                                    NumberAnimation { duration: 50 }
+                                }
                             }
                         }
                     }
@@ -295,14 +298,14 @@ ApplicationWindow {
                         text: mpdClient.title
                         font.pixelSize: 18
                         font.bold: true
-                        color: Material.primaryTextColor
+                        color: Material.foreground
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
                         font.pixelSize: 14
-                        color: Material.secondaryTextColor
+                        color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.7)
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
@@ -317,10 +320,6 @@ ApplicationWindow {
                         onClicked: mpdClient.togglePlayPause()
                         font.pixelSize: 20
                         width: 40; height: 40
-                        background: Rectangle {
-                            color: Material.accentColor
-                            radius: 20
-                        }
                     }
                     Button { text: "▶▶"; onClicked: mpdClient.next(); flat: true }
                 }
@@ -344,12 +343,12 @@ ApplicationWindow {
             clip: true
             
             delegate: Item {
-                width: parent.width
+                width: ListView.view.width
                 height: 40
                 
                 Rectangle {
                     anchors.fill: parent
-                    color: index % 2 == 0 ? Material.backgroundColor : Qt.darker(Material.backgroundColor)
+                    color: index % 2 == 0 ? Material.background : Qt.darker(Material.background)
                     
                     MouseArea {
                         anchors.fill: parent
@@ -362,7 +361,7 @@ ApplicationWindow {
                     anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.title
-                    color: Material.primaryTextColor
+                    color: Material.foreground
                     font.pixelSize: 14
                 }
                 
@@ -371,7 +370,7 @@ ApplicationWindow {
                     anchors.rightMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.duration
-                    color: Material.secondaryTextColor
+                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.7)
                     font.pixelSize: 12
                 }
             }

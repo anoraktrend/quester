@@ -19,6 +19,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QUrlQuery>
+#include <algorithm>
 
 // --- AlbumModel Implementation ---
 int AlbumModel::rowCount(const QModelIndex &parent) const
@@ -560,6 +561,15 @@ void MpdClient::loadAlbumTracks(int index)
     QString albumName = m_albumModel->m_albums[index].name;
     leaveIdle();
 
+    struct SortableTrack {
+        QString title;
+        QString duration;
+        QString uri;
+        int disc;
+        int track;
+    };
+    QList<SortableTrack> sortedTracks;
+
     QList<TrackItem> tracks;
     if (mpd_search_db_songs(m_connection, true)) {
         mpd_search_add_tag_constraint(
@@ -568,6 +578,8 @@ void MpdClient::loadAlbumTracks(int index)
             struct mpd_song *song;
             while ((song = mpd_recv_song(m_connection)) != NULL) {
                 const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+                const char *trackStr = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
+                const char *discStr = mpd_song_get_tag(song, MPD_TAG_DISC, 0);
                 unsigned duration = mpd_song_get_duration(song);
                 const char *uri = mpd_song_get_uri(song);
 
@@ -575,12 +587,24 @@ void MpdClient::loadAlbumTracks(int index)
                 QString durStr
                     = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0'));
                 QString uriStr = uri ? QString::fromUtf8(uri) : "";
+                int track = trackStr ? std::atoi(trackStr) : 0;
+                int disc = discStr ? std::atoi(discStr) : 0;
 
-                tracks.append({titleStr, durStr, uriStr});
+                sortedTracks.append({titleStr, durStr, uriStr, disc, track});
                 mpd_song_free(song);
             }
         }
     }
+
+    std::sort(sortedTracks.begin(), sortedTracks.end(), [](const SortableTrack &a, const SortableTrack &b) {
+        if (a.disc != b.disc) return a.disc < b.disc;
+        return a.track < b.track;
+    });
+
+    for (const auto &t : sortedTracks) {
+        tracks.append({t.title, t.duration, t.uri});
+    }
+
     m_trackModel->setTracks(tracks);
     m_timer->start(1000);
     sendIdle();
@@ -620,40 +644,53 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
         return;
     }
 
-    // 2. Construct a filter string and use mpd_run_find_add to add all matching songs.
-    // This is an efficient, single command to MPD.
-    // Create temporary copies to escape quotes, as the input strings are const.
-    QString escapedArtist = artistName;
-    escapedArtist.replace('\'', QLatin1String("\\'"));
-    QString escapedAlbum = albumName;
-    escapedAlbum.replace('\'', QLatin1String("\\'"));
+    // 2. Fetch songs, sort them, and add to playlist
+    struct SortableSong {
+        QString uri;
+        int disc;
+        int track;
+    };
+    QList<SortableSong> songList;
 
-    QString filter;
-    // MPD filter syntax requires escaping single quotes.
-    if (!artistName.isEmpty() && artistName != "Unknown Artist") {
-        filter = QString("((artist == '%1') AND (album == '%2'))").arg(escapedArtist, escapedAlbum);
+    if (mpd_search_db_songs(m_connection, true)) {
+        if (!artistName.isEmpty() && artistName != "Unknown Artist") {
+            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ARTIST, artistName.toUtf8().constData());
+        }
+        mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
+        
+        if (mpd_search_commit(m_connection)) {
+            struct mpd_song *song;
+            while ((song = mpd_recv_song(m_connection)) != NULL) {
+                const char *uri = mpd_song_get_uri(song);
+                const char *trackStr = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
+                const char *discStr = mpd_song_get_tag(song, MPD_TAG_DISC, 0);
+                
+                if (uri) {
+                    int track = trackStr ? std::atoi(trackStr) : 0;
+                    int disc = discStr ? std::atoi(discStr) : 0;
+                    songList.append({QString::fromUtf8(uri), disc, track});
+                }
+                mpd_song_free(song);
+            }
+        } else {
+            mpd_connection_clear_error(m_connection);
+        }
     } else {
-        filter = QString("(album == '%1')").arg(escapedAlbum);
+        mpd_connection_clear_error(m_connection);
     }
 
-    // The function mpd_run_find_add may not exist in all libmpdclient versions.
-    // We send the "findadd" command manually for better compatibility.
-    if (!mpd_send_command(m_connection, "findadd", filter.toUtf8().constData(), NULL)) {
-                    qWarning() << "Failed to send 'findadd' command:"
-                               << mpd_connection_get_error_message(m_connection);
-                    mpd_connection_clear_error(m_connection);
-                    m_timer->start(1000);
-                    sendIdle();
-                    return;    }
+    std::sort(songList.begin(), songList.end(), [](const SortableSong &a, const SortableSong &b) {
+        if (a.disc != b.disc) return a.disc < b.disc;
+        return a.track < b.track;
+    });
 
-    // We must finish the response, even if we don't use the result.
-    if (!mpd_response_finish(m_connection)) {
-        qWarning() << "Failed to finish 'findadd' response:"
-                   << mpd_connection_get_error_message(m_connection);
-        mpd_connection_clear_error(m_connection);
-        m_timer->start(1000);
-        sendIdle();
-        return;
+    if (!songList.isEmpty()) {
+        mpd_command_list_begin(m_connection, true);
+        for (const auto &s : songList) {
+            mpd_send_add(m_connection, s.uri.toUtf8().constData());
+        }
+        mpd_command_list_end(m_connection);
+        mpd_response_finish(m_connection);
     }
 
     // 3. Start playing from the beginning of the (now populated) playlist.

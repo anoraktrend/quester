@@ -2,12 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-import QtQuick.Controls.Material 2.15
-
 Rectangle {
     id: root
     implicitHeight: 50
-    color: Material.primaryColor
+    color: palette.window
+    SystemPalette { id: palette }
 
     property alias title: titleLabel.text
 
@@ -17,7 +16,7 @@ Rectangle {
         Label {
             id: titleLabel
             text: "Quester"
-            color: Material.primaryTextColor
+            color: palette.windowText
             font.bold: true
             font.pixelSize: 16
             Layout.fillWidth: true

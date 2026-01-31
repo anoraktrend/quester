@@ -18,6 +18,7 @@ find_package(Qt6 COMPONENTS
     Quick
     QmlModels
     Network
+    Multimedia
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
@@ -28,18 +29,14 @@ qt_policy(SET QTP0001 NEW)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
 
-# Find cava manually since it often lacks a pkg-config file
-find_library(CAVA_LIBRARY NAMES cava HINTS /usr/local/lib)
-find_path(CAVA_INCLUDE_DIR NAMES cava.h cavacore.h HINTS /usr/local/include /usr/include/cava PATH_SUFFIXES cava)
-
 qt_add_resources(quester_resources resources.qrc)
 
 qt_add_executable(quester
     main.cpp
     quester.cpp
     quester.h
-    audiovisualizer.cpp
-    audiovisualizer.h
+    audioprocessor.cpp
+    audioprocessor.h
     ${quester_resources}
 )
 
@@ -60,19 +57,9 @@ target_link_libraries(quester
     Qt6::Quick
     Qt6::QmlModels
     Qt6::Network
+    Qt6::Multimedia
     PkgConfig::MPDCLIENT
 )
-
-if(CAVA_LIBRARY AND CAVA_INCLUDE_DIR)
-    target_compile_definitions(quester PRIVATE HAVE_CAVA)
-    if(EXISTS "${CAVA_INCLUDE_DIR}/cavacore.h")
-        target_compile_definitions(quester PRIVATE HAVE_CAVACORE_H)
-    endif()
-    target_include_directories(quester PRIVATE ${CAVA_INCLUDE_DIR})
-    target_link_libraries(quester PRIVATE ${CAVA_LIBRARY})
-else()
-    message(WARNING "CAVA library not found. Falling back to internal FFT.")
-endif()
 
 # --- Installation Rules ---
 include(GNUInstallDirs)
