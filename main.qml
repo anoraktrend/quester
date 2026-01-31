@@ -169,7 +169,7 @@ ApplicationWindow {
             id: bottomControls
             x: 0
             width: parent.width
-            height: 180
+            height: 100
             y: parent.height - height
 
             Behavior on y {
@@ -235,42 +235,47 @@ ApplicationWindow {
                 }
             }
 
-            ColumnLayout {
+            RowLayout {
                 anchors.top: progressBar.bottom
                 anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 15
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 20
 
                 ColumnLayout {
-                    Layout.alignment: Qt.AlignHCenter
-                    spacing: 5
+                    Layout.fillWidth: true
+                    spacing: 2
                     Text {
                         text: mpdClient.title
-                        font.pixelSize: 20
+                        font.pixelSize: 18
+                        font.bold: true
                         color: "white"
-                        Layout.alignment: Qt.AlignHCenter
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
-                        font.pixelSize: 16
+                        font.pixelSize: 14
                         color: "#B0B0B0"
-                        Layout.alignment: Qt.AlignHCenter
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                 }
 
                 RowLayout {
-                    Layout.alignment: Qt.AlignHCenter
-                    spacing: 20
+                    spacing: 15
                     Button { text: "◀◀"; onClicked: mpdClient.previous() }
                     Button {
                         id: playPauseButton
                         text: mpdClient.state === "play" ? "❚❚" : "▶"
                         onClicked: mpdClient.togglePlayPause()
                         font.pixelSize: 20
-                        width: 60; height: 60
+                        width: 40; height: 40
                         background: Rectangle {
                             color: playPauseButton.down ? "#333" : "#555"
-                            radius: 30
+                            radius: 20
                         }
                     }
                     Button { text: "▶▶"; onClicked: mpdClient.next() }
