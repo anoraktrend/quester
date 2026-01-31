@@ -26,7 +26,11 @@ qt_policy(SET QTP0001 NEW)
 
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(MPDCLIENT REQUIRED libmpdclient)
+pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
+
+# Find cava manually since it often lacks a pkg-config file
+find_library(CAVA_LIBRARY NAMES cava HINTS /usr/local/lib)
+find_path(CAVA_INCLUDE_DIR NAMES cava.h cavacore.h HINTS /usr/local/include /usr/include/cava PATH_SUFFIXES cava)
 
 qt_add_resources(quester_resources resources.qrc)
 
@@ -34,11 +38,12 @@ qt_add_executable(quester
     main.cpp
     quester.cpp
     quester.h
+    audiovisualizer.cpp
+    audiovisualizer.h
     ${quester_resources}
 )
 
 target_include_directories(quester PRIVATE
-    ${MPDCLIENT_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
@@ -55,8 +60,19 @@ target_link_libraries(quester
     Qt6::Quick
     Qt6::QmlModels
     Qt6::Network
-    ${MPDCLIENT_LIBRARIES}
+    PkgConfig::MPDCLIENT
 )
+
+if(CAVA_LIBRARY AND CAVA_INCLUDE_DIR)
+    target_compile_definitions(quester PRIVATE HAVE_CAVA)
+    if(EXISTS "${CAVA_INCLUDE_DIR}/cavacore.h")
+        target_compile_definitions(quester PRIVATE HAVE_CAVACORE_H)
+    endif()
+    target_include_directories(quester PRIVATE ${CAVA_INCLUDE_DIR})
+    target_link_libraries(quester PRIVATE ${CAVA_LIBRARY})
+else()
+    message(WARNING "CAVA library not found. Falling back to internal FFT.")
+endif()
 
 # --- Installation Rules ---
 include(GNUInstallDirs)
@@ -74,6 +90,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Quester.svg
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/main.qml
     ${CMAKE_CURRENT_SOURCE_DIR}/HeaderBar.qml
+    ${CMAKE_CURRENT_SOURCE_DIR}/VisualizerView.qml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/Quester
 )
 

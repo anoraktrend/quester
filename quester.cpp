@@ -597,6 +597,7 @@ void MpdClient::playTrack(const QString &uri)
     if (id != -1) {
         mpd_run_play_id(m_connection, id);
     }
+    m_timer->start(1000);
     sendIdle();
 }
 
@@ -613,9 +614,8 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
 
     // 1. Clear the current playlist.
     if (!mpd_run_clear(m_connection)) {
-        qWarning() << "Failed to clear MPD playlist:"
-                   << mpd_connection_get_error_message(m_connection);
         mpd_connection_clear_error(m_connection);
+        m_timer->start(1000);
         sendIdle();
         return;
     }
@@ -639,18 +639,19 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     // The function mpd_run_find_add may not exist in all libmpdclient versions.
     // We send the "findadd" command manually for better compatibility.
     if (!mpd_send_command(m_connection, "findadd", filter.toUtf8().constData(), NULL)) {
-        qWarning() << "Failed to send 'findadd' command:"
-                   << mpd_connection_get_error_message(m_connection);
-        mpd_connection_clear_error(m_connection);
-        sendIdle();
-        return;
-    }
+                    qWarning() << "Failed to send 'findadd' command:"
+                               << mpd_connection_get_error_message(m_connection);
+                    mpd_connection_clear_error(m_connection);
+                    m_timer->start(1000);
+                    sendIdle();
+                    return;    }
 
     // We must finish the response, even if we don't use the result.
     if (!mpd_response_finish(m_connection)) {
         qWarning() << "Failed to finish 'findadd' response:"
                    << mpd_connection_get_error_message(m_connection);
         mpd_connection_clear_error(m_connection);
+        m_timer->start(1000);
         sendIdle();
         return;
     }

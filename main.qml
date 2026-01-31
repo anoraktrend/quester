@@ -5,13 +5,19 @@ import QtQuick.Controls
 
 
 
+import QtQuick.Controls.Material 2.15
+import Qt.labs.platform 1.1
+
 ApplicationWindow {
     id: window
     width: 800
     height: 600
     visible: true
     title: qsTr("Quester")
-    color: "#1E1E1E"
+
+    SystemPalette { id: palette }
+    Material.theme: palette.window.color.luma > 0.5 ? Material.Light : Material.Dark
+    Material.accent: palette.highlight.color
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
     // many Wayland desktops like GNOME. It also provides a place for window controls.
@@ -30,11 +36,23 @@ ApplicationWindow {
             onTriggered: mpdClient.quitApplication()
         }
 
+        Button {
+            id: visualizerButton
+            text: qsTr("Visualizer")
+            visible: coverFlow.state === "libraryView"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: libraryButton.left
+            anchors.rightMargin: 10
+            onClicked: goToVisualizer()
+        }
+
         // The library button from the main view is moved here for a cleaner look.
         Button {
             id: libraryButton
             text: coverFlow.state === "libraryView" ? qsTr("Refresh Library") : qsTr("Return to Library")
             anchors.verticalCenter: parent.verticalCenter
+            anchors.right: menuButton.left
+            anchors.rightMargin: 10
             onClicked: {
                 if (coverFlow.state === "libraryView") {
                     mpdClient.refreshLibrary()
@@ -46,6 +64,7 @@ ApplicationWindow {
 
         // Application Menu Button (Hamburger Menu)
         ToolButton {
+            id: menuButton
             text: "\u2630" // Hamburger icon
             font.pixelSize: 20
             anchors.right: parent.right
@@ -67,6 +86,21 @@ ApplicationWindow {
         audioVisualiser.start()
     }
 
+    function goToVisualizer() {
+        if (pathView.currentIndex !== mpdClient.currentAlbumIndex && mpdClient.currentAlbumIndex !== -1) {
+            pathView.currentIndex = mpdClient.currentAlbumIndex
+            visualizerTimer.start()
+        } else {
+            coverFlow.state = "visualizerView"
+        }
+    }
+
+    Timer {
+        id: visualizerTimer
+        interval: 550
+        onTriggered: coverFlow.state = "visualizerView"
+    }
+
     Item {
         id: coverFlow
         anchors.fill: parent
@@ -80,6 +114,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             height: 250
+            z: 2
             model: mpdClient.albumModel
             pathItemCount: 5
             preferredHighlightBegin: 0.5
@@ -95,18 +130,25 @@ ApplicationWindow {
             onCurrentIndexChanged: {
                 mpdClient.loadAlbumTracks(currentIndex)
             }
-            
+
+            transform: Scale {
+                id: pathViewScale
+                origin.x: pathView.width / 2
+                origin.y: pathView.height / 2
+                xScale: 1.0
+                yScale: 1.0
+            }
 
             delegate: Rectangle {
                 width: 200
                 height: 200
-                color: "#333"
+                color: Material.cardColor
                 scale: PathView.iconScale
                 opacity: PathView.iconOpacity
                 z: PathView.z
                 radius: 5
                 border.width: model.art ? 2 : 0 // Hide border when there's no art
-                border.color: "white"
+                border.color: Material.accentColor
                 antialiasing: true
                 
                 Image {
@@ -120,7 +162,7 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     width: parent.width - 10
                     text: model.name
-                    color: "white"
+                    color: Material.primaryTextColor
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                     visible: !model.art
@@ -152,6 +194,14 @@ ApplicationWindow {
             }
         }
 
+        VisualizerView {
+            id: visualizerView
+            anchors.fill: parent
+            anchors.bottomMargin: 100
+            magnitudes: audioVisualiser.magnitudes
+            albumArt: mpdClient.albumArt
+        }
+
         Rectangle {
             id: gradientRect
             anchors.left: pathView.left
@@ -160,7 +210,7 @@ ApplicationWindow {
             height: 250
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "#00000000" }
-                GradientStop { position: 1.0; color: "#1E1E1E" }
+                GradientStop { position: 1.0; color: Material.backgroundColor }
             }
             z: pathView.z - 1
         }
@@ -176,6 +226,15 @@ ApplicationWindow {
                 NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
             }
 
+            Rectangle {
+                anchors.fill: parent
+                visible: coverFlow.state === "visualizerView"
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#00000000" }
+                    GradientStop { position: 1.0; color: Qt.hsla(Material.hue, 0, 0, 0.8) }
+                }
+            }
+
             ProgressBar {
                 id: progressBar
                 anchors.left: parent.left
@@ -188,7 +247,7 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: "#80000000" // Darker than background
+                    color: Material.dividerColor
                 }
             }
 
@@ -200,38 +259,23 @@ ApplicationWindow {
                 anchors.bottom: progressBar.bottom
                 z: progressBar.z - 1 // Draw behind the progress bar's content
 
-                ShaderEffect {
+                Row {
                     anchors.fill: parent
-                    property variant bars: audioVisualiser.magnitudes
-                    property int barCount: 32
-
-                    // This rectangle provides the gradient for the shader.
-                    // By being a child of ShaderEffect with visible:false,
-                    // it automatically becomes the 'source' texture.
-                    Rectangle {
-                        id: visualizerSource
-                        width: visualizer.width; height: visualizer.height
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#03A3E6" }
-                            GradientStop { position: 0.25; color: "#F8B4CD" }
-                            GradientStop { position: 0.50; color: "#FAFBF9" }
-                            GradientStop { position: 0.75; color: "#FA9C57" }
-                            GradientStop { position: 1.0; color: "#A80864" }
+                    spacing: 1
+                    Repeater {
+                        model: 32
+                        Rectangle {
+                            width: (parent.width - 31) / 32
+                            height: parent.height
+                            color: "transparent"
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: (audioVisualiser.magnitudes[index] || 0) * parent.height
+                                color: Qt.hsla(Material.accentHue, 0.6, 0.5 + (index/64.0), 0.8)
+                            }
                         }
-                        visible: false
                     }
-
-                    // Pack the 32 bars into 8 vec4s for the shader
-                    property vector4d freqs1: Qt.vector4d(bars.length > 3 ? bars[0] : 0, bars.length > 3 ? bars[1] : 0, bars.length > 3 ? bars[2] : 0, bars.length > 3 ? bars[3] : 0)
-                    property vector4d freqs2: Qt.vector4d(bars.length > 7 ? bars[4] : 0, bars.length > 7 ? bars[5] : 0, bars.length > 7 ? bars[6] : 0, bars.length > 7 ? bars[7] : 0)
-                    property vector4d freqs3: Qt.vector4d(bars.length > 11 ? bars[8] : 0, bars.length > 11 ? bars[9] : 0, bars.length > 11 ? bars[10] : 0, bars.length > 11 ? bars[11] : 0)
-                    property vector4d freqs4: Qt.vector4d(bars.length > 15 ? bars[12] : 0, bars.length > 15 ? bars[13] : 0, bars.length > 15 ? bars[14] : 0, bars.length > 15 ? bars[15] : 0)
-                    property vector4d freqs5: Qt.vector4d(bars.length > 19 ? bars[16] : 0, bars.length > 19 ? bars[17] : 0, bars.length > 19 ? bars[18] : 0, bars.length > 19 ? bars[19] : 0)
-                    property vector4d freqs6: Qt.vector4d(bars.length > 23 ? bars[20] : 0, bars.length > 23 ? bars[21] : 0, bars.length > 23 ? bars[22] : 0, bars.length > 23 ? bars[23] : 0)
-                    property vector4d freqs7: Qt.vector4d(bars.length > 27 ? bars[24] : 0, bars.length > 27 ? bars[25] : 0, bars.length > 27 ? bars[26] : 0, bars.length > 27 ? bars[27] : 0)
-                    property vector4d freqs8: Qt.vector4d(bars.length > 31 ? bars[28] : 0, bars.length > 31 ? bars[29] : 0, bars.length > 31 ? bars[30] : 0, bars.length > 31 ? bars[31] : 0)
-
-                    fragmentShader: "qrc:/shaders/visualizer.frag.qsb"
                 }
             }
 
@@ -251,14 +295,14 @@ ApplicationWindow {
                         text: mpdClient.title
                         font.pixelSize: 18
                         font.bold: true
-                        color: "white"
+                        color: Material.primaryTextColor
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
                         font.pixelSize: 14
-                        color: "#B0B0B0"
+                        color: Material.secondaryTextColor
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
@@ -266,7 +310,7 @@ ApplicationWindow {
 
                 RowLayout {
                     spacing: 15
-                    Button { text: "◀◀"; onClicked: mpdClient.previous() }
+                    Button { text: "◀◀"; onClicked: mpdClient.previous(); flat: true }
                     Button {
                         id: playPauseButton
                         text: mpdClient.state === "play" ? "❚❚" : "▶"
@@ -274,11 +318,11 @@ ApplicationWindow {
                         font.pixelSize: 20
                         width: 40; height: 40
                         background: Rectangle {
-                            color: playPauseButton.down ? "#333" : "#555"
+                            color: Material.accentColor
                             radius: 20
                         }
                     }
-                    Button { text: "▶▶"; onClicked: mpdClient.next() }
+                    Button { text: "▶▶"; onClicked: mpdClient.next(); flat: true }
                 }
             }
         }
@@ -305,7 +349,7 @@ ApplicationWindow {
                 
                 Rectangle {
                     anchors.fill: parent
-                    color: index % 2 == 0 ? "#222" : "#1a1a1a"
+                    color: index % 2 == 0 ? Material.backgroundColor : Qt.darker(Material.backgroundColor)
                     
                     MouseArea {
                         anchors.fill: parent
@@ -318,7 +362,7 @@ ApplicationWindow {
                     anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.title
-                    color: "white"
+                    color: Material.primaryTextColor
                     font.pixelSize: 14
                 }
                 
@@ -327,10 +371,58 @@ ApplicationWindow {
                     anchors.rightMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.duration
-                    color: "#aaa"
+                    color: Material.secondaryTextColor
                     font.pixelSize: 12
                 }
             }
         }
+
+        states: [
+            State {
+                name: "libraryView"
+                PropertyChanges { target: pathView; opacity: 1.0; visible: true }
+                PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
+                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
+                PropertyChanges { target: gradientRect; opacity: 1.0 }
+            },
+            State {
+                name: "visualizerView"
+                PropertyChanges { target: pathView; opacity: 0.0; visible: false }
+                PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
+                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
+                PropertyChanges { target: gradientRect; opacity: 0.0 }
+            }
+        ]
+
+        transitions: [
+            Transition {
+                from: "libraryView"
+                to: "visualizerView"
+                SequentialAnimation {
+                    PropertyAction { target: visualizerView; property: "visible"; value: true }
+                    ParallelAnimation {
+                        NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 5.0; duration: 600; easing.type: Easing.InQuad }
+                        NumberAnimation { target: pathView; property: "opacity"; to: 0.0; duration: 600; easing.type: Easing.InQuad }
+                        NumberAnimation { target: gradientRect; property: "opacity"; to: 0.0; duration: 600 }
+                        NumberAnimation { target: visualizerView; property: "opacity"; to: 1.0; duration: 600 }
+                    }
+                    PropertyAction { target: pathView; property: "visible"; value: false }
+                }
+            },
+            Transition {
+                from: "visualizerView"
+                to: "libraryView"
+                SequentialAnimation {
+                    PropertyAction { target: pathView; property: "visible"; value: true }
+                    ParallelAnimation {
+                        NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: pathView; property: "opacity"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: gradientRect; property: "opacity"; to: 1.0; duration: 600 }
+                        NumberAnimation { target: visualizerView; property: "opacity"; to: 0.0; duration: 600 }
+                    }
+                    PropertyAction { target: visualizerView; property: "visible"; value: false }
+                }
+            }
+        ]
     }
 }

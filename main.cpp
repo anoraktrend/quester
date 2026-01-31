@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QFileInfo>
 #include "quester.h"
+#include "audiovisualizer.h"
 
 using namespace Qt::StringLiterals;
 
@@ -20,6 +21,9 @@ int main(int argc, char *argv[])
 
     MpdClient mpdClient;
     engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
+
+    AudioVisualizer audioVisualizer;
+    engine.rootContext()->setContextProperty("audioVisualiser", &audioVisualizer);
 
     QUrl url;
     // The QT_QML_SOURCE_DIR macro is set by CMake to the project's source directory.
