@@ -25,7 +25,7 @@ Quester is a desktop client for the Music Player Daemon (MPD). It provides a flu
 
 - **Album Browser:** Cover-flow style navigation for your music library.
 - **Automatic Artwork:** Fetches album art from MPD (embedded/local) or TheAudioDB API.
-- **Audio Visualizer:** Real-time audio visualization shader.
+- **Audio Visualizer:** Real-time audio visualization shader. [planned](https://codeberg.org/anoraktrend/quester/issues/1)
 - **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
 - **Tracklist:** View and play specific tracks from the selected album.
 - **Fullscreen Mode:** Immersive listening experience.
