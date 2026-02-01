@@ -117,7 +117,7 @@ MpdClient::MpdClient(QObject *parent)
 {
     m_timer = new QTimer(this);
     QObject::connect(m_timer, &QTimer::timeout, this, &MpdClient::updateStatus);
-    m_timer->start(1000);
+    m_timer->start(100);
     loadLibraryFromCache();
 
     connect();
@@ -546,7 +546,7 @@ void MpdClient::refreshLibrary()
     }
 
     sendIdle();
-    m_timer->start(1000);
+    m_timer->start(100);
 }
 
 void MpdClient::loadAlbumTracks(int index)
@@ -604,7 +604,7 @@ void MpdClient::loadAlbumTracks(int index)
     }
 
     m_trackModel->setTracks(tracks);
-    m_timer->start(1000);
+    m_timer->start(100);
     sendIdle();
 }
 
@@ -619,7 +619,7 @@ void MpdClient::playTrack(const QString &uri)
     if (id != -1) {
         mpd_run_play_id(m_connection, id);
     }
-    m_timer->start(1000);
+    m_timer->start(100);
     sendIdle();
 }
 
@@ -637,7 +637,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     // 1. Clear the current playlist.
     if (!mpd_run_clear(m_connection)) {
         mpd_connection_clear_error(m_connection);
-        m_timer->start(1000);
+        m_timer->start(100);
         sendIdle();
         return;
     }
@@ -699,7 +699,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     sendIdle(); // Re-enter idle mode
-    m_timer->start(1000);
+    m_timer->start(100);
     updateStatus(); // Force an immediate status update
 }
 

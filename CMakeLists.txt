@@ -29,7 +29,8 @@ qt_policy(SET QTP0001 NEW)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
 pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
-
+pkg_check_modules(PULSEAUDIO REQUIRED IMPORTED_TARGET libpulse)
+pkg_check_modules(LIBPULSE_SIMPLE REQUIRED IMPORTED_TARGET libpulse-simple)
 qt_add_resources(quester_resources resources.qrc)
 
 qt_add_executable(quester
@@ -47,8 +48,7 @@ target_include_directories(quester PRIVATE
 
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
-    "QT_QML_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
-)
+    "QT_QML_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
 
 target_link_libraries(quester
     PRIVATE
@@ -59,9 +59,17 @@ target_link_libraries(quester
     Qt6::QmlModels
     Qt6::Network
     Qt6::Multimedia
+    PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3
+    PkgConfig::PULSEAUDIO
 )
+
+# Add the CAVA subdirectory
+add_subdirectory(cava)
+
+# Link Quester with CAVA
+target_link_libraries(quester PRIVATE cava)
 
 # --- Installation Rules ---
 include(GNUInstallDirs)

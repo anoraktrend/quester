@@ -28,15 +28,15 @@ Item {
         anchors.rightMargin: 20
         anchors.bottomMargin: 20 + contentBottomMargin
         height: parent.height * 0.6
-        spacing: 4
-        
+        spacing: 1
+
         Repeater {
-            model: 32
+            model: magnitudes.length
             Rectangle {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignBottom
-                Layout.preferredHeight: Math.max(4, (magnitudes && magnitudes[index] !== undefined ? magnitudes[index] : 0) * parent.height)
-                color: Qt.hsla(index / 32.0, 0.7, 0.6, 1.0)
+                Layout.preferredHeight: Math.max(4, (magnitudes[index] || 0) * parent.height)
+                color: AudioVisualizer.barColors[index] || "white"
                 opacity: 0.9
                 radius: 4
                 
@@ -47,13 +47,6 @@ Item {
         }
     }
 
-    Label {
-        anchors.centerIn: parent
-        text: qsTr("Visualizer Disconnected\nCheck MPD FIFO Configuration")
-        color: "white"
-        horizontalAlignment: Text.AlignHCenter
-        visible: !active
-    }
 
     MouseArea {
         anchors.fill: parent

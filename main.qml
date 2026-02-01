@@ -46,6 +46,31 @@ ApplicationWindow {
             onClicked: goToVisualizer()
         }
 
+        ToolButton {
+            id: presetMenuButton
+            text: qsTr("Colors")
+            visible: coverFlow.state === "visualizerView"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: libraryButton.left
+            anchors.rightMargin: 10
+            onClicked: presetMenu.open()
+
+            Menu {
+                id: presetMenu
+                y: parent.height
+                Repeater {
+                    model: AudioVisualizer.presetNames
+                    MenuItem {
+                        text: modelData
+                        checkable: true
+                        autoExclusive: true
+                        checked: AudioVisualizer.currentPreset === modelData
+                        onTriggered: AudioVisualizer.currentPreset = modelData
+                    }
+                }
+            }
+        }
+
         // The library button from the main view is moved here for a cleaner look.
         Button {
             id: libraryButton
@@ -81,10 +106,6 @@ ApplicationWindow {
         }
     }
     
-    Component.onCompleted: {
-        AudioVisualizer.start()
-    }
-
     function goToVisualizer() {
         if (pathView.currentIndex !== mpdClient.currentAlbumIndex && mpdClient.currentAlbumIndex !== -1) {
             pathView.currentIndex = mpdClient.currentAlbumIndex
@@ -199,9 +220,28 @@ ApplicationWindow {
             magnitudes: AudioVisualizer.magnitudes
             albumArt: mpdClient.albumArt
             contentBottomMargin: 100
-            active: AudioVisualizer.active
             z: 10
             onClicked: coverFlow.state = "libraryView"
+
+            onWidthChanged: {
+                if (width > 0) {
+                    AudioVisualizer.width = width;
+                }
+            }
+            
+            Component.onCompleted: {
+                if (width > 0) {
+                    AudioVisualizer.width = width;
+                }
+            }
+
+            onActiveChanged: {
+                if (active) {
+                    AudioVisualizer.start();
+                } else {
+                    AudioVisualizer.stop();
+                }
+            }
         }
 
         Rectangle {
@@ -254,37 +294,6 @@ ApplicationWindow {
                 }
             }
 
-            Item {
-                id: visualizer
-                anchors.left: progressBar.left
-                anchors.right: progressBar.right
-                anchors.top: progressBar.top
-                anchors.bottom: progressBar.bottom
-                z: progressBar.z - 1 // Draw behind the progress bar's content
-
-                Row {
-                    anchors.fill: parent
-                    spacing: 1
-                    Repeater {
-                        model: 32
-                        Rectangle {
-                            width: (parent.width - 31) / 32
-                            height: parent.height
-                            color: "transparent"
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                width: parent.width
-                                height: (AudioVisualizer.magnitudes[index] || 0) * parent.height
-                                color: Material.accent
-
-                                Behavior on height {
-                                    NumberAnimation { duration: 50 }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
 
             RowLayout {
                 anchors.top: progressBar.bottom
@@ -385,14 +394,14 @@ ApplicationWindow {
                 name: "libraryView"
                 PropertyChanges { target: pathView; opacity: 1.0; visible: true }
                 PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
-                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
+                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false; active: false }
                 PropertyChanges { target: gradientRect; opacity: 1.0 }
             },
             State {
                 name: "visualizerView"
                 PropertyChanges { target: pathView; opacity: 0.0; visible: false }
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
-                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
+                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true; active: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
             }
         ]

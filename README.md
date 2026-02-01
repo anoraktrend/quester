@@ -6,6 +6,7 @@
 > A modern, visually rich MPD client built with Qt 6 and QML.
 
 ![Quester playing some Music](img/Quester.png)
+![Quester Visualizer](img/Quester%20Visualizer.png)
 
 ## Table of Contents
 
@@ -25,7 +26,7 @@ Quester is a desktop client for the Music Player Daemon (MPD). It provides a flu
 
 - **Album Browser:** Cover-flow style navigation for your music library.
 - **Automatic Artwork:** Fetches album art from MPD (embedded/local) or TheAudioDB API.
-- **Audio Visualizer:** Real-time audio visualization shader. [planned](https://codeberg.org/anoraktrend/quester/issues/1)
+- **Audio Visualizer:** Real-time audio visualization using PulseAudio and FFTW with customizable color presets.
 - **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
 - **Tracklist:** View and play specific tracks from the selected album.
 - **Fullscreen Mode:** Immersive listening experience.
@@ -38,11 +39,13 @@ To build Quester, you need the following dependencies installed on your system:
 - **CMake** (3.16 or higher)
 - **Qt 6** (6.2 or higher; Core, Gui, Qml, Quick, Network)
 - **libmpdclient**
+- **FFTW3**
+- **PulseAudio** (libpulse specifically, it uses the pulse api for the visualizer)
 
 ### Ubuntu/Debian
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev
+sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev
 ```
 
 ## Installation
