@@ -250,9 +250,16 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     m_magnitudes.fill(0.0, m_numBars);
     m_smoothBuffer.fill(0.0, m_numBars);
     loadPresets();
+
+    // Ensure System preset exists
+    if (!m_presets.contains("System")) {
+        Preset system;
+        system.colors = { QColor(Qt::gray) };
+        m_presets.insert("System", system);
+    }
     
     QSettings settings("Quester", "Quester");
-    QString saved = settings.value("visualizerPreset", "rainbow").toString();
+    QString saved = settings.value("visualizerPreset", "System").toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;
     } else {
@@ -638,4 +645,15 @@ void AudioVisualizer::updateBarColors()
         m_barColors.append(QColor(r, g, b));
     }
     emit barColorsChanged();
+}
+
+void AudioVisualizer::updateSystemColors(const QColor &highlight, const QColor &text)
+{
+    Preset system;
+    system.colors = { highlight, text };
+    m_presets.insert("System", system);
+
+    if (m_currentPresetName == "System") {
+        updateBarColors();
+    }
 }

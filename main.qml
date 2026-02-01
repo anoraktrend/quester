@@ -14,8 +14,13 @@ ApplicationWindow {
     height: 600
     visible: true
     title: qsTr("Quester")
+    color: palette.window
 
-    SystemPalette { id: palette }
+    SystemPalette {
+        id: palette
+        onHighlightChanged: AudioVisualizer.updateSystemColors(highlight, text)
+        onTextChanged: AudioVisualizer.updateSystemColors(highlight, text)
+    }
     Material.theme: palette.window.hslLightness > 0.5 ? Material.Light : Material.Dark
     Material.accent: palette.highlight
 
@@ -106,6 +111,10 @@ ApplicationWindow {
         }
     }
     
+    Component.onCompleted: {
+        AudioVisualizer.updateSystemColors(palette.highlight, palette.text)
+    }
+
     function goToVisualizer() {
         if (pathView.currentIndex !== mpdClient.currentAlbumIndex && mpdClient.currentAlbumIndex !== -1) {
             pathView.currentIndex = mpdClient.currentAlbumIndex
@@ -162,7 +171,7 @@ ApplicationWindow {
             delegate: Rectangle {
                 width: 200
                 height: 200
-                color: Material.background
+                color: palette.base
                 scale: PathView.iconScale !== undefined ? PathView.iconScale : 1.0
                 opacity: PathView.iconOpacity !== undefined ? PathView.iconOpacity : 1.0
                 z: PathView.z !== undefined ? PathView.z : 0
@@ -182,7 +191,7 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     width: parent.width - 10
                     text: model.name
-                    color: Material.foreground
+                    color: palette.text
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                     visible: !model.art
@@ -252,7 +261,7 @@ ApplicationWindow {
             height: 250
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "#00000000" }
-                GradientStop { position: 1.0; color: Material.background }
+                GradientStop { position: 1.0; color: palette.window }
             }
             z: pathView.z - 1
         }
@@ -290,7 +299,7 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.12)
+                    color: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12)
                 }
             }
 
@@ -311,14 +320,14 @@ ApplicationWindow {
                         text: mpdClient.title
                         font.pixelSize: 18
                         font.bold: true
-                        color: Material.foreground
+                        color: palette.windowText
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
                         font.pixelSize: 14
-                        color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.7)
+                        color: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.7)
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
@@ -361,7 +370,7 @@ ApplicationWindow {
                 
                 Rectangle {
                     anchors.fill: parent
-                    color: index % 2 == 0 ? Material.background : Qt.darker(Material.background)
+                    color: index % 2 == 0 ? palette.base : palette.alternateBase
                     
                     MouseArea {
                         anchors.fill: parent
@@ -374,7 +383,7 @@ ApplicationWindow {
                     anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.title
-                    color: Material.foreground
+                    color: palette.text
                     font.pixelSize: 14
                 }
                 
@@ -383,7 +392,7 @@ ApplicationWindow {
                     anchors.rightMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.duration
-                    color: Qt.rgba(Material.foreground.r, Material.foreground.g, Material.foreground.b, 0.7)
+                    color: Qt.rgba(palette.text.r, palette.text.g, palette.text.b, 0.7)
                     font.pixelSize: 12
                 }
             }

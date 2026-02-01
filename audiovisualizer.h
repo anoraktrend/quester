@@ -72,6 +72,7 @@ public:
     QString currentPreset() const;
     void setCurrentPreset(const QString &name);
     QVariantList barColors() const;
+    Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
 
 public slots:
     void start();

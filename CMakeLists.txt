@@ -11,6 +11,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 
+include(GNUInstallDirs)
+
 find_package(Qt6 COMPONENTS
     Core
     Gui
@@ -48,7 +50,8 @@ target_include_directories(quester PRIVATE
 
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
-    "QT_QML_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
+    "QT_QML_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+    "APP_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}/Quester\"")
 
 target_link_libraries(quester
     PRIVATE
@@ -66,7 +69,6 @@ target_link_libraries(quester
 )
 
 # --- Installation Rules ---
-include(GNUInstallDirs)
 
 # Install the executable to the standard binary location (e.g., /usr/local/bin)
 install(TARGETS quester
@@ -75,7 +77,7 @@ install(TARGETS quester
 
 # Install the application icon.
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Quester.svg
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/../../share/icons/hicolor/scalable/apps
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
     RENAME quester.svg
 )
 
@@ -87,7 +89,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/main.qml
 
 # Install the .desktop file to the standard applications directory
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/quester.desktop
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/../../share/applications
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
