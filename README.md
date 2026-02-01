@@ -5,7 +5,7 @@
 
 > A modern, visually rich MPD client built with Qt 6 and QML.
 
-![Quester playing some Music](img/Quester.png) ![Quester in Visualize moder](img/Quester%20Visualizer.png)
+![Quester playing some Music](img/Quester.png) | ![Quester in Visualize moder](img/Quester%20Visualizer.png)
 
 ## Table of Contents
 
