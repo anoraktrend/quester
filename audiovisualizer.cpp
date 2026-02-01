@@ -528,7 +528,7 @@ void AudioVisualizer::loadPresets()
     locations << configLocs;
 
     for (const QString &location : locations) {
-        QDir presetDir(location + "/quester/presets");
+        QDir presetDir(location + "/Quester/presets");
         if (presetDir.exists()) {
             const auto fileInfos = presetDir.entryInfoList(QStringList() << "*.json", QDir::Files);
             for (const QFileInfo &info : fileInfos) {

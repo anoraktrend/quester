@@ -65,12 +65,6 @@ target_link_libraries(quester
     PkgConfig::PULSEAUDIO
 )
 
-# Add the CAVA subdirectory
-add_subdirectory(cava)
-
-# Link Quester with CAVA
-target_link_libraries(quester PRIVATE cava)
-
 # --- Installation Rules ---
 include(GNUInstallDirs)
 
@@ -94,4 +88,12 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/main.qml
 # Install the .desktop file to the standard applications directory
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/quester.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/../../share/applications
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/Quester/presets
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
+    DESTINATION /etc/config/Quester/presets
 )
