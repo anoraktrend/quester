@@ -379,11 +379,31 @@ ApplicationWindow {
                 
                 Text {
                     anchors.left: parent.left
+                RowLayout {
+                    anchors.fill: parent
                     anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: (model.isDir ? "📁 " : "🎵 ") + model.name
                     color: palette.text
                     font.pixelSize: 16
+                    spacing: 10
+
+                    Image {
+                        source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
+                        sourceSize: Qt.size(24, 24)
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Text {
+                        text: model.name
+                        color: palette.text
+                        font.pixelSize: 16
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                        elide: Text.ElideRight
+                    }
                 }
             }
             ScrollBar.vertical: ScrollBar { }
