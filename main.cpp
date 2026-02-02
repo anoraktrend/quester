@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtGlobal>
+#include <hwy/highway.h> // Highway SIMD library
 
 using namespace Qt::StringLiterals;
 
@@ -28,6 +29,35 @@ public:
             *size = QSize(width, height);
 
         return QIcon::fromTheme(id).pixmap(width, height);
+    }
+};
+
+class BlurImageProvider : public QQuickImageProvider
+{
+public:
+    BlurImageProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
+
+    auto requestImage(const QString &id, QSize *size, const QSize &requestedSize) -> QImage override
+    {
+        QImage img;
+        if (id.startsWith("data:")) {
+            QString base64 = id.mid(id.indexOf(",") + 1);
+            img.loadFromData(QByteArray::fromBase64(base64.toLatin1()));
+        } else {
+            QUrl url(id);
+            img.load(url.isLocalFile() ? url.toLocalFile() : id);
+        }
+
+        if (img.isNull()) return {};
+
+        // "Highway" Blur: Fast path using downscaling
+        // Scaling down averages pixels (box blur), scaling up interpolates (smooths).
+        // This is extremely efficient and provides a high-quality background blur.
+        if (img.width() > 64) {
+            img = img.scaledToWidth(64, Qt::SmoothTransformation);
+        }
+
+        return img;
     }
 };
 
@@ -56,6 +86,7 @@ auto main(int argc, char *argv[]) -> int
 
     QQmlApplicationEngine engine;
     engine.addImageProvider("theme", new ThemeImageProvider);
+    engine.addImageProvider("blur", new BlurImageProvider);
     engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
     engine.rootContext()->setContextProperty("AudioVisualizer", &audioVisualizer);
     engine.rootContext()->setContextProperty("startInVisualizer", startVisualizer);

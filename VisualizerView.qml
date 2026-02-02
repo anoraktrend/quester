@@ -12,14 +12,22 @@ Item {
 
     Image {
         anchors.fill: parent
+        source: "image://blur/" + albumArt
+        fillMode: Image.PreserveAspectCrop
+        opacity: 0.5
+    }
+    Image {
+        anchors.fill: parent
         source: albumArt
         fillMode: Image.PreserveAspectFit
     }
     Rectangle {
         anchors.fill: parent
-        color: "black"
-        opacity: 0.7
-    }
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#88000000" }
+            GradientStop { position: 1.0; color: "black" }
+                }
+            }
 
     RowLayout {
         id: visualizerRow
@@ -37,7 +45,7 @@ Item {
             Rectangle {
 
                 Layout.fillWidth: true
-                Layout.alignment: Qt.AlignBottom
+                Layout.alignment: AudioVisualizer.isTopDown ? Qt.AlignTop : Qt.AlignBottom
                 Layout.preferredHeight: Math.max(4, visualizerRow.height * (magnitudes[index] || 0))
                 color: AudioVisualizer.barColors[index] || "white"
                 opacity: 0.9

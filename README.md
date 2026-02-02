@@ -44,7 +44,7 @@ To build Quester, you need the following dependencies installed on your system:
 ### Ubuntu/Debian
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev
+sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev libpipewire-0.3-dev libhwy-dev
 ```
 
 ## Installation

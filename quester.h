@@ -172,6 +172,14 @@ private:
     void leaveIdle();
     void saveLibraryToCache(const QList<AlbumItem> &albums);
     void loadLibraryFromCache();
+    struct SortableSong {
+        QString title;
+        QString duration;
+        QString uri;
+        int disc;
+        int track;
+    };
+    QList<SortableSong> getSongsForAlbum(const QString &artistName, const QString &albumName);
     struct mpd_connection *m_connection;
     QSocketNotifier *m_notifier;
     QNetworkAccessManager *m_networkManager;

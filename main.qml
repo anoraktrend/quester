@@ -109,6 +109,14 @@ ApplicationWindow {
                     onTriggered: mpdClient.refreshLibrary()
                 }
 
+                MenuItem {
+                    text: qsTr("Top Down Visualizer")
+                    visible: coverFlow.state === "visualizerView"
+                    checkable: true
+                    checked: AudioVisualizer.isTopDown
+                    onTriggered: AudioVisualizer.isTopDown = !AudioVisualizer.isTopDown
+                }
+
                 MenuSeparator {
                     visible: coverFlow.state === "libraryView"
                     height: visible ? implicitHeight : 0
@@ -488,7 +496,7 @@ ApplicationWindow {
                 visible: coverFlow.state === "visualizerView"
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "#00000000" }
-                    GradientStop { position: 1.0; color: Qt.hsla(Material.hue, 0, 0, 0.8) }
+                    GradientStop { position: 1.0; color: "black" }
                 }
             }
 
@@ -517,6 +525,21 @@ ApplicationWindow {
                 anchors.leftMargin: 20
                 anchors.rightMargin: 20
                 spacing: 20
+
+                Rectangle {
+                    Layout.preferredHeight: 64
+                    Layout.preferredWidth: 64
+                    color: palette.base
+                    visible: coverFlow.state === "libraryView"
+                    radius: 4
+                    clip: true
+
+                    Image {
+                        anchors.fill: parent
+                        source: mpdClient.albumArt
+                        fillMode: Image.PreserveAspectCrop
+                    }
+                }
 
                 ColumnLayout {
                     Layout.fillWidth: true

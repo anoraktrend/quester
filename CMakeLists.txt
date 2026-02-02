@@ -34,6 +34,9 @@ pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 pkg_check_modules(PULSEAUDIO REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(LIBPULSE_SIMPLE REQUIRED IMPORTED_TARGET libpulse-simple)
 qt_add_resources(quester_resources resources.qrc)
+pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+pkg_check_modules(SPA REQUIRED libspa-0.2)
+pkg_check_modules(HWY REQUIRED libhwy)
 
 qt_add_executable(quester
     main.cpp
@@ -44,14 +47,24 @@ qt_add_executable(quester
     ${quester_resources}
 )
 
-target_include_directories(quester PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
 
+target_include_directories(quester PRIVATE
+    ${PIPEWIRE_INCLUDE_DIRS}
+    ${SPA_INCLUDE_DIRS}
+)
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
     "QT_QML_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
     "APP_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}/Quester\"")
+
+qt_add_qml_module(quester
+    URI Quester
+    VERSION 1.0
+    QML_FILES
+        main.qml
+        HeaderBar.qml
+        VisualizerView.qml
+)
 
 target_link_libraries(quester
     PRIVATE
@@ -66,6 +79,9 @@ target_link_libraries(quester
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3
     PkgConfig::PULSEAUDIO
+    ${PIPEWIRE_LIBRARIES}
+    ${SPA_LIBRARIES}
+    ${HWY_LIBRARIES}
 )
 
 # --- Installation Rules ---
@@ -81,11 +97,6 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Quester.svg
     RENAME quester.svg
 )
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/main.qml
-    ${CMAKE_CURRENT_SOURCE_DIR}/HeaderBar.qml
-    ${CMAKE_CURRENT_SOURCE_DIR}/VisualizerView.qml
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/Quester
-)
 
 # Install the .desktop file to the standard applications directory
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/quester.desktop

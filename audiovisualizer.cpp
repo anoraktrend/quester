@@ -13,6 +13,9 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QtMath>
+#include <utility>
+#include <fcntl.h>
+#include <unistd.h>
 
 template<class T>
 auto max(const T &a, const T &b) -> const T &
@@ -52,18 +55,18 @@ static auto monstercat_filter(
     return bars;
 }
 
-// --- PulseAudioThread Implementation ---
+// --- PulseAudioInput Implementation ---
 
-PulseAudioThread::PulseAudioThread(QObject *parent)
-    : QObject(parent)
+PulseAudioInput::PulseAudioInput(QObject *parent)
+    : AudioInput(parent)
 {}
 
-PulseAudioThread::~PulseAudioThread()
+PulseAudioInput::~PulseAudioInput()
 {
     stop();
 }
 
-void PulseAudioThread::stop()
+void PulseAudioInput::stop()
 {
     m_quit = true;
     if (m_mainloop) {
@@ -86,7 +89,7 @@ void PulseAudioThread::stop()
     }
 }
 
-void PulseAudioThread::start()
+void PulseAudioInput::start()
 {
     m_mainloop = pa_threaded_mainloop_new();
     if (!m_mainloop) {
@@ -103,7 +106,7 @@ void PulseAudioThread::start()
     }
 }
 
-void PulseAudioThread::createContext()
+void PulseAudioInput::createContext()
 {
     pa_context_set_state_callback(m_context, context_state_callback, this);
     if (pa_context_connect(m_context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
@@ -111,9 +114,9 @@ void PulseAudioThread::createContext()
     }
 }
 
-void PulseAudioThread::context_state_callback(pa_context *c, void *userdata)
+void PulseAudioInput::context_state_callback(pa_context *c, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (p->m_quit)
         return;
 
@@ -134,9 +137,9 @@ void PulseAudioThread::context_state_callback(pa_context *c, void *userdata)
     }
 }
 
-void PulseAudioThread::server_info_callback(pa_context *c, const pa_server_info *i, void *userdata)
+void PulseAudioInput::server_info_callback(pa_context *c, const pa_server_info *i, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (!i || p->m_quit || p->m_stream) {
         return;
     }
@@ -145,10 +148,10 @@ void PulseAudioThread::server_info_callback(pa_context *c, const pa_server_info 
     p->createStream(monitor_source.toUtf8().constData());
 }
 
-void PulseAudioThread::sink_input_info_callback(
+void PulseAudioInput::sink_input_info_callback(
     pa_context *c, const pa_sink_input_info *i, int eol, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (p->m_quit)
         return;
 
@@ -175,10 +178,10 @@ void PulseAudioThread::sink_input_info_callback(
     }
 }
 
-void PulseAudioThread::sink_info_callback(
+void PulseAudioInput::sink_info_callback(
     pa_context *c, const pa_sink_info *i, int eol, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (eol > 0 || !i || p->m_quit || p->m_stream) {
         return;
     }
@@ -186,7 +189,7 @@ void PulseAudioThread::sink_info_callback(
     p->createStream(i->monitor_source_name);
 }
 
-void PulseAudioThread::createStream(const char *deviceName)
+void PulseAudioInput::createStream(const char *deviceName)
 {
     if (m_stream || m_quit)
         return; // Don't create if already exists or if quitting
@@ -227,9 +230,9 @@ void PulseAudioThread::createStream(const char *deviceName)
     }
 }
 
-void PulseAudioThread::stream_state_callback(pa_stream *s, void *userdata)
+void PulseAudioInput::stream_state_callback(pa_stream *s, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (p->m_quit)
         return;
 
@@ -247,9 +250,9 @@ void PulseAudioThread::stream_state_callback(pa_stream *s, void *userdata)
     }
 }
 
-void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *userdata)
+void PulseAudioInput::stream_read_callback(pa_stream *s, size_t length, void *userdata)
 {
-    auto *p = static_cast<PulseAudioThread *>(userdata);
+    auto *p = static_cast<PulseAudioInput *>(userdata);
     if (p->m_quit)
         return;
 
@@ -276,11 +279,147 @@ void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *u
     }
 }
 
+// --- PipeWireInput Implementation ---
+
+PipeWireInput::PipeWireInput(QObject *parent) : AudioInput(parent) {}
+
+PipeWireInput::~PipeWireInput()
+{
+    stop();
+}
+
+void PipeWireInput::start()
+{
+    pw_init(nullptr, nullptr);
+    m_loop = pw_thread_loop_new("quester-pipewire", nullptr);
+    m_context = pw_context_new(pw_thread_loop_get_loop(m_loop), nullptr, 0);
+    m_core = pw_context_connect(m_context, nullptr, 0);
+
+    uint8_t buffer[1024];
+    struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
+    const struct spa_pod *params[1];
+
+    struct spa_audio_info_raw info = {};
+    info.format = SPA_AUDIO_FORMAT_S16_LE;
+    info.rate = 44100;
+    info.channels = 2;
+
+    params[0] = spa_format_audio_raw_build(&b, SPA_PARAM_EnumFormat, &info);
+
+    static const struct pw_stream_events stream_events = {
+        .version = PW_VERSION_STREAM_EVENTS,
+        .process = on_process
+    };
+
+    m_stream = pw_stream_new_simple(
+        pw_thread_loop_get_loop(m_loop),
+        "Quester",
+        pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio",
+                          PW_KEY_MEDIA_CATEGORY, "Capture",
+                          PW_KEY_MEDIA_ROLE, "Music",
+                          NULL),
+        &stream_events,
+        this
+    );
+
+    pw_stream_connect(m_stream,
+                      PW_DIRECTION_INPUT,
+                      PW_ID_ANY,
+                      (pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS),
+                      params, 1);
+
+    pw_thread_loop_start(m_loop);
+}
+
+void PipeWireInput::stop()
+{
+    if (m_loop) {
+        pw_thread_loop_stop(m_loop);
+    }
+    if (m_stream) {
+        pw_stream_destroy(m_stream);
+        m_stream = nullptr;
+    }
+    if (m_core) {
+        pw_core_disconnect(m_core);
+        m_core = nullptr;
+    }
+    if (m_context) {
+        pw_context_destroy(m_context);
+        m_context = nullptr;
+    }
+    if (m_loop) {
+        pw_thread_loop_destroy(m_loop);
+        m_loop = nullptr;
+    }
+}
+
+void PipeWireInput::on_process(void *userdata)
+{
+    auto *p = static_cast<PipeWireInput *>(userdata);
+    struct pw_buffer *b = nullptr;
+    struct spa_buffer *buf = nullptr;
+    uint8_t *data = nullptr;
+    uint32_t size = 0;
+
+    if ((b = pw_stream_dequeue_buffer(p->m_stream)) == NULL) return;
+
+    buf = b->buffer;
+    if ((data = (uint8_t*)buf->datas[0].data) == nullptr) return;
+    size = buf->datas[0].chunk->size;
+
+    if (size > 0) {
+        QByteArray bytes((const char*)data, size);
+        emit p->dataReady(bytes);
+    }
+
+    pw_stream_queue_buffer(p->m_stream, b);
+}
+
+// --- FifoInput Implementation ---
+
+FifoInput::FifoInput(QString path, QObject *parent) : AudioInput(parent), m_path(std::move(path)), m_running(false) {}
+
+FifoInput::~FifoInput()
+{
+    stop();
+}
+
+void FifoInput::start()
+{
+    m_running = true;
+    m_thread = std::thread([this]() -> void {
+        int fd = open(m_path.toUtf8().constData(), O_RDONLY);
+        if (fd < 0) {
+            emit error("Could not open FIFO: " + m_path);
+            return;
+        }
+        char buffer[4096];
+        while (m_running) {
+            ssize_t bytes = read(fd, buffer, sizeof(buffer));
+            if (bytes > 0) {
+                emit dataReady(QByteArray(buffer, bytes));
+            } else {
+                usleep(10000);
+            }
+        }
+        close(fd);
+    });
+}
+
+void FifoInput::stop()
+{
+    m_running = false;
+    if (m_thread.joinable()) {
+        m_thread.join();
+    }
+}
+
 // --- AudioVisualizer Implementation ---
 
 AudioVisualizer::AudioVisualizer(QObject *parent)
     : QObject(parent)
-    , m_pulseThread(nullptr)
+    , m_input(nullptr)
     , m_active(false)
     , m_fftw_plan(nullptr)
     , m_fftw_in(nullptr)
@@ -299,6 +438,7 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     }
 
     QSettings settings("Quester", "Quester");
+    m_topDown = settings.value("visualizerTopDown", false).toBool();
     QString saved = settings.value("visualizerPreset", "System").toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;
@@ -348,6 +488,20 @@ void AudioVisualizer::setHeight(int height)
     emit heightChanged();
 }
 
+auto AudioVisualizer::isTopDown() const -> bool
+{
+    return m_topDown;
+}
+
+void AudioVisualizer::setIsTopDown(bool isTopDown)
+{
+    if (m_topDown == isTopDown) return;
+    m_topDown = isTopDown;
+    QSettings settings("Quester", "Quester");
+    settings.setValue("visualizerTopDown", m_topDown);
+    emit isTopDownChanged();
+}
+
 void AudioVisualizer::start()
 {
     if (m_active)
@@ -373,22 +527,28 @@ void AudioVisualizer::start()
 
     m_buffer.clear();
     m_smoothBuffer.fill(0.0, m_numBars);
-    m_pulseThread = new PulseAudioThread(this);
+
+    QSettings settings("Quester", "Quester");
+    QString source = settings.value("audioSource", "pulseaudio").toString();
+
+    if (source == "pipewire") {
+        m_input = new PipeWireInput(this);
+    } else if (source == "fifo") {
+        QString path = settings.value("fifoPath", "/tmp/mpd.fifo").toString();
+        m_input = new FifoInput(path, this);
+    } else {
+        m_input = new PulseAudioInput(this);
+    }
+
     connect(
-        m_pulseThread,
-        &PulseAudioThread::dataReady,
+        m_input,
+        &AudioInput::dataReady,
         this,
         &AudioVisualizer::onDataReady,
         Qt::QueuedConnection);
-    connect(m_pulseThread, &PulseAudioThread::error, this, &AudioVisualizer::onPulseError);
-    connect(m_pulseThread, &PulseAudioThread::finished, [this]() -> void {
-        if (m_active) {
-            m_active = false;
-            emit activeChanged();
-        }
-    });
+    connect(m_input, &AudioInput::error, this, &AudioVisualizer::onPulseError);
 
-    m_pulseThread->start();
+    m_input->start();
 
     m_active = true;
     emit activeChanged();
@@ -401,10 +561,10 @@ void AudioVisualizer::stop()
     m_active = false;
     emit activeChanged();
 
-    if (m_pulseThread) {
-        m_pulseThread->stop();
-        delete m_pulseThread;
-        m_pulseThread = nullptr;
+    if (m_input) {
+        m_input->stop();
+        delete m_input;
+        m_input = nullptr;
     }
 
     if (m_fftw_plan) {
@@ -444,17 +604,6 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     const auto *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
 
-    for (int i = 0; i < m_fft_size; ++i) {
-        // Average stereo channels to mono and normalize
-        double sample = (double) (pcm[2 * i] + pcm[2 * i + 1]) / 2.0 / 32768.0;
-
-        // Apply Hanning window
-        double window = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (m_fft_size - 1)));
-        m_fftw_in[i] = sample * window;
-    }
-
-    fftw_execute(m_fftw_plan);
-
     QList<double> bars;
     bars.fill(0.0, m_numBars);
 
@@ -465,36 +614,55 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     double currentFrameMax = 0.0;
 
-    int halfBars = (m_numBars + 1) / 2;
-    QList<double> calculatedBars;
-    calculatedBars.fill(0.0, halfBars);
+    int leftBarsCount = m_numBars / 2;
+    int rightBarsCount = m_numBars - leftBarsCount;
 
-    for (int i = 0; i < halfBars; i++) {
-        // Logarithmic interpolation
-        double start = minBin * std::pow((double) maxBin / minBin, (double) i / halfBars);
-        double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / halfBars);
+    for (int channel = 0; channel < 2; ++channel) {
+        // 0 = Left, 1 = Right
 
-        int startIndex = (int) start;
-        int endIndex = (int) end;
-
-        if (endIndex <= startIndex)
-            endIndex = startIndex + 1;
-        if (endIndex > numBins)
-            endIndex = numBins;
-
-        double maxMag = 0.0;
-        for (int b = startIndex; b < endIndex; ++b) {
-            double re = m_fftw_out[b][0];
-            double im = m_fftw_out[b][1];
-            double mag = std::sqrt(re * re + im * im);
-            if (mag > maxMag)
-                maxMag = mag;
+        for (int i = 0; i < m_fft_size; ++i) {
+            double sample = (double) pcm[2 * i + channel] / 32768.0;
+            double window = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (m_fft_size - 1)));
+            m_fftw_in[i] = sample * window;
         }
 
-        calculatedBars[i] = maxMag;
+        fftw_execute(m_fftw_plan);
 
-        if (calculatedBars[i] > currentFrameMax) {
-            currentFrameMax = calculatedBars[i];
+        int barCount = (channel == 0) ? leftBarsCount : rightBarsCount;
+        int offset = (channel == 0) ? 0 : leftBarsCount;
+        bool reverse = (channel == 0); // Reverse left channel to put bass in center
+
+        for (int i = 0; i < barCount; i++) {
+            // Logarithmic interpolation
+            double start = minBin * std::pow((double) maxBin / minBin, (double) i / barCount);
+            double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / barCount);
+
+            int startIndex = (int) start;
+            int endIndex = (int) end;
+
+            if (endIndex <= startIndex)
+                endIndex = startIndex + 1;
+            if (endIndex > numBins)
+                endIndex = numBins;
+
+            double maxMag = 0.0;
+            for (int b = startIndex; b < endIndex; ++b) {
+                double re = m_fftw_out[b][0];
+                double im = m_fftw_out[b][1];
+                double mag = std::sqrt(re * re + im * im);
+                if (mag > maxMag)
+                    maxMag = mag;
+            }
+
+            // CAVA-style normalization: multiply by log2(index + 2) to boost higher frequencies
+            maxMag *= std::log2(i + 2);
+
+            if (maxMag > currentFrameMax) {
+                currentFrameMax = maxMag;
+            }
+
+            int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
+            bars[targetIdx] = maxMag;
         }
     }
 
@@ -505,8 +673,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     // Normalize
     for (int i = 0; i < m_numBars; i++) {
-        int srcIdx = (i < halfBars) ? i : (m_numBars - 1 - i);
-        bars[i] = calculatedBars[halfBars - 1 - srcIdx] / m_maxPeak;
+        bars[i] /= m_maxPeak;
     }
 
     auto h = (double)m_height;
@@ -544,7 +711,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
 void AudioVisualizer::onPulseError(const QString &errorString)
 {
-    qWarning() << "PulseAudio Error:" << errorString;
+    qWarning() << "Audio Input Error:" << errorString;
     stop();
 }
 

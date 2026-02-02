@@ -14,21 +14,34 @@
 #include <QMutex>
 #include <QColor>
 #include <QVariantList>
+#include <pipewire/pipewire.h>
+#include <spa/param/audio/format-utils.h>
+#include <thread>
+#include <atomic>
 
-class PulseAudioThread : public QObject
+class AudioInput : public QObject
 {
     Q_OBJECT
 public:
-    explicit PulseAudioThread(QObject *parent = nullptr);
-    ~PulseAudioThread();
-
-    void start();
-    void stop();
+    explicit AudioInput(QObject *parent = nullptr) : QObject(parent) {}
+    virtual ~AudioInput() = default;
+    virtual void start() = 0;
+    virtual void stop() = 0;
 
 signals:
     void dataReady(const QByteArray &data);
-    void finished();
     void error(const QString &errorString);
+};
+
+class PulseAudioInput : public AudioInput
+{
+    Q_OBJECT
+public:
+    explicit PulseAudioInput(QObject *parent = nullptr);
+    ~PulseAudioInput();
+
+    void start() override;
+    void stop() override;
 
 private:
     static void context_state_callback(pa_context *c, void *userdata);
@@ -49,6 +62,37 @@ private:
     volatile bool m_quit = false;
 };
 
+class PipeWireInput : public AudioInput
+{
+    Q_OBJECT
+public:
+    explicit PipeWireInput(QObject *parent = nullptr);
+    ~PipeWireInput();
+    void start() override;
+    void stop() override;
+
+private:
+    static void on_process(void *userdata);
+    struct pw_thread_loop *m_loop = nullptr;
+    struct pw_context *m_context = nullptr;
+    struct pw_core *m_core = nullptr;
+    struct pw_stream *m_stream = nullptr;
+};
+
+class FifoInput : public AudioInput
+{
+    Q_OBJECT
+public:
+    explicit FifoInput(QString path, QObject *parent = nullptr);
+    ~FifoInput();
+    void start() override;
+    void stop() override;
+
+private:
+    QString m_path;
+    std::atomic<bool> m_running;
+    std::thread m_thread;
+};
 
 class AudioVisualizer : public QObject
 {
@@ -60,6 +104,7 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QStringList presetNames READ presetNames NOTIFY presetsChanged)
     Q_PROPERTY(QString currentPreset READ currentPreset WRITE setCurrentPreset NOTIFY currentPresetChanged)
     Q_PROPERTY(QVariantList barColors READ barColors NOTIFY barColorsChanged)
+    Q_PROPERTY(bool isTopDown READ isTopDown WRITE setIsTopDown NOTIFY isTopDownChanged)
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
@@ -76,6 +121,8 @@ public:
     void setCurrentPreset(const QString &name);
     QVariantList barColors() const;
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
+    bool isTopDown() const;
+    void setIsTopDown(bool isTopDown);
 
 public slots:
     void start();
@@ -93,6 +140,7 @@ signals:
     void presetsChanged();
     void currentPresetChanged();
     void barColorsChanged();
+    void isTopDownChanged();
 
 private:
     fftw_plan m_fftw_plan;
@@ -100,7 +148,7 @@ private:
     fftw_complex *m_fftw_out;
     int m_fft_size;
 
-    PulseAudioThread *m_pulseThread;
+    AudioInput *m_input;
     QList<qreal> m_magnitudes;
     QList<double> m_smoothBuffer;
     QByteArray m_buffer;
@@ -109,6 +157,7 @@ private:
     int m_height = 600;
     int m_numBars = 32;
     double m_maxPeak = 100.0;
+    bool m_topDown = false;
 
     struct Preset {
         QList<QColor> colors;
