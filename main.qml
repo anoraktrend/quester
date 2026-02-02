@@ -181,6 +181,7 @@ ApplicationWindow {
         
         PathView {
             id: pathView
+            visible: coverFlow.viewMode === "flow"
             anchors.top: parent.top
             anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
@@ -218,6 +219,7 @@ ApplicationWindow {
                 width: 200
                 height: 200
                 color: palette.base
+                visible: coverFlow.viewMode === "flow"
                 scale: PathView.iconScale !== undefined ? PathView.iconScale : 1.0
                 opacity: PathView.iconOpacity !== undefined ? PathView.iconOpacity : 1.0
                 z: PathView.z !== undefined ? PathView.z : 0
@@ -605,7 +607,7 @@ ApplicationWindow {
         states: [
             State {
                 name: "libraryView"
-                PropertyChanges { target: pathView; opacity: 1.0; visible: coverFlow.viewMode === "flow" }
+                PropertyChanges { target: pathView; opacity: 1.0 }
                 PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
                 PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
                 PropertyChanges { target: gradientRect; opacity: 1.0 }
@@ -638,7 +640,6 @@ ApplicationWindow {
                 from: "visualizerView"
                 to: "libraryView"
                 SequentialAnimation {
-                    PropertyAction { target: pathView; property: "visible"; value: coverFlow.viewMode === "flow" }
                     ParallelAnimation {
                         NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
                         NumberAnimation { target: pathView; property: "opacity"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
