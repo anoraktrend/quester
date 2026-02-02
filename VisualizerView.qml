@@ -21,13 +21,14 @@ Item {
     }
 
     RowLayout {
+        id: VisualizerRow
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: 20
         anchors.rightMargin: 20
         anchors.bottomMargin: 20 + contentBottomMargin
-        height: parent.height * 0.6
+        height: parent.height
         spacing: 1
 
         Repeater {
@@ -35,7 +36,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignBottom
-                Layout.preferredHeight: Math.max(4, (magnitudes[index] || 0) * parent.height)
+                Layout.preferredHeight: Math.max(4, (parent.height - 50) * (magnitudes[index] || 0))
                 color: AudioVisualizer.barColors[index] || "white"
                 opacity: 0.9
                 radius: 4

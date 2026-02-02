@@ -1,14 +1,14 @@
+#include "audiovisualizer.h"
+#include "quester.h"
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QUrl>
-#include <QtGlobal>
-#include <QIcon>
 #include <QQuickWindow>
 #include <QStandardPaths>
-#include <QFileInfo>
-#include "quester.h"
-#include "audiovisualizer.h"
+#include <QUrl>
+#include <QtGlobal>
 
 using namespace Qt::StringLiterals;
 
@@ -53,27 +53,32 @@ int main(int argc, char *argv[])
     }
 
     if (!found) {
-    // When installed, the QML file is in a standard data location.
-    // We use QStandardPaths to locate it robustly.
-    QString qmlPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, "Quester/main.qml");
-    if (!qmlPath.isEmpty()) {
-        engine.addImportPath(QFileInfo(qmlPath).absolutePath());
-        url = QUrl::fromLocalFile(qmlPath);
-    } else {
-        qWarning() << "Could not find main.qml in standard data locations.";
+        // When installed, the QML file is in a standard data location.
+        // We use QStandardPaths to locate it robustly.
+        QString qmlPath
+            = QStandardPaths::locate(QStandardPaths::GenericDataLocation, "Quester/main.qml");
+        if (!qmlPath.isEmpty()) {
+            engine.addImportPath(QFileInfo(qmlPath).absolutePath());
+            url = QUrl::fromLocalFile(qmlPath);
+        } else {
+            qWarning() << "Could not find main.qml in standard data locations.";
+        }
     }
-    }
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
-        &app, [&](QObject *obj, const QUrl &objUrl) {
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreated,
+        &app,
+        [&](QObject *obj, const QUrl &objUrl) {
             if (!obj && url == objUrl)
                 QCoreApplication::exit(-1);
 
             // Get the main window object from QML and pass it to the MpdClient
-            auto window = qobject_cast<QQuickWindow*>(obj);
+            auto window = qobject_cast<QQuickWindow *>(obj);
             if (window) {
                 mpdClient.setWindow(window);
             }
-        }, Qt::QueuedConnection);
+        },
+        Qt::QueuedConnection);
     engine.load(url);
 
     return app.exec();

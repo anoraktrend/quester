@@ -42,6 +42,16 @@ ApplicationWindow {
         }
 
         Button {
+            id: viewModeButton
+            text: coverFlow.viewMode === "flow" ? qsTr("Grid View") : qsTr("Cover Flow")
+            visible: coverFlow.state === "libraryView"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: visualizerButton.left
+            anchors.rightMargin: 10
+            onClicked: coverFlow.viewMode = (coverFlow.viewMode === "flow" ? "grid" : "flow")
+        }
+
+        Button {
             id: visualizerButton
             text: qsTr("Visualizer")
             visible: coverFlow.state === "libraryView"
@@ -133,6 +143,7 @@ ApplicationWindow {
     Item {
         id: coverFlow
         anchors.fill: parent
+        property string viewMode: "flow"
         state: "libraryView"
         
         PathView {
@@ -145,7 +156,7 @@ ApplicationWindow {
             height: 250
             z: 2
             model: mpdClient.albumModel
-            pathItemCount: 5
+            pathItemCount: window.visibility === Window.FullScreen ? 9 : 5
             preferredHighlightBegin: 0.5
             preferredHighlightEnd: 0.5
             highlightRangeMode: PathView.StrictlyEnforceRange
@@ -223,12 +234,100 @@ ApplicationWindow {
             }
         }
 
+        GridView {
+            id: albumGridView
+            anchors.top: parent.top
+            anchors.bottom: bottomControls.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            clip: true
+            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "grid"
+            
+            cellWidth: 180
+            cellHeight: 220
+            model: mpdClient.albumModel
+            
+            delegate: Item {
+                width: albumGridView.cellWidth
+                height: albumGridView.cellHeight
+                
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    color: "transparent"
+                    
+                    Rectangle {
+                        id: artContainer
+                        height: width
+                        width: parent.width
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        color: palette.base
+                        radius: 5
+                        border.width: model.art ? 2 : 0
+                        border.color: Material.accent
+                        
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            source: model.art
+                            fillMode: Image.PreserveAspectCrop
+                        }
+                        
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 10
+                            text: model.name
+                            color: palette.text
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                            visible: !model.art
+                        }
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                pathView.currentIndex = index
+                                coverFlow.viewMode = "flow"
+                            }
+                        }
+                    }
+                    
+                    Text {
+                        anchors.top: artContainer.bottom
+                        anchors.topMargin: 5
+                        width: parent.width
+                        text: model.name
+                        font.bold: true
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignHCenter
+                        color: palette.text
+                    }
+                    
+                    Text {
+                        anchors.top: artContainer.bottom
+                        anchors.topMargin: 22
+                        width: parent.width
+                        text: model.artist
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignHCenter
+                        color: Qt.rgba(palette.text.r, palette.text.g, palette.text.b, 0.7)
+                    }
+                }
+            }
+            
+            ScrollBar.vertical: ScrollBar { }
+        }
+
         VisualizerView {
             id: visualizerView
             anchors.fill: parent
             magnitudes: AudioVisualizer.magnitudes
             albumArt: mpdClient.albumArt
             contentBottomMargin: 100
+            active: coverFlow.state === "visualizerView" && mpdClient.state === "play"
             z: 10
             onClicked: coverFlow.state = "libraryView"
 
@@ -263,6 +362,7 @@ ApplicationWindow {
                 GradientStop { position: 0.0; color: "#00000000" }
                 GradientStop { position: 1.0; color: palette.window }
             }
+            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "flow"
             z: pathView.z - 1
         }
 
@@ -362,6 +462,7 @@ ApplicationWindow {
             }
 
             model: mpdClient.trackModel
+            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "flow"
             clip: true
             
             delegate: Item {
@@ -401,16 +502,16 @@ ApplicationWindow {
         states: [
             State {
                 name: "libraryView"
-                PropertyChanges { target: pathView; opacity: 1.0; visible: true }
+                PropertyChanges { target: pathView; opacity: 1.0; visible: coverFlow.viewMode === "flow" }
                 PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
-                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false; active: false }
+                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
                 PropertyChanges { target: gradientRect; opacity: 1.0 }
             },
             State {
                 name: "visualizerView"
                 PropertyChanges { target: pathView; opacity: 0.0; visible: false }
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
-                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true; active: true }
+                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
             }
         ]
@@ -434,7 +535,7 @@ ApplicationWindow {
                 from: "visualizerView"
                 to: "libraryView"
                 SequentialAnimation {
-                    PropertyAction { target: pathView; property: "visible"; value: true }
+                    PropertyAction { target: pathView; property: "visible"; value: coverFlow.viewMode === "flow" }
                     ParallelAnimation {
                         NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
                         NumberAnimation { target: pathView; property: "opacity"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }

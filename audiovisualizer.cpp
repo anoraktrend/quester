@@ -1,27 +1,28 @@
 #include "audiovisualizer.h"
-#include <QDebug>
-#include <QMutexLocker>
-#include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonArray>
-#include <QCoreApplication>
-#include <iostream>
+#include <QMutexLocker>
 #include <QSettings>
 #include <QStandardPaths>
-#include <QDir>
+#include <QtMath>
 
-
-
-template <class T> const T& max(const T& a, const T& b) {
+template<class T>
+const T &max(const T &a, const T &b)
+{
     return (a < b) ? b : a;
 }
 
-static double* monstercat_filter(double* bars, int number_of_bars, int waves, double monstercat,
-                                int height) {
+static double *monstercat_filter(
+    double *bars, int number_of_bars, int waves, double monstercat, int height)
+{
     int z;
     int m_y, de;
     double height_normalizer = 1.0;
@@ -57,13 +58,17 @@ static double* monstercat_filter(double* bars, int number_of_bars, int waves, do
 
 // --- PulseAudioThread Implementation ---
 
-PulseAudioThread::PulseAudioThread(QObject *parent) : QObject(parent) {}
+PulseAudioThread::PulseAudioThread(QObject *parent)
+    : QObject(parent)
+{}
 
-PulseAudioThread::~PulseAudioThread() {
+PulseAudioThread::~PulseAudioThread()
+{
     stop();
 }
 
-void PulseAudioThread::stop() {
+void PulseAudioThread::stop()
+{
     m_quit = true;
     if (m_mainloop) {
         pa_threaded_mainloop_stop(m_mainloop);
@@ -85,7 +90,8 @@ void PulseAudioThread::stop() {
     }
 }
 
-void PulseAudioThread::start() {
+void PulseAudioThread::start()
+{
     m_mainloop = pa_threaded_mainloop_new();
     if (!m_mainloop) {
         emit error("pa_threaded_mainloop_new() failed");
@@ -101,34 +107,40 @@ void PulseAudioThread::start() {
     }
 }
 
-void PulseAudioThread::createContext() {
+void PulseAudioThread::createContext()
+{
     pa_context_set_state_callback(m_context, context_state_callback, this);
     if (pa_context_connect(m_context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
         emit error("pa_context_connect() failed");
     }
 }
 
-void PulseAudioThread::context_state_callback(pa_context *c, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
-    if (p->m_quit) return;
+void PulseAudioThread::context_state_callback(pa_context *c, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
+    if (p->m_quit)
+        return;
 
     switch (pa_context_get_state(c)) {
-        case PA_CONTEXT_READY: {
-            pa_operation* o = pa_context_get_sink_input_info_list(c, sink_input_info_callback, p);
-            if (o) pa_operation_unref(o);
-            break;
-        }
-        case PA_CONTEXT_FAILED:
-        case PA_CONTEXT_TERMINATED:
-            if (p->m_mainloop) pa_threaded_mainloop_stop(p->m_mainloop);
-            break;
-        default:
-            break;
+    case PA_CONTEXT_READY: {
+        pa_operation *o = pa_context_get_sink_input_info_list(c, sink_input_info_callback, p);
+        if (o)
+            pa_operation_unref(o);
+        break;
+    }
+    case PA_CONTEXT_FAILED:
+    case PA_CONTEXT_TERMINATED:
+        if (p->m_mainloop)
+            pa_threaded_mainloop_stop(p->m_mainloop);
+        break;
+    default:
+        break;
     }
 }
 
-void PulseAudioThread::server_info_callback(pa_context *c, const pa_server_info *i, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
+void PulseAudioThread::server_info_callback(pa_context *c, const pa_server_info *i, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
     if (!i || p->m_quit || p->m_stream) {
         return;
     }
@@ -137,41 +149,51 @@ void PulseAudioThread::server_info_callback(pa_context *c, const pa_server_info 
     p->createStream(monitor_source.toUtf8().constData());
 }
 
-void PulseAudioThread::sink_input_info_callback(pa_context *c, const pa_sink_input_info *i, int eol, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
-    if (p->m_quit) return;
+void PulseAudioThread::sink_input_info_callback(
+    pa_context *c, const pa_sink_input_info *i, int eol, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
+    if (p->m_quit)
+        return;
 
     if (eol > 0) {
         // If we haven't found a stream yet, fallback to default
         if (!p->m_stream) {
-            pa_operation* o = pa_context_get_server_info(c, server_info_callback, p);
-            if (o) pa_operation_unref(o);
+            pa_operation *o = pa_context_get_server_info(c, server_info_callback, p);
+            if (o)
+                pa_operation_unref(o);
         }
         return;
     }
 
     if (i) {
-        const char* media_name = pa_proplist_gets(i->proplist, "media.name");
+        const char *media_name = pa_proplist_gets(i->proplist, "media.name");
         if (media_name && strcmp(media_name, "mpd") == 0) {
             if (!p->m_stream) { // Check if we already created a stream
-                pa_operation* o = pa_context_get_sink_info_by_index(c, i->sink, sink_info_callback, p);
-                if (o) pa_operation_unref(o);
+                pa_operation *o
+                    = pa_context_get_sink_info_by_index(c, i->sink, sink_info_callback, p);
+                if (o)
+                    pa_operation_unref(o);
             }
         }
     }
 }
 
-void PulseAudioThread::sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
+void PulseAudioThread::sink_info_callback(
+    pa_context *c, const pa_sink_info *i, int eol, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
     if (eol > 0 || !i || p->m_quit || p->m_stream) {
         return;
     }
-    
+
     p->createStream(i->monitor_source_name);
 }
 
-void PulseAudioThread::createStream(const char* deviceName) {
-    if (m_stream || m_quit) return; // Don't create if already exists or if quitting
+void PulseAudioThread::createStream(const char *deviceName)
+{
+    if (m_stream || m_quit)
+        return; // Don't create if already exists or if quitting
 
     pa_sample_spec ss;
     ss.format = PA_SAMPLE_S16LE;
@@ -181,7 +203,8 @@ void PulseAudioThread::createStream(const char* deviceName) {
     m_stream = pa_stream_new(m_context, "Quester Record", &ss, nullptr);
     if (!m_stream) {
         emit error("pa_stream_new() failed");
-        if (m_mainloop) pa_threaded_mainloop_stop(m_mainloop);
+        if (m_mainloop)
+            pa_threaded_mainloop_stop(m_mainloop);
         return;
     }
 
@@ -189,39 +212,51 @@ void PulseAudioThread::createStream(const char* deviceName) {
     pa_stream_set_read_callback(m_stream, stream_read_callback, this);
 
     pa_buffer_attr bufattr;
-    bufattr.maxlength = (uint32_t)-1;
-    bufattr.tlength = (uint32_t)-1;
-    bufattr.prebuf = (uint32_t)-1;
-    bufattr.minreq = (uint32_t)-1;
+    bufattr.maxlength = (uint32_t) -1;
+    bufattr.tlength = (uint32_t) -1;
+    bufattr.prebuf = (uint32_t) -1;
+    bufattr.minreq = (uint32_t) -1;
     // Low latency: 20ms fragments
     bufattr.fragsize = pa_usec_to_bytes(20000, &ss);
 
-    if (pa_stream_connect_record(m_stream, deviceName, &bufattr, (pa_stream_flags_t)(PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_START_CORKED)) < 0) {
+    if (pa_stream_connect_record(
+            m_stream,
+            deviceName,
+            &bufattr,
+            (pa_stream_flags_t) (PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE
+                                 | PA_STREAM_START_CORKED))
+        < 0) {
         emit error(pa_strerror(pa_context_errno(m_context)));
-        if (m_mainloop) pa_threaded_mainloop_stop(m_mainloop);
+        if (m_mainloop)
+            pa_threaded_mainloop_stop(m_mainloop);
     }
 }
 
-void PulseAudioThread::stream_state_callback(pa_stream *s, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
-    if (p->m_quit) return;
-    
+void PulseAudioThread::stream_state_callback(pa_stream *s, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
+    if (p->m_quit)
+        return;
+
     switch (pa_stream_get_state(s)) {
-        case PA_STREAM_READY:
-             pa_stream_cork(s, 0, NULL, NULL);
-            break;
-        case PA_STREAM_FAILED:
-        case PA_STREAM_TERMINATED:
-            if (p->m_mainloop) pa_threaded_mainloop_stop(p->m_mainloop);
-            break;
-        default:
-            break;
+    case PA_STREAM_READY:
+        pa_stream_cork(s, 0, NULL, NULL);
+        break;
+    case PA_STREAM_FAILED:
+    case PA_STREAM_TERMINATED:
+        if (p->m_mainloop)
+            pa_threaded_mainloop_stop(p->m_mainloop);
+        break;
+    default:
+        break;
     }
 }
 
-void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *userdata) {
-    auto *p = static_cast<PulseAudioThread*>(userdata);
-    if (p->m_quit) return;
+void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *userdata)
+{
+    auto *p = static_cast<PulseAudioThread *>(userdata);
+    if (p->m_quit)
+        return;
 
     const void *data;
     if (pa_stream_peek(s, &data, &length) < 0) {
@@ -229,7 +264,7 @@ void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *u
     }
 
     if (length > 0) {
-        QByteArray buffer(static_cast<const char*>(data), length);
+        QByteArray buffer(static_cast<const char *>(data), length);
         emit p->dataReady(buffer);
     }
 
@@ -254,10 +289,10 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     // Ensure System preset exists
     if (!m_presets.contains("System")) {
         Preset system;
-        system.colors = { QColor(Qt::gray) };
+        system.colors = {QColor(Qt::gray)};
         m_presets.insert("System", system);
     }
-    
+
     QSettings settings("Quester", "Quester");
     QString saved = settings.value("visualizerPreset", "System").toString();
     if (m_presets.contains(saved)) {
@@ -298,12 +333,13 @@ void AudioVisualizer::setWidth(int width)
 
 void AudioVisualizer::start()
 {
-    if(m_active) return;
+    if (m_active)
+        return;
 
     m_fft_size = 4096;
-    m_fftw_in = (double*) fftw_malloc(sizeof(double) * m_fft_size);
-    m_fftw_out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * (m_fft_size / 2 + 1));
-    
+    m_fftw_in = (double *) fftw_malloc(sizeof(double) * m_fft_size);
+    m_fftw_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * (m_fft_size / 2 + 1));
+
     if (!m_fftw_in || !m_fftw_out) {
         qWarning() << "Failed to allocate FFTW buffers";
         stop();
@@ -320,10 +356,15 @@ void AudioVisualizer::start()
     m_buffer.clear();
     m_smoothBuffer.fill(0.0, m_numBars);
     m_pulseThread = new PulseAudioThread(this);
-    connect(m_pulseThread, &PulseAudioThread::dataReady, this, &AudioVisualizer::onDataReady, Qt::QueuedConnection);
+    connect(
+        m_pulseThread,
+        &PulseAudioThread::dataReady,
+        this,
+        &AudioVisualizer::onDataReady,
+        Qt::QueuedConnection);
     connect(m_pulseThread, &PulseAudioThread::error, this, &AudioVisualizer::onPulseError);
-    connect(m_pulseThread, &PulseAudioThread::finished, [this](){
-        if(m_active) {
+    connect(m_pulseThread, &PulseAudioThread::finished, [this]() {
+        if (m_active) {
             m_active = false;
             emit activeChanged();
         }
@@ -337,7 +378,8 @@ void AudioVisualizer::start()
 
 void AudioVisualizer::stop()
 {
-    if(!m_active) return;
+    if (!m_active)
+        return;
     m_active = false;
     emit activeChanged();
 
@@ -366,7 +408,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     if (!m_active || !m_fftw_plan) {
         return;
     }
-    
+
     m_buffer.append(data);
 
     // We need m_fft_size samples. Stereo (2 channels), 16-bit (2 bytes) = 4 bytes per frame.
@@ -376,23 +418,23 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     if (m_buffer.size() < requiredBytes) {
         return;
     }
-    
+
     // Keep only the latest requiredBytes
     if (m_buffer.size() > requiredBytes) {
         m_buffer = m_buffer.right(requiredBytes);
     }
 
-    const int16_t *pcm = reinterpret_cast<const int16_t*>(m_buffer.constData());
+    const int16_t *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
 
     for (int i = 0; i < m_fft_size; ++i) {
         // Average stereo channels to mono and normalize
-        double sample = (double)(pcm[2 * i] + pcm[2 * i + 1]) / 2.0 / 32768.0;
-        
+        double sample = (double) (pcm[2 * i] + pcm[2 * i + 1]) / 2.0 / 32768.0;
+
         // Apply Hanning window
         double window = 0.5 * (1.0 - std::cos(2.0 * M_PI * i / (m_fft_size - 1)));
         m_fftw_in[i] = sample * window;
     }
-    
+
     fftw_execute(m_fftw_plan);
 
     QList<double> bars;
@@ -405,24 +447,27 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     for (int i = 0; i < m_numBars; i++) {
         // Logarithmic interpolation
-        double start = minBin * std::pow((double)maxBin / minBin, (double)i / m_numBars);
-        double end = minBin * std::pow((double)maxBin / minBin, (double)(i + 1) / m_numBars);
-        
-        int startIndex = (int)start;
-        int endIndex = (int)end;
-        
-        if (endIndex <= startIndex) endIndex = startIndex + 1;
-        if (endIndex > numBins) endIndex = numBins;
-        
+        double start = minBin * std::pow((double) maxBin / minBin, (double) i / m_numBars);
+        double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / m_numBars);
+
+        int startIndex = (int) start;
+        int endIndex = (int) end;
+
+        if (endIndex <= startIndex)
+            endIndex = startIndex + 1;
+        if (endIndex > numBins)
+            endIndex = numBins;
+
         double maxMag = 0.0;
         for (int b = startIndex; b < endIndex; ++b) {
             double re = m_fftw_out[b][0];
             double im = m_fftw_out[b][1];
             double mag = std::sqrt(re * re + im * im);
-            if (mag > maxMag) maxMag = mag;
+            if (mag > maxMag)
+                maxMag = mag;
         }
-        
-        bars[i] = maxMag / 512.0; // Scaling factor
+
+        bars[i] = maxMag / 100.0; // Scaling factor
     }
 
     monstercat_filter(bars.data(), m_numBars, 0, 1.5, 1.0);
@@ -496,12 +541,11 @@ void AudioVisualizer::loadPresets()
     };
 
     // 1. Load bundled/system presets
-    QStringList paths = {
-        "/home/lucy/git/Quester/visualizerGradients/presets.json", // Hardcoded dev path
-        QCoreApplication::applicationDirPath() + "/visualizerGradients/presets.json",
-        QCoreApplication::applicationDirPath() + "/../visualizerGradients/presets.json",
-        "visualizerGradients/presets.json"
-    };
+    QStringList paths
+        = {"/home/lucy/git/Quester/visualizerGradients/presets.json", // Hardcoded dev path
+           QCoreApplication::applicationDirPath() + "/visualizerGradients/presets.json",
+           QCoreApplication::applicationDirPath() + "/../visualizerGradients/presets.json",
+           "visualizerGradients/presets.json"};
 
     for (const QString &path : paths) {
         if (QFile::exists(path)) {
@@ -569,7 +613,7 @@ void AudioVisualizer::setCurrentPreset(const QString &name)
         return;
 
     m_currentPresetName = name;
-    
+
     QSettings settings("Quester", "Quester");
     settings.setValue("visualizerPreset", name);
 
@@ -593,9 +637,11 @@ void AudioVisualizer::updateBarColors()
     const QList<QColor> &colors = preset.colors;
     const QList<double> &weights = preset.weights;
 
-    if (colors.isEmpty()) return;
+    if (colors.isEmpty())
+        return;
     if (colors.size() == 1) {
-        for (int i = 0; i < m_numBars; ++i) m_barColors.append(colors.first());
+        for (int i = 0; i < m_numBars; ++i)
+            m_barColors.append(colors.first());
         emit barColorsChanged();
         return;
     }
@@ -604,7 +650,8 @@ void AudioVisualizer::updateBarColors()
     QList<double> stops;
     if (weights.size() == colors.size()) {
         double totalWeight = 0;
-        for (double w : weights) totalWeight += w;
+        for (double w : weights)
+            totalWeight += w;
         double current = 0;
         // Center the colors in their weighted regions? Or use edges?
         // Let's treat weights as intervals.
@@ -623,7 +670,7 @@ void AudioVisualizer::updateBarColors()
 
     for (int i = 0; i < m_numBars; ++i) {
         double t = i / double(m_numBars > 1 ? m_numBars - 1 : 1);
-        
+
         // Find segment
         int segment = 0;
         while (segment < stops.size() - 2 && t > stops[segment + 1]) {
@@ -633,15 +680,15 @@ void AudioVisualizer::updateBarColors()
         double t0 = stops[segment];
         double t1 = stops[segment + 1];
         double localT = (t - t0) / (t1 - t0);
-        
+
         QColor c1 = colors[segment];
         QColor c2 = colors[segment + 1];
-        
+
         // Linear interpolation
         int r = c1.red() + localT * (c2.red() - c1.red());
         int g = c1.green() + localT * (c2.green() - c1.green());
         int b = c1.blue() + localT * (c2.blue() - c1.blue());
-        
+
         m_barColors.append(QColor(r, g, b));
     }
     emit barColorsChanged();
@@ -650,7 +697,7 @@ void AudioVisualizer::updateBarColors()
 void AudioVisualizer::updateSystemColors(const QColor &highlight, const QColor &text)
 {
     Preset system;
-    system.colors = { highlight, text };
+    system.colors = {highlight, text};
     m_presets.insert("System", system);
 
     if (m_currentPresetName == "System") {

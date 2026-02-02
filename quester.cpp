@@ -1,4 +1,5 @@
 #include "quester.h"
+#include <algorithm>
 #include <mpd/connection.h>
 #include <mpd/pair.h>
 #include <mpd/recv.h>
@@ -19,7 +20,6 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QUrlQuery>
-#include <algorithm>
 
 // --- AlbumModel Implementation ---
 int AlbumModel::rowCount(const QModelIndex &parent) const
@@ -559,7 +559,8 @@ void MpdClient::loadAlbumTracks(int index)
     QString albumName = m_albumModel->m_albums[index].name;
     leaveIdle();
 
-    struct SortableTrack {
+    struct SortableTrack
+    {
         QString title;
         QString duration;
         QString uri;
@@ -594,10 +595,14 @@ void MpdClient::loadAlbumTracks(int index)
         }
     }
 
-    std::sort(sortedTracks.begin(), sortedTracks.end(), [](const SortableTrack &a, const SortableTrack &b) {
-        if (a.disc != b.disc) return a.disc < b.disc;
-        return a.track < b.track;
-    });
+    std::sort(
+        sortedTracks.begin(),
+        sortedTracks.end(),
+        [](const SortableTrack &a, const SortableTrack &b) {
+            if (a.disc != b.disc)
+                return a.disc < b.disc;
+            return a.track < b.track;
+        });
 
     for (const auto &t : sortedTracks) {
         tracks.append({t.title, t.duration, t.uri});
@@ -643,7 +648,8 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     // 2. Fetch songs, sort them, and add to playlist
-    struct SortableSong {
+    struct SortableSong
+    {
         QString uri;
         int disc;
         int track;
@@ -652,17 +658,19 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
 
     if (mpd_search_db_songs(m_connection, true)) {
         if (!artistName.isEmpty() && artistName != "Unknown Artist") {
-            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ARTIST, artistName.toUtf8().constData());
+            mpd_search_add_tag_constraint(
+                m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ARTIST, artistName.toUtf8().constData());
         }
-        mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
-        
+        mpd_search_add_tag_constraint(
+            m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
+
         if (mpd_search_commit(m_connection)) {
             struct mpd_song *song;
             while ((song = mpd_recv_song(m_connection)) != NULL) {
                 const char *uri = mpd_song_get_uri(song);
                 const char *trackStr = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
                 const char *discStr = mpd_song_get_tag(song, MPD_TAG_DISC, 0);
-                
+
                 if (uri) {
                     int track = trackStr ? std::atoi(trackStr) : 0;
                     int disc = discStr ? std::atoi(discStr) : 0;
@@ -678,7 +686,8 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     std::sort(songList.begin(), songList.end(), [](const SortableSong &a, const SortableSong &b) {
-        if (a.disc != b.disc) return a.disc < b.disc;
+        if (a.disc != b.disc)
+            return a.disc < b.disc;
         return a.track < b.track;
     });
 

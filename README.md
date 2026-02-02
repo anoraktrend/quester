@@ -82,14 +82,6 @@ Run the application from the build directory:
 ./quester
 ```
 
-## Running Tests
-
-Explain how to run the automated tests for this system.
-
-```bash
-npm test
-```
-
 ## Contributing
 
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
