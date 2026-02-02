@@ -20,7 +20,7 @@ Rectangle {
         anchors.margins: 10
         Label {
             id: titleLabel
-            text: "Quester"
+            text: qsTr("Quester")
             color: palette.windowText
             font.bold: true
             font.pixelSize: 16

@@ -4,6 +4,8 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
+#include <QTranslator>
+#include <QLocale>
 #include <QQmlContext>
 #include <QQuickImageProvider>
 #include <QQuickWindow>
@@ -37,6 +39,16 @@ auto main(int argc, char *argv[]) -> int
     iconPath = QStringLiteral(QT_QML_SOURCE_DIR) + "/Quester.svg";
 #endif
     app.setWindowIcon(QIcon::fromTheme("quester", QIcon(iconPath)));
+
+    QTranslator translator;
+    const QStringList uiLanguages = QLocale::system().uiLanguages();
+    for (const QString &locale : uiLanguages) {
+        const QString baseName = "Quester_" + QLocale(locale).name();
+        if (translator.load(":/i18n/" + baseName)) {
+            app.installTranslator(&translator);
+            break;
+        }
+    }
 
     MpdClient mpdClient;
     AudioVisualizer audioVisualizer;
