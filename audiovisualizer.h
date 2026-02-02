@@ -154,7 +154,7 @@ private:
     QList<double> m_smoothBuffer;
     QByteArray m_buffer;
     bool m_active;
-    QTimer *m_decayTimer;
+    QTimer *m_decayTimer{};
     int m_width = 0;
     int m_height = 600;
     int m_numBars = 32;

@@ -362,7 +362,7 @@ void PipeWireInput::on_process(void *userdata)
     uint8_t *data = nullptr;
     uint32_t size = 0;
 
-    if ((b = pw_stream_dequeue_buffer(p->m_stream)) == NULL) return;
+    if ((b = pw_stream_dequeue_buffer(p->m_stream)) == nullptr) return;
 
     buf = b->buffer;
     if ((data = (uint8_t*)buf->datas[0].data) == nullptr) return;
@@ -420,13 +420,13 @@ void FifoInput::stop()
 AudioVisualizer::AudioVisualizer(QObject *parent)
     : QObject(parent)
     , m_input(nullptr)
-    , m_active(false)
+    , m_active(false), m_decayTimer(new QTimer(this))
     , m_fftw_plan(nullptr)
     , m_fftw_in(nullptr)
     , m_fftw_out(nullptr)
     , m_fft_size(16384)
 {
-    m_decayTimer = new QTimer(this);
+    
     connect(m_decayTimer, &QTimer::timeout, this, &AudioVisualizer::performDecay);
     m_magnitudes.fill(0.0, m_numBars);
     m_smoothBuffer.fill(0.0, m_numBars);
