@@ -5,7 +5,6 @@ import QtQuick.Controls
 
 
 
-import QtQuick.Controls.Material 2.15
 import Qt.labs.platform 1.1 as Platform
 
 ApplicationWindow {
@@ -16,13 +15,7 @@ ApplicationWindow {
     title: qsTr("Quester")
     color: palette.window
 
-    SystemPalette {
-        id: palette
-        onHighlightChanged: AudioVisualizer.updateSystemColors(highlight, text)
-        onTextChanged: AudioVisualizer.updateSystemColors(highlight, text)
-    }
-    Material.theme: palette.window.hslLightness > 0.5 ? Material.Light : Material.Dark
-    Material.accent: palette.highlight
+    SystemPalette { id: palette }
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
     // many Wayland desktops like GNOME. It also provides a place for window controls.
@@ -57,23 +50,7 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: menuButton.left
             anchors.rightMargin: 10
-            onClicked: presetMenu.open()
-
-            Menu {
-                id: presetMenu
-                y: parent.height
-                Repeater {
-                    model: AudioVisualizer.presetNames
-                    RadioButton {
-                        text: modelData
-                        checked: AudioVisualizer.currentPreset === modelData
-                        onClicked: {
-                            AudioVisualizer.currentPreset = modelData
-                            presetMenu.close()
-                        }
-                    }
-                }
-            }
+            onClicked: presetDialog.open()
         }
 
         // Application Menu Button (Hamburger Menu)
@@ -226,7 +203,7 @@ ApplicationWindow {
                 z: PathView.z !== undefined ? PathView.z : 0
                 radius: 5
                 border.width: model.art ? 2 : 0 // Hide border when there's no art
-                border.color: Material.accent
+                border.color: palette.accent
                 antialiasing: true
                 
                 Image {
@@ -305,7 +282,7 @@ ApplicationWindow {
                         color: palette.base
                         radius: 5
                         border.width: model.art ? 2 : 0
-                        border.color: Material.accent
+                        border.color: palette.accent
                         
                         Image {
                             anchors.fill: parent
@@ -352,7 +329,7 @@ ApplicationWindow {
                         font.pixelSize: 12
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignHCenter
-                        color: Qt.rgba(palette.text.r, palette.text.g, palette.text.b, 0.7)
+                        color: palette.windowText
                     }
                 }
             }
@@ -499,7 +476,7 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12)
+                    color: palette.accent
                 }
             }
 
@@ -542,7 +519,7 @@ ApplicationWindow {
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
                         font.pixelSize: 14
-                        color: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.7)
+                        color: palette.windowText
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                     }
@@ -608,7 +585,7 @@ ApplicationWindow {
                     anchors.rightMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
                     text: model.duration
-                    color: Qt.rgba(palette.text.r, palette.text.g, palette.text.b, 0.7)
+                    color: palette.windowText
                     font.pixelSize: 12
                 }
             }
@@ -660,5 +637,45 @@ ApplicationWindow {
                 }
             }
         ]
+    }
+
+    Dialog {
+        id: presetDialog
+        title: qsTr("Select Preset")
+        anchors.centerIn: parent
+        width: Math.min(400, parent.width - 40)
+        height: Math.min(500, parent.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+        background: Rectangle {
+            color: palette.window
+            border.color: palette.midlight
+        }
+
+        ListView {
+            anchors.fill: parent
+            model: AudioVisualizer.presetNames
+            delegate: ItemDelegate {
+                width: ListView.view.width
+                text: modelData
+                highlighted: AudioVisualizer.currentPreset === modelData
+
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: parent.highlighted ? palette.highlightedText : palette.text
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    color: parent.highlighted ? palette.highlight : (parent.down ? palette.midlight : "transparent")
+                }
+                onClicked: {
+                    AudioVisualizer.currentPreset = modelData
+                    presetDialog.close()
+                }
+            }
+            ScrollBar.vertical: ScrollBar { }
+        }
     }
 }
