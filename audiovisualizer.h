@@ -56,6 +56,7 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QList<qreal> magnitudes READ magnitudes NOTIFY magnitudesChanged)
     Q_PROPERTY(bool active READ active NOTIFY activeChanged)
     Q_PROPERTY(int width READ width WRITE setWidth NOTIFY widthChanged)
+    Q_PROPERTY(int height READ height WRITE setHeight NOTIFY heightChanged)
     Q_PROPERTY(QStringList presetNames READ presetNames NOTIFY presetsChanged)
     Q_PROPERTY(QString currentPreset READ currentPreset WRITE setCurrentPreset NOTIFY currentPresetChanged)
     Q_PROPERTY(QVariantList barColors READ barColors NOTIFY barColorsChanged)
@@ -68,6 +69,8 @@ public:
     bool active() const;
     int width() const;
     void setWidth(int width);
+    int height() const;
+    void setHeight(int height);
     QStringList presetNames() const;
     QString currentPreset() const;
     void setCurrentPreset(const QString &name);
@@ -86,6 +89,7 @@ signals:
     void magnitudesChanged();
     void activeChanged();
     void widthChanged();
+    void heightChanged();
     void presetsChanged();
     void currentPresetChanged();
     void barColorsChanged();
@@ -102,7 +106,9 @@ private:
     QByteArray m_buffer;
     bool m_active;
     int m_width = 0;
+    int m_height = 600;
     int m_numBars = 32;
+    double m_maxPeak = 100.0;
 
     struct Preset {
         QList<QColor> colors;

@@ -26,7 +26,15 @@ ApplicationWindow {
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
     // many Wayland desktops like GNOME. It also provides a place for window controls.
-    header: HeaderBar {
+    HeaderBar {
+        id: headerBar
+        z: 100
+        height: implicitHeight
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        transparentBackground: coverFlow.state === "visualizerView"
+
         Action {
             id: fullscreenAction
             text: qsTr("Toggle Fullscreen")
@@ -169,19 +177,21 @@ ApplicationWindow {
         id: coverFlow
         anchors.fill: parent
         property string viewMode: "flow"
-        state: "libraryView"
+        state: startInVisualizer ? "visualizerView" : "libraryView"
         
         PathView {
             id: pathView
-            // The HeaderBar is part of the ApplicationWindow chrome, so the content area starts at the top.
             anchors.top: parent.top
-            anchors.topMargin: 10
+            anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
             anchors.right: parent.right
             height: 250
             z: 2
             model: mpdClient.albumModel
-            pathItemCount: window.visibility === Window.FullScreen ? 13 : 5
+            pathItemCount: {
+                var c = Math.floor(width / 140)
+                return Math.max(5, c % 2 === 0 ? c + 1 : c)
+            }
             preferredHighlightBegin: 0.5
             preferredHighlightEnd: 0.5
             highlightRangeMode: PathView.StrictlyEnforceRange
@@ -262,6 +272,7 @@ ApplicationWindow {
         GridView {
             id: albumGridView
             anchors.top: parent.top
+            anchors.topMargin: headerBar.height + 10
             anchors.bottom: bottomControls.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -349,6 +360,7 @@ ApplicationWindow {
         ListView {
             id: browserListView
             anchors.top: parent.top
+            anchors.topMargin: headerBar.height + 10
             anchors.bottom: bottomControls.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -408,7 +420,7 @@ ApplicationWindow {
             anchors.fill: parent
             magnitudes: AudioVisualizer.magnitudes
             albumArt: mpdClient.albumArt
-            contentBottomMargin: 100
+            contentBottomMargin: 0
             active: coverFlow.state === "visualizerView" && mpdClient.state === "play"
             z: 10
             onClicked: coverFlow.state = "libraryView"
@@ -419,9 +431,18 @@ ApplicationWindow {
                 }
             }
             
+            onHeightChanged: {
+                if (height > 0) {
+                    AudioVisualizer.height = height;
+                }
+            }
+            
             Component.onCompleted: {
                 if (width > 0) {
                     AudioVisualizer.width = width;
+                }
+                if (height > 0) {
+                    AudioVisualizer.height = height;
                 }
             }
 

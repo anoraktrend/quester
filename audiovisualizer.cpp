@@ -25,31 +25,27 @@ static double *monstercat_filter(
 {
     int z;
     int m_y, de;
-    double height_normalizer = 1.0;
-    if (height > 1000) {
-        height_normalizer = height / 912.76;
-    }
     if (waves > 0) {
         for (z = 0; z < number_of_bars; z++) { // waves
             bars[z] = bars[z] / 1.25;
             for (m_y = z - 1; m_y >= 0; m_y--) {
                 de = z - m_y;
-                bars[m_y] = max(bars[z] - height_normalizer * pow(de, 2), bars[m_y]);
+                bars[m_y] = max(bars[z] - pow(de, 2), bars[m_y]);
             }
             for (m_y = z + 1; m_y < number_of_bars; m_y++) {
                 de = m_y - z;
-                bars[m_y] = max(bars[z] - height_normalizer * pow(de, 2), bars[m_y]);
+                bars[m_y] = max(bars[z] - pow(de, 2), bars[m_y]);
             }
         }
     } else if (monstercat > 0) {
         for (z = 0; z < number_of_bars; z++) {
             for (m_y = z - 1; m_y >= 0; m_y--) {
                 de = z - m_y;
-                bars[m_y] = max(bars[z] / pow(monstercat * 1.5, de), bars[m_y]);
+                bars[m_y] = max(bars[z] / pow(monstercat, de), bars[m_y]);
             }
             for (m_y = z + 1; m_y < number_of_bars; m_y++) {
                 de = m_y - z;
-                bars[m_y] = max(bars[z] / pow(monstercat * 1.5, de), bars[m_y]);
+                bars[m_y] = max(bars[z] / pow(monstercat, de), bars[m_y]);
             }
         }
     }
@@ -280,7 +276,7 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     , m_fftw_plan(nullptr)
     , m_fftw_in(nullptr)
     , m_fftw_out(nullptr)
-    , m_fft_size(4096)
+    , m_fft_size(16384)
 {
     m_magnitudes.fill(0.0, m_numBars);
     m_smoothBuffer.fill(0.0, m_numBars);
@@ -331,12 +327,25 @@ void AudioVisualizer::setWidth(int width)
     emit widthChanged();
 }
 
+int AudioVisualizer::height() const
+{
+    return m_height;
+}
+
+void AudioVisualizer::setHeight(int height)
+{
+    if (m_height == height) return;
+    m_height = height;
+    emit heightChanged();
+}
+
 void AudioVisualizer::start()
 {
     if (m_active)
         return;
 
-    m_fft_size = 4096;
+    m_maxPeak = 100.0;
+    m_fft_size = 16384;
     m_fftw_in = (double *) fftw_malloc(sizeof(double) * m_fft_size);
     m_fftw_out = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * (m_fft_size / 2 + 1));
 
@@ -442,13 +451,19 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     int numBins = m_fft_size / 2 + 1;
     // Skip DC and very low frequencies
-    int minBin = 2;
-    int maxBin = numBins;
+    int minBin = 16;
+    int maxBin = 3072;
 
-    for (int i = 0; i < m_numBars; i++) {
+    double currentFrameMax = 0.0;
+
+    int halfBars = (m_numBars + 1) / 2;
+    QList<double> calculatedBars;
+    calculatedBars.fill(0.0, halfBars);
+
+    for (int i = 0; i < halfBars; i++) {
         // Logarithmic interpolation
-        double start = minBin * std::pow((double) maxBin / minBin, (double) i / m_numBars);
-        double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / m_numBars);
+        double start = minBin * std::pow((double) maxBin / minBin, (double) i / halfBars);
+        double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / halfBars);
 
         int startIndex = (int) start;
         int endIndex = (int) end;
@@ -467,10 +482,36 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
                 maxMag = mag;
         }
 
-        bars[i] = maxMag / 100.0; // Scaling factor
+        calculatedBars[i] = maxMag;
+
+        if (calculatedBars[i] > currentFrameMax) {
+            currentFrameMax = calculatedBars[i];
+        }
     }
 
-    monstercat_filter(bars.data(), m_numBars, 0, 1.5, 1.0);
+    // Dynamic scaling (AGC)
+    m_maxPeak *= 0.995; // Slow decay
+    if (m_maxPeak < 50.0) m_maxPeak = 50.0; // Noise floor
+    if (currentFrameMax > m_maxPeak) m_maxPeak = currentFrameMax;
+
+    // Normalize
+    for (int i = 0; i < m_numBars; i++) {
+        int srcIdx = (i < halfBars) ? i : (m_numBars - 1 - i);
+        bars[i] = calculatedBars[halfBars - 1 - srcIdx] / m_maxPeak;
+    }
+
+    double h = (double)m_height;
+    if (h < 1.0) h = 1.0;
+
+    for (int i = 0; i < m_numBars; i++) {
+        bars[i] *= h;
+    }
+
+    monstercat_filter(bars.data(), m_numBars, 0, 1.5, (int)h);
+
+    for (int i = 0; i < m_numBars; i++) {
+        bars[i] /= h;
+    }
 
     m_magnitudes.clear();
     if (m_smoothBuffer.size() != m_numBars) {

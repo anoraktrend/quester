@@ -40,11 +40,13 @@ int main(int argc, char *argv[])
 
     MpdClient mpdClient;
     AudioVisualizer audioVisualizer;
+    bool startVisualizer = app.arguments().contains("--visualizer");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider("theme", new ThemeImageProvider);
     engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
     engine.rootContext()->setContextProperty("AudioVisualizer", &audioVisualizer);
+    engine.rootContext()->setContextProperty("startInVisualizer", startVisualizer);
 
     QUrl url;
     bool found = false;

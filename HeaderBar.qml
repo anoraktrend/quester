@@ -5,7 +5,12 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     implicitHeight: 50
-    color: palette.window
+    property bool transparentBackground: false
+    gradient: Gradient {
+        GradientStop { position: 0.0; color: root.transparentBackground ? "#00000000" : palette.window}
+        GradientStop { position: 1.0; color: "#00000000" }
+    }
+
     SystemPalette { id: palette }
 
     property alias title: titleLabel.text

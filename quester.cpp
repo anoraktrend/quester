@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDebug>
+#include <QCollator>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -643,9 +644,13 @@ void MpdClient::loadAlbumTracks(int index)
         }
     }
 
-    std::sort(sortedTracks.begin(), sortedTracks.end(), [](const SortableTrack &a, const SortableTrack &b) {
+    QCollator collator;
+    collator.setNumericMode(true);
+
+    std::sort(sortedTracks.begin(), sortedTracks.end(), [&](const SortableTrack &a, const SortableTrack &b) {
         if (a.disc != b.disc) return a.disc < b.disc;
-        return a.track < b.track;
+        if (a.track != b.track) return a.track < b.track;
+        return collator.compare(a.uri, b.uri) < 0;
     });
 
     for (const auto &t : sortedTracks) {
@@ -726,9 +731,13 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
         mpd_connection_clear_error(m_connection);
     }
 
-    std::sort(songList.begin(), songList.end(), [](const SortableSong &a, const SortableSong &b) {
+    QCollator collator;
+    collator.setNumericMode(true);
+
+    std::sort(songList.begin(), songList.end(), [&](const SortableSong &a, const SortableSong &b) {
         if (a.disc != b.disc) return a.disc < b.disc;
-        return a.track < b.track;
+        if (a.track != b.track) return a.track < b.track;
+        return collator.compare(a.uri, b.uri) < 0;
     });
 
     if (!songList.isEmpty()) {
@@ -790,11 +799,14 @@ void MpdClient::browsePath(const QString &path)
         mpd_response_finish(m_connection);
     }
 
-    std::sort(items.begin(), items.end(), [](const BrowserItem &a, const BrowserItem &b) {
+    QCollator collator;
+    collator.setNumericMode(true);
+
+    std::sort(items.begin(), items.end(), [&](const BrowserItem &a, const BrowserItem &b) {
         if (a.name == "..") return true;
         if (b.name == "..") return false;
         if (a.isDir != b.isDir) return a.isDir;
-        return a.name.localeAwareCompare(b.name) < 0;
+        return collator.compare(a.name, b.name) < 0;
     });
 
     m_browserModel->setItems(items);
