@@ -27,6 +27,12 @@ struct TrackItem {
     QString uri;
 };
 
+struct BrowserItem {
+    QString name;
+    QString path;
+    bool isDir;
+};
+
 class AlbumModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -64,6 +70,24 @@ public:
     QList<TrackItem> m_tracks;
 };
 
+class BrowserModel : public QAbstractListModel
+{
+    Q_OBJECT
+public:
+    enum BrowserRoles {
+        NameRole = Qt::UserRole + 1,
+        PathRole,
+        IsDirRole
+    };
+
+    explicit BrowserModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QHash<int, QByteArray> roleNames() const override;
+    void setItems(const QList<BrowserItem> &items);
+    QList<BrowserItem> m_items;
+};
+
 class MpdClient : public QObject
 {
     Q_OBJECT
@@ -76,7 +100,9 @@ class MpdClient : public QObject
     Q_PROPERTY(qint64 elapsed READ elapsed NOTIFY elapsedChanged)
     Q_PROPERTY(AlbumModel* albumModel READ albumModel CONSTANT)
     Q_PROPERTY(TrackModel* trackModel READ trackModel CONSTANT)
+    Q_PROPERTY(BrowserModel* browserModel READ browserModel CONSTANT)
     Q_PROPERTY(int currentAlbumIndex READ currentAlbumIndex NOTIFY currentAlbumIndexChanged)
+    Q_PROPERTY(QString currentPath READ currentPath NOTIFY currentPathChanged)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -91,7 +117,9 @@ public:
     qint64 elapsed() const;
     AlbumModel* albumModel() const;
     TrackModel* trackModel() const;
+    BrowserModel* browserModel() const;
     int currentAlbumIndex() const;
+    QString currentPath() const;
 
     void setWindow(QQuickWindow *window);
 
@@ -113,6 +141,7 @@ public slots:
     void loadAlbumTracks(int index);
     Q_INVOKABLE void playTrack(const QString &uri);
     Q_INVOKABLE void playAlbum(const QString &artistName, const QString &albumName); // New slot
+    Q_INVOKABLE void browsePath(const QString &path);
 
     // Application/Window controls
     Q_INVOKABLE void quitApplication();
@@ -127,6 +156,7 @@ signals:
     void durationChanged();
     void elapsedChanged();
     void currentAlbumIndexChanged();
+    void currentPathChanged();
 
 private slots:
     void updateStatus();
@@ -163,6 +193,8 @@ private:
 
     AlbumModel *m_albumModel;
     TrackModel *m_trackModel;
+    BrowserModel *m_browserModel;
+    QString m_currentPath;
 };
 
 #endif // QUESTER_H

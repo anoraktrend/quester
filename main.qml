@@ -41,32 +41,13 @@ ApplicationWindow {
             onTriggered: mpdClient.quitApplication()
         }
 
-        Button {
-            id: viewModeButton
-            text: coverFlow.viewMode === "flow" ? qsTr("Grid View") : qsTr("Cover Flow")
-            visible: coverFlow.state === "libraryView"
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: visualizerButton.left
-            anchors.rightMargin: 10
-            onClicked: coverFlow.viewMode = (coverFlow.viewMode === "flow" ? "grid" : "flow")
-        }
-
-        Button {
-            id: visualizerButton
-            text: qsTr("Visualizer")
-            visible: coverFlow.state === "libraryView"
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: libraryButton.left
-            anchors.rightMargin: 10
-            onClicked: goToVisualizer()
-        }
 
         ToolButton {
             id: presetMenuButton
             text: qsTr("Colors")
             visible: coverFlow.state === "visualizerView"
             anchors.verticalCenter: parent.verticalCenter
-            anchors.right: libraryButton.left
+            anchors.right: menuButton.left
             anchors.rightMargin: 10
             onClicked: presetMenu.open()
 
@@ -75,29 +56,14 @@ ApplicationWindow {
                 y: parent.height
                 Repeater {
                     model: AudioVisualizer.presetNames
-                    MenuItem {
+                    RadioButton {
                         text: modelData
-                        checkable: true
-                        autoExclusive: true
                         checked: AudioVisualizer.currentPreset === modelData
-                        onTriggered: AudioVisualizer.currentPreset = modelData
+                        onClicked: {
+                            AudioVisualizer.currentPreset = modelData
+                            presetMenu.close()
+                        }
                     }
-                }
-            }
-        }
-
-        // The library button from the main view is moved here for a cleaner look.
-        Button {
-            id: libraryButton
-            text: coverFlow.state === "libraryView" ? qsTr("Refresh Library") : qsTr("Return to Library")
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: menuButton.left
-            anchors.rightMargin: 10
-            onClicked: {
-                if (coverFlow.state === "libraryView") {
-                    mpdClient.refreshLibrary()
-                } else {
-                    coverFlow.state = "libraryView"
                 }
             }
         }
@@ -115,6 +81,65 @@ ApplicationWindow {
             Menu {
                 id: appMenu
                 y: parent.height
+
+                MenuItem {
+                    text: qsTr("Visualizer")
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
+                    onClicked: goToVisualizer()
+                }
+                
+                MenuItem {
+                    text: qsTr("Return to Library")
+                    visible: coverFlow.state === "visualizerView"
+                    height: visible ? implicitHeight : 0
+                    onTriggered: coverFlow.state = "libraryView"
+                }
+
+                MenuItem {
+                    text: qsTr("Refresh Library")
+                    onTriggered: mpdClient.refreshLibrary()
+                }
+
+                MenuSeparator {
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
+                }
+
+                RadioButton {
+                    text: qsTr("Cover Flow")
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
+                    checked: coverFlow.viewMode === "flow"
+                    onClicked: {
+                        coverFlow.viewMode = "flow"
+                        appMenu.close()
+                    }
+                }
+                RadioButton {
+                    text: qsTr("Grid View")
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
+                    checked: coverFlow.viewMode === "grid"
+                    onClicked: {
+                        coverFlow.viewMode = "grid"
+                        appMenu.close()
+                    }
+                }
+                RadioButton {
+                    text: qsTr("Browser")
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
+                    checked: coverFlow.viewMode === "browser"
+                    onClicked: {
+                        coverFlow.viewMode = "browser"
+                        mpdClient.browsePath(mpdClient.currentPath)
+                        appMenu.close()
+                    }
+                }
+
+                MenuSeparator {}
+
                 MenuItem { action: fullscreenAction }
                 MenuItem { action: quitAction }
             }
@@ -156,7 +181,7 @@ ApplicationWindow {
             height: 250
             z: 2
             model: mpdClient.albumModel
-            pathItemCount: window.visibility === Window.FullScreen ? 9 : 5
+            pathItemCount: window.visibility === Window.FullScreen ? 13 : 5
             preferredHighlightBegin: 0.5
             preferredHighlightEnd: 0.5
             highlightRangeMode: PathView.StrictlyEnforceRange
@@ -318,6 +343,49 @@ ApplicationWindow {
                 }
             }
             
+            ScrollBar.vertical: ScrollBar { }
+        }
+
+        ListView {
+            id: browserListView
+            anchors.top: parent.top
+            anchors.bottom: bottomControls.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            clip: true
+            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
+            model: mpdClient.browserModel
+            
+            delegate: Item {
+                width: ListView.view.width
+                height: 50
+                
+                Rectangle {
+                    anchors.fill: parent
+                    color: index % 2 == 0 ? palette.base : palette.alternateBase
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (model.isDir) {
+                                mpdClient.browsePath(model.path)
+                            } else {
+                                mpdClient.playTrack(model.path)
+                            }
+                        }
+                    }
+                }
+                
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 20
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (model.isDir ? "📁 " : "🎵 ") + model.name
+                    color: palette.text
+                    font.pixelSize: 16
+                }
+            }
             ScrollBar.vertical: ScrollBar { }
         }
 

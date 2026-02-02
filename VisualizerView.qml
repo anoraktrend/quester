@@ -21,7 +21,7 @@ Item {
     }
 
     RowLayout {
-        id: VisualizerRow
+        id: visualizerRow
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right

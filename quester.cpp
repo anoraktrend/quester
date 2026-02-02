@@ -1,8 +1,9 @@
 #include "quester.h"
-#include <algorithm>
 #include <mpd/connection.h>
 #include <mpd/pair.h>
 #include <mpd/recv.h>
+#include <mpd/directory.h>
+#include <mpd/entity.h>
 #include <mpd/response.h>
 #include <mpd/search.h>
 #include <mpd/song.h>
@@ -20,6 +21,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QUrlQuery>
+#include <algorithm>
 
 // --- AlbumModel Implementation ---
 int AlbumModel::rowCount(const QModelIndex &parent) const
@@ -106,12 +108,51 @@ void TrackModel::setTracks(const QList<TrackItem> &tracks)
     endResetModel();
 }
 
+// --- BrowserModel Implementation ---
+int BrowserModel::rowCount(const QModelIndex &parent) const
+{
+    if (parent.isValid())
+        return 0;
+    return m_items.count();
+}
+
+QVariant BrowserModel::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid() || index.row() >= m_items.count())
+        return QVariant();
+    const BrowserItem &item = m_items[index.row()];
+    if (role == NameRole)
+        return item.name;
+    if (role == PathRole)
+        return item.path;
+    if (role == IsDirRole)
+        return item.isDir;
+    return QVariant();
+}
+
+QHash<int, QByteArray> BrowserModel::roleNames() const
+{
+    QHash<int, QByteArray> roles;
+    roles[NameRole] = "name";
+    roles[PathRole] = "path";
+    roles[IsDirRole] = "isDir";
+    return roles;
+}
+
+void BrowserModel::setItems(const QList<BrowserItem> &items)
+{
+    beginResetModel();
+    m_items = items;
+    endResetModel();
+}
+
 MpdClient::MpdClient(QObject *parent)
     : QObject(parent)
     , m_connection(nullptr)
     , m_networkManager(new QNetworkAccessManager(this))
     , m_albumModel(new AlbumModel(this))
     , m_trackModel(new TrackModel(this))
+    , m_browserModel(new BrowserModel(this))
     , m_isIdle(false)
     , m_notifier(nullptr)
 {
@@ -433,6 +474,14 @@ int MpdClient::currentAlbumIndex() const
 {
     return m_currentAlbumIndex;
 }
+BrowserModel *MpdClient::browserModel() const
+{
+    return m_browserModel;
+}
+QString MpdClient::currentPath() const
+{
+    return m_currentPath;
+}
 
 void MpdClient::setArtist(const QString &artist)
 {
@@ -559,8 +608,7 @@ void MpdClient::loadAlbumTracks(int index)
     QString albumName = m_albumModel->m_albums[index].name;
     leaveIdle();
 
-    struct SortableTrack
-    {
+    struct SortableTrack {
         QString title;
         QString duration;
         QString uri;
@@ -595,14 +643,10 @@ void MpdClient::loadAlbumTracks(int index)
         }
     }
 
-    std::sort(
-        sortedTracks.begin(),
-        sortedTracks.end(),
-        [](const SortableTrack &a, const SortableTrack &b) {
-            if (a.disc != b.disc)
-                return a.disc < b.disc;
-            return a.track < b.track;
-        });
+    std::sort(sortedTracks.begin(), sortedTracks.end(), [](const SortableTrack &a, const SortableTrack &b) {
+        if (a.disc != b.disc) return a.disc < b.disc;
+        return a.track < b.track;
+    });
 
     for (const auto &t : sortedTracks) {
         tracks.append({t.title, t.duration, t.uri});
@@ -648,8 +692,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     // 2. Fetch songs, sort them, and add to playlist
-    struct SortableSong
-    {
+    struct SortableSong {
         QString uri;
         int disc;
         int track;
@@ -658,19 +701,17 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
 
     if (mpd_search_db_songs(m_connection, true)) {
         if (!artistName.isEmpty() && artistName != "Unknown Artist") {
-            mpd_search_add_tag_constraint(
-                m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ARTIST, artistName.toUtf8().constData());
+            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ARTIST, artistName.toUtf8().constData());
         }
-        mpd_search_add_tag_constraint(
-            m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
-
+        mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
+        
         if (mpd_search_commit(m_connection)) {
             struct mpd_song *song;
             while ((song = mpd_recv_song(m_connection)) != NULL) {
                 const char *uri = mpd_song_get_uri(song);
                 const char *trackStr = mpd_song_get_tag(song, MPD_TAG_TRACK, 0);
                 const char *discStr = mpd_song_get_tag(song, MPD_TAG_DISC, 0);
-
+                
                 if (uri) {
                     int track = trackStr ? std::atoi(trackStr) : 0;
                     int disc = discStr ? std::atoi(discStr) : 0;
@@ -686,8 +727,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     std::sort(songList.begin(), songList.end(), [](const SortableSong &a, const SortableSong &b) {
-        if (a.disc != b.disc)
-            return a.disc < b.disc;
+        if (a.disc != b.disc) return a.disc < b.disc;
         return a.track < b.track;
     });
 
@@ -710,6 +750,59 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     sendIdle(); // Re-enter idle mode
     m_timer->start(100);
     updateStatus(); // Force an immediate status update
+}
+
+void MpdClient::browsePath(const QString &path)
+{
+    if (!m_connection)
+        return;
+
+    m_timer->stop();
+    leaveIdle();
+
+    QList<BrowserItem> items;
+
+    if (!path.isEmpty()) {
+        QString parent = "";
+        int idx = path.lastIndexOf('/');
+        if (idx >= 0)
+            parent = path.left(idx);
+        items.append({"..", parent, true});
+    }
+
+    if (mpd_send_list_meta(m_connection, path.toUtf8().constData())) {
+        struct mpd_entity *entity;
+        while ((entity = mpd_recv_entity(m_connection)) != NULL) {
+            if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_DIRECTORY) {
+                const struct mpd_directory *dir = mpd_entity_get_directory(entity);
+                items.append({QString::fromUtf8(mpd_directory_get_path(dir)).section('/', -1),
+                              QString::fromUtf8(mpd_directory_get_path(dir)),
+                              true});
+            } else if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
+                const struct mpd_song *song = mpd_entity_get_song(entity);
+                const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+                QString name = title ? QString::fromUtf8(title)
+                                     : QString::fromUtf8(mpd_song_get_uri(song)).section('/', -1);
+                items.append({name, QString::fromUtf8(mpd_song_get_uri(song)), false});
+            }
+            mpd_entity_free(entity);
+        }
+        mpd_response_finish(m_connection);
+    }
+
+    std::sort(items.begin(), items.end(), [](const BrowserItem &a, const BrowserItem &b) {
+        if (a.name == "..") return true;
+        if (b.name == "..") return false;
+        if (a.isDir != b.isDir) return a.isDir;
+        return a.name.localeAwareCompare(b.name) < 0;
+    });
+
+    m_browserModel->setItems(items);
+    m_currentPath = path;
+    emit currentPathChanged();
+
+    sendIdle();
+    m_timer->start(100);
 }
 
 void MpdClient::quitApplication()
