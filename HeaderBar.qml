@@ -7,8 +7,8 @@ Rectangle {
     implicitHeight: 50
     property bool transparentBackground: false
     gradient: Gradient {
-        GradientStop { position: 0.0; color: root.transparentBackground ? "#00000000" : palette.window}
-        GradientStop { position: 1.0; color: "#00000000" }
+        GradientStop { position: 0.0; color: root.transparentBackground ? palette.dark : palette.mid}
+        GradientStop { position: 1.0; color: "transparent" }
     }
 
     SystemPalette { id: palette }

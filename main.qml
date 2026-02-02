@@ -581,20 +581,13 @@ ApplicationWindow {
 
         ListView {
             id: trackListView
-            x: 0
-            width: parent.width
-            y: coverFlow.state === "libraryView" ? (pathView.y + pathView.height) : (bottomControls.y + bottomControls.height)
-            height: coverFlow.state === "libraryView" ? (bottomControls.y - y) : (coverFlow.height - y)
-            Behavior on y {
-                NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
-            }
-            Behavior on height {
-                NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
-            }
-
+            anchors.top: pathView.bottom
+            anchors.bottom: bottomControls.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            clip: true
             model: mpdClient.trackModel
             visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "flow"
-            clip: true
             
             delegate: Item {
                 width: ListView.view.width
@@ -628,6 +621,7 @@ ApplicationWindow {
                     font.pixelSize: 12
                 }
             }
+            ScrollBar.vertical: ScrollBar { }
         }
 
         states: [
@@ -644,36 +638,6 @@ ApplicationWindow {
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
-            }
-        ]
-
-        transitions: [
-            Transition {
-                from: "libraryView"
-                to: "visualizerView"
-                SequentialAnimation {
-                    PropertyAction { target: visualizerView; property: "visible"; value: true }
-                    ParallelAnimation {
-                        NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 5.0; duration: 600; easing.type: Easing.InQuad }
-                        NumberAnimation { target: pathView; property: "opacity"; to: 0.0; duration: 600; easing.type: Easing.InQuad }
-                        NumberAnimation { target: gradientRect; property: "opacity"; to: 0.0; duration: 600 }
-                        NumberAnimation { target: visualizerView; property: "opacity"; to: 1.0; duration: 600 }
-                    }
-                    PropertyAction { target: pathView; property: "visible"; value: false }
-                }
-            },
-            Transition {
-                from: "visualizerView"
-                to: "libraryView"
-                SequentialAnimation {
-                    ParallelAnimation {
-                        NumberAnimation { target: pathViewScale; properties: "xScale,yScale"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
-                        NumberAnimation { target: pathView; property: "opacity"; to: 1.0; duration: 600; easing.type: Easing.OutQuad }
-                        NumberAnimation { target: gradientRect; property: "opacity"; to: 1.0; duration: 600 }
-                        NumberAnimation { target: visualizerView; property: "opacity"; to: 0.0; duration: 600 }
-                    }
-                    PropertyAction { target: visualizerView; property: "visible"; value: false }
-                }
             }
         ]
     }
