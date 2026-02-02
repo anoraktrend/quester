@@ -1,0 +1,32 @@
+[
+{
+  "directory": "/home/lucy/git/quester/build",
+  "command": "/usr/bin/c++ -DAPP_DATADIR=\\\"/usr/local/share/Quester\\\" -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MULTIMEDIA_LIB -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QMLMODELS_LIB -DQT_QML_LIB -DQT_QML_SOURCE_DIR=\\\"/home/lucy/git/quester\\\" -DQT_QUICK_LIB -I/home/lucy/git/quester/build/quester_autogen/include -I/home/lucy/git/quester/include -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/qt6/QtGui -isystem /usr/include/qt6/QtQml -isystem /usr/include/qt6/QtQmlIntegration -isystem /usr/include/qt6/QtNetwork -isystem /usr/include/qt6/QtQuick -isystem /usr/include/qt6/QtOpenGL -isystem /usr/include/qt6/QtQmlModels -isystem /usr/include/qt6/QtMultimedia -std=gnu++17 -D_REENTRANT -o CMakeFiles/quester.dir/quester_autogen/mocs_compilation.cpp.o -c /home/lucy/git/quester/build/quester_autogen/mocs_compilation.cpp",
+  "file": "/home/lucy/git/quester/build/quester_autogen/mocs_compilation.cpp",
+  "output": "/home/lucy/git/quester/build/CMakeFiles/quester.dir/quester_autogen/mocs_compilation.cpp.o"
+},
+{
+  "directory": "/home/lucy/git/quester/build",
+  "command": "/usr/bin/c++ -DAPP_DATADIR=\\\"/usr/local/share/Quester\\\" -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MULTIMEDIA_LIB -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QMLMODELS_LIB -DQT_QML_LIB -DQT_QML_SOURCE_DIR=\\\"/home/lucy/git/quester\\\" -DQT_QUICK_LIB -I/home/lucy/git/quester/build/quester_autogen/include -I/home/lucy/git/quester/include -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/qt6/QtGui -isystem /usr/include/qt6/QtQml -isystem /usr/include/qt6/QtQmlIntegration -isystem /usr/include/qt6/QtNetwork -isystem /usr/include/qt6/QtQuick -isystem /usr/include/qt6/QtOpenGL -isystem /usr/include/qt6/QtQmlModels -isystem /usr/include/qt6/QtMultimedia -std=gnu++17 -D_REENTRANT -o CMakeFiles/quester.dir/main.cpp.o -c /home/lucy/git/quester/main.cpp",
+  "file": "/home/lucy/git/quester/main.cpp",
+  "output": "/home/lucy/git/quester/build/CMakeFiles/quester.dir/main.cpp.o"
+},
+{
+  "directory": "/home/lucy/git/quester/build",
+  "command": "/usr/bin/c++ -DAPP_DATADIR=\\\"/usr/local/share/Quester\\\" -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MULTIMEDIA_LIB -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QMLMODELS_LIB -DQT_QML_LIB -DQT_QML_SOURCE_DIR=\\\"/home/lucy/git/quester\\\" -DQT_QUICK_LIB -I/home/lucy/git/quester/build/quester_autogen/include -I/home/lucy/git/quester/include -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/qt6/QtGui -isystem /usr/include/qt6/QtQml -isystem /usr/include/qt6/QtQmlIntegration -isystem /usr/include/qt6/QtNetwork -isystem /usr/include/qt6/QtQuick -isystem /usr/include/qt6/QtOpenGL -isystem /usr/include/qt6/QtQmlModels -isystem /usr/include/qt6/QtMultimedia -std=gnu++17 -D_REENTRANT -o CMakeFiles/quester.dir/quester.cpp.o -c /home/lucy/git/quester/quester.cpp",
+  "file": "/home/lucy/git/quester/quester.cpp",
+  "output": "/home/lucy/git/quester/build/CMakeFiles/quester.dir/quester.cpp.o"
+},
+{
+  "directory": "/home/lucy/git/quester/build",
+  "command": "/usr/bin/c++ -DAPP_DATADIR=\\\"/usr/local/share/Quester\\\" -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MULTIMEDIA_LIB -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QMLMODELS_LIB -DQT_QML_LIB -DQT_QML_SOURCE_DIR=\\\"/home/lucy/git/quester\\\" -DQT_QUICK_LIB -I/home/lucy/git/quester/build/quester_autogen/include -I/home/lucy/git/quester/include -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/qt6/QtGui -isystem /usr/include/qt6/QtQml -isystem /usr/include/qt6/QtQmlIntegration -isystem /usr/include/qt6/QtNetwork -isystem /usr/include/qt6/QtQuick -isystem /usr/include/qt6/QtOpenGL -isystem /usr/include/qt6/QtQmlModels -isystem /usr/include/qt6/QtMultimedia -std=gnu++17 -D_REENTRANT -o CMakeFiles/quester.dir/audiovisualizer.cpp.o -c /home/lucy/git/quester/audiovisualizer.cpp",
+  "file": "/home/lucy/git/quester/audiovisualizer.cpp",
+  "output": "/home/lucy/git/quester/build/CMakeFiles/quester.dir/audiovisualizer.cpp.o"
+},
+{
+  "directory": "/home/lucy/git/quester/build",
+  "command": "/usr/bin/c++ -DAPP_DATADIR=\\\"/usr/local/share/Quester\\\" -DQT_CORE_LIB -DQT_GUI_LIB -DQT_MULTIMEDIA_LIB -DQT_NETWORK_LIB -DQT_NO_DEBUG -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QMLMODELS_LIB -DQT_QML_LIB -DQT_QML_SOURCE_DIR=\\\"/home/lucy/git/quester\\\" -DQT_QUICK_LIB -I/home/lucy/git/quester/build/quester_autogen/include -I/home/lucy/git/quester/include -isystem /usr/include/qt6/QtCore -isystem /usr/include/qt6 -isystem /usr/lib/qt6/mkspecs/linux-g++ -isystem /usr/include/qt6/QtGui -isystem /usr/include/qt6/QtQml -isystem /usr/include/qt6/QtQmlIntegration -isystem /usr/include/qt6/QtNetwork -isystem /usr/include/qt6/QtQuick -isystem /usr/include/qt6/QtOpenGL -isystem /usr/include/qt6/QtQmlModels -isystem /usr/include/qt6/QtMultimedia -std=gnu++17 -D_REENTRANT -o CMakeFiles/quester.dir/qrc_resources.cpp.o -c /home/lucy/git/quester/build/qrc_resources.cpp",
+  "file": "/home/lucy/git/quester/build/qrc_resources.cpp",
+  "output": "/home/lucy/git/quester/build/CMakeFiles/quester.dir/qrc_resources.cpp.o"
+}
+]
