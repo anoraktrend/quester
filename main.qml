@@ -377,15 +377,9 @@ ApplicationWindow {
                     }
                 }
                 
-                Text {
-                    anchors.left: parent.left
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 20
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: (model.isDir ? "📁 " : "🎵 ") + model.name
-                    color: palette.text
-                    font.pixelSize: 16
                     spacing: 10
 
                     Image {

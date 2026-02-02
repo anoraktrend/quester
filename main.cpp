@@ -5,12 +5,29 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtGlobal>
 
 using namespace Qt::StringLiterals;
+
+class ThemeImageProvider : public QQuickImageProvider
+{
+public:
+    ThemeImageProvider() : QQuickImageProvider(QQuickImageProvider::Pixmap) {}
+
+    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override
+    {
+        int width = requestedSize.width() > 0 ? requestedSize.width() : 32;
+        int height = requestedSize.height() > 0 ? requestedSize.height() : 32;
+        if (size)
+            *size = QSize(width, height);
+
+        return QIcon::fromTheme(id).pixmap(width, height);
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -25,6 +42,7 @@ int main(int argc, char *argv[])
     AudioVisualizer audioVisualizer;
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider("theme", new ThemeImageProvider);
     engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
     engine.rootContext()->setContextProperty("AudioVisualizer", &audioVisualizer);
 
