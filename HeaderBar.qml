@@ -18,6 +18,13 @@ Rectangle {
     RowLayout {
         anchors.fill: parent
         anchors.margins: 10
+        Image {
+            source: "qrc:/Quester.svg"
+            sourceSize: Qt.size(32, 32)
+            Layout.preferredWidth: 24
+            Layout.preferredHeight: 24
+            fillMode: Image.PreserveAspectFit
+        }
         Label {
             id: titleLabel
             text: qsTr("Quester")
