@@ -104,7 +104,7 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QStringList presetNames READ presetNames NOTIFY presetsChanged)
     Q_PROPERTY(QString currentPreset READ currentPreset WRITE setCurrentPreset NOTIFY currentPresetChanged)
     Q_PROPERTY(QVariantList barColors READ barColors NOTIFY barColorsChanged)
-    Q_PROPERTY(bool isTopDown READ isTopDown WRITE setIsTopDown NOTIFY isTopDownChanged)
+    Q_PROPERTY(bool topDownMode READ topDownMode WRITE setTopDownMode NOTIFY topDownModeChanged)
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
@@ -121,8 +121,8 @@ public:
     void setCurrentPreset(const QString &name);
     QVariantList barColors() const;
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
-    bool isTopDown() const;
-    void setIsTopDown(bool isTopDown);
+    bool topDownMode() const;
+    void setTopDownMode(bool topDownMode);
 
 public slots:
     void start();
@@ -131,6 +131,7 @@ public slots:
 private slots:
     void onDataReady(const QByteArray &data);
     void onPulseError(const QString &errorString);
+    void performDecay();
 
 signals:
     void magnitudesChanged();
@@ -140,7 +141,7 @@ signals:
     void presetsChanged();
     void currentPresetChanged();
     void barColorsChanged();
-    void isTopDownChanged();
+    void topDownModeChanged();
 
 private:
     fftw_plan m_fftw_plan;
@@ -153,6 +154,7 @@ private:
     QList<double> m_smoothBuffer;
     QByteArray m_buffer;
     bool m_active;
+    QTimer *m_decayTimer;
     int m_width = 0;
     int m_height = 600;
     int m_numBars = 32;

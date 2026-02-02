@@ -426,6 +426,8 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     , m_fftw_out(nullptr)
     , m_fft_size(16384)
 {
+    m_decayTimer = new QTimer(this);
+    connect(m_decayTimer, &QTimer::timeout, this, &AudioVisualizer::performDecay);
     m_magnitudes.fill(0.0, m_numBars);
     m_smoothBuffer.fill(0.0, m_numBars);
     loadPresets();
@@ -488,18 +490,18 @@ void AudioVisualizer::setHeight(int height)
     emit heightChanged();
 }
 
-auto AudioVisualizer::isTopDown() const -> bool
+auto AudioVisualizer::topDownMode() const -> bool
 {
     return m_topDown;
 }
 
-void AudioVisualizer::setIsTopDown(bool isTopDown)
+void AudioVisualizer::setTopDownMode(bool topDownMode)
 {
-    if (m_topDown == isTopDown) return;
-    m_topDown = isTopDown;
+    if (m_topDown == topDownMode) return;
+    m_topDown = topDownMode;
     QSettings settings("Quester", "Quester");
     settings.setValue("visualizerTopDown", m_topDown);
-    emit isTopDownChanged();
+    emit topDownModeChanged();
 }
 
 void AudioVisualizer::start()
@@ -552,6 +554,7 @@ void AudioVisualizer::start()
 
     m_active = true;
     emit activeChanged();
+    m_decayTimer->start(50);
 }
 
 void AudioVisualizer::stop()
@@ -707,12 +710,41 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     }
 
     emit magnitudesChanged();
+    m_decayTimer->start(50);
 }
 
 void AudioVisualizer::onPulseError(const QString &errorString)
 {
     qWarning() << "Audio Input Error:" << errorString;
     stop();
+}
+
+void AudioVisualizer::performDecay()
+{
+    bool hasSignal = false;
+    m_magnitudes.clear();
+
+    if (m_smoothBuffer.size() != m_numBars) {
+        m_smoothBuffer.fill(0.0, m_numBars);
+    }
+
+    for (int i = 0; i < m_numBars; i++) {
+        double &smoothVal = m_smoothBuffer[i];
+        smoothVal *= 0.75;
+        if (smoothVal < 0.001) smoothVal = 0.0;
+
+        m_magnitudes.append(smoothVal);
+
+        if (smoothVal > 0.0) hasSignal = true;
+    }
+
+    emit magnitudesChanged();
+
+    if (hasSignal) {
+        m_decayTimer->start(20);
+    } else {
+        m_decayTimer->stop();
+    }
 }
 
 auto AudioVisualizer::magnitudes() const -> QList<qreal>

@@ -109,13 +109,6 @@ ApplicationWindow {
                     onTriggered: mpdClient.refreshLibrary()
                 }
 
-                MenuItem {
-                    text: qsTr("Top Down Visualizer")
-                    visible: coverFlow.state === "visualizerView"
-                    checkable: true
-                    checked: AudioVisualizer.isTopDown
-                    onTriggered: AudioVisualizer.isTopDown = !AudioVisualizer.isTopDown
-                }
 
                 MenuSeparator {
                     visible: coverFlow.state === "libraryView"
@@ -488,17 +481,11 @@ ApplicationWindow {
             z: 20
 
             Behavior on y {
+             
                 NumberAnimation { duration: 400; easing.type: Easing.InOutQuad }
             }
 
-            Rectangle {
-                anchors.fill: parent
-                visible: coverFlow.state === "visualizerView"
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#00000000" }
-                    GradientStop { position: 1.0; color: "black" }
-                }
-            }
+
 
             ProgressBar {
                 id: progressBar

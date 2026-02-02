@@ -5,7 +5,7 @@
 
 > A modern, visually rich MPD client built with Qt 6 and QML.
 
-![Quester playing some Music](img/Quester.png) | ![Quester in Visualize moder](img/Quester%20Visualizer.png)
+![Quester playing some Music](img/quester-library.png) | ![Quester in Visualize moder](img/quester-visualizer.png)
 
 ## Table of Contents
 
@@ -29,6 +29,15 @@ Quester is a desktop client for the Music Player Daemon (MPD). It provides a flu
 - **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
 - **Tracklist:** View and play specific tracks from the selected album.
 - **Fullscreen Mode:** Immersive listening experience.
+
+## Gallery
+
+| | |
+|:---:|:---:|
+| ![Screenshot](img/quester-gallery-01.png) | ![Screenshot](img/quester-gallery-02.png) |
+| ![Screenshot](img/quester-gallery-03.png) | ![Screenshot](img/quester-gallery-04.png) |
+| ![Screenshot](img/quester-gallery-05.png) | ![Screenshot](img/quester-gallery-06.png) |
+| ![Screenshot](img/quester-gallery-07.png) | |
 
 ## Prerequisites
 

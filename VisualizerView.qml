@@ -45,7 +45,6 @@ Item {
             Rectangle {
 
                 Layout.fillWidth: true
-                Layout.alignment: AudioVisualizer.isTopDown ? Qt.AlignTop : Qt.AlignBottom
                 Layout.preferredHeight: Math.max(4, visualizerRow.height * (magnitudes[index] || 0))
                 color: AudioVisualizer.barColors[index] || "white"
                 opacity: 0.9
