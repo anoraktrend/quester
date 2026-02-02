@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 
-> A modern, visually rich MPD client built with Qt 6 and QML.
+## A modern, visually rich MPD client built with Qt 6 and QML.
 
 ![Quester playing some Music](img/quester-library.png)![Quester in Visualize moder](img/quester-visualizer.png)
 
