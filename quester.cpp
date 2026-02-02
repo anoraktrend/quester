@@ -24,12 +24,16 @@
 #include <QUrlQuery>
 #include <algorithm>
 
+constexpr int TIMER_INTERVAL = 100;
+constexpr int MPD_PORT = 6600;
+constexpr int MPD_TIMEOUT_MS = 30000;
+
 // --- AlbumModel Implementation ---
 auto AlbumModel::rowCount(const QModelIndex &parent) const -> int
 {
     if (parent.isValid())
         return 0;
-    return m_albums.count();
+    return static_cast<int>(m_albums.count());
 }
 
 auto AlbumModel::data(const QModelIndex &index, int role) const -> QVariant
@@ -76,7 +80,7 @@ auto TrackModel::rowCount(const QModelIndex &parent) const -> int
 {
     if (parent.isValid())
         return 0;
-    return m_tracks.count();
+    return static_cast<int>(m_tracks.count());
 }
 
 auto TrackModel::data(const QModelIndex &index, int role) const -> QVariant
@@ -114,7 +118,7 @@ auto BrowserModel::rowCount(const QModelIndex &parent) const -> int
 {
     if (parent.isValid())
         return 0;
-    return m_items.count();
+    return static_cast<int>(m_items.count());
 }
 
 auto BrowserModel::data(const QModelIndex &index, int role) const -> QVariant
@@ -159,7 +163,7 @@ MpdClient::MpdClient(QObject *parent)
 {
     
     QObject::connect(m_timer, &QTimer::timeout, this, &MpdClient::updateStatus);
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
     loadLibraryFromCache();
 
     connect();
@@ -176,7 +180,7 @@ MpdClient::~MpdClient()
 
 void MpdClient::connect()
 {
-    m_connection = mpd_connection_new("localhost", 6600, 30000);
+    m_connection = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
     if (mpd_connection_get_error(m_connection) != MPD_ERROR_SUCCESS) {
         qWarning() << "Failed to connect to MPD:" << mpd_connection_get_error_message(m_connection);
         mpd_connection_free(m_connection);
@@ -188,7 +192,7 @@ void MpdClient::connect()
         int fd = mpd_connection_get_fd(m_connection);
         if (m_notifier)
             delete m_notifier;
-        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this); // NOLINT(cppcoreguidelines-owning-memory)
         QObject::connect(m_notifier, &QSocketNotifier::activated, this, &MpdClient::handleMpdEvent);
 
         updateStatus(); // Initial status fetch
@@ -338,9 +342,9 @@ void MpdClient::fetchAlbumArt(const QString &album)
     // Generate a deterministic color based on the album name hash
     unsigned int hash = 0;
     for (QChar c : album) {
-        hash = c.unicode() + (hash << 6) + (hash << 16) - hash;
+        hash = c.unicode() + (hash << 6) + (hash << 16) - hash; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     }
-    QString color = QString("#%1").arg(hash & 0xFFFFFF, 6, 16, QLatin1Char('0'));
+    QString color = QString("#%1").arg(hash & 0xFFFFFF, 6, 16, QLatin1Char('0')); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
     QString letter = album.left(1).toUpper();
 
     // Create a simple SVG placeholder
@@ -541,7 +545,7 @@ void MpdClient::refreshLibrary()
     QSet<QString> addedAlbums;
 
     // Optimize: Fetch Album and Artist in one go using "list album group artist"
-    if (mpd_send_command(m_connection, "list", "album", "group", "artist", NULL)) {
+    if (mpd_send_command(m_connection, "list", "album", "group", "artist", NULL)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
         struct mpd_pair *pair = nullptr;
         QString currentArtist = tr("Unknown Artist");
 
@@ -602,7 +606,7 @@ void MpdClient::refreshLibrary()
     }
 
     sendIdle();
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
 }
 
 void MpdClient::loadAlbumTracks(int index)
@@ -624,7 +628,7 @@ void MpdClient::loadAlbumTracks(int index)
     }
 
     m_trackModel->setTracks(tracks);
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
     sendIdle();
 }
 
@@ -639,7 +643,7 @@ void MpdClient::playTrack(const QString &uri)
     if (id != -1) {
         mpd_run_play_id(m_connection, id);
     }
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
     sendIdle();
 }
 
@@ -657,7 +661,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     // 1. Clear the current playlist.
     if (!mpd_run_clear(m_connection)) {
         mpd_connection_clear_error(m_connection);
-        m_timer->start(100);
+        m_timer->start(TIMER_INTERVAL);
         sendIdle();
         return;
     }
@@ -681,7 +685,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     }
 
     sendIdle(); // Re-enter idle mode
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
     updateStatus(); // Force an immediate status update
 }
 
@@ -716,7 +720,7 @@ auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &album
             SortableSong s;
             s.uri = uri ? QString::fromUtf8(uri) : "";
             s.title = title ? QString::fromUtf8(title) : tr("Unknown Title");
-            s.duration = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0'));
+            s.duration = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0')); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
             s.track = trackStr ? std::atoi(trackStr) : 0;
             s.disc = discStr ? std::atoi(discStr) : 0;
             
@@ -758,7 +762,7 @@ void MpdClient::browsePath(const QString &path)
 
     if (!path.isEmpty()) {
         QString parent = "";
-        int idx = path.lastIndexOf('/');
+        int idx = static_cast<int>(path.lastIndexOf('/'));
         if (idx >= 0)
             parent = path.left(idx);
         items.append({"..", parent, true});
@@ -799,7 +803,7 @@ void MpdClient::browsePath(const QString &path)
     emit currentPathChanged();
 
     sendIdle();
-    m_timer->start(100);
+    m_timer->start(TIMER_INTERVAL);
 }
 
 void MpdClient::quitApplication()
@@ -946,7 +950,7 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
         return {};
 
     // Try readpicture (embedded) then albumart (external file)
-    const char *cmds[] = {"readpicture", "albumart"};
+    const std::array<const char*, 2> cmds = {"readpicture", "albumart"};
 
     for (const char *cmd : cmds) {
         QByteArray buffer;
@@ -954,7 +958,7 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
         long long totalSize = 0;
 
         while (true) {
-            if (!mpd_send_command(
+            if (!mpd_send_command( // NOLINT(cppcoreguidelines-pro-type-vararg)
                     m_connection,
                     cmd,
                     uri.toUtf8().constData(),
@@ -1063,7 +1067,7 @@ void MpdClient::loadLibraryFromCache()
     QList<AlbumItem> albums;
     albums.reserve(jsonArray.size());
 
-    for (const QJsonValue &value : jsonArray) {
+    for (const auto &value : jsonArray) {
         if (!value.isObject())
             continue;
         QJsonObject obj = value.toObject();

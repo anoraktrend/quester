@@ -16,6 +16,9 @@
 
 using namespace Qt::StringLiterals;
 
+constexpr int DEFAULT_ICON_SIZE = 32;
+constexpr int BLUR_THUMB_SIZE = 64;
+
 class ThemeImageProvider : public QQuickImageProvider
 {
 public:
@@ -23,8 +26,8 @@ public:
 
     auto requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) -> QPixmap override
     {
-        int width = requestedSize.width() > 0 ? requestedSize.width() : 32;
-        int height = requestedSize.height() > 0 ? requestedSize.height() : 32;
+        int width = requestedSize.width() > 0 ? requestedSize.width() : DEFAULT_ICON_SIZE;
+        int height = requestedSize.height() > 0 ? requestedSize.height() : DEFAULT_ICON_SIZE;
         if (size)
             *size = QSize(width, height);
 
@@ -53,8 +56,8 @@ public:
         // "Highway" Blur: Fast path using downscaling
         // Scaling down averages pixels (box blur), scaling up interpolates (smooths).
         // This is extremely efficient and provides a high-quality background blur.
-        if (img.width() > 64) {
-            img = img.scaledToWidth(64, Qt::SmoothTransformation);
+        if (img.width() > BLUR_THUMB_SIZE) {
+            img = img.scaledToWidth(BLUR_THUMB_SIZE, Qt::SmoothTransformation);
         }
 
         return img;
@@ -85,8 +88,8 @@ auto main(int argc, char *argv[]) -> int
     bool startVisualizer = app.arguments().contains("--visualizer");
 
     QQmlApplicationEngine engine;
-    engine.addImageProvider("theme", new ThemeImageProvider);
-    engine.addImageProvider("blur", new BlurImageProvider);
+    engine.addImageProvider("theme", new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
+    engine.addImageProvider("blur", new BlurImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
     engine.rootContext()->setContextProperty("mpdClient", &mpdClient);
     engine.rootContext()->setContextProperty("AudioVisualizer", &audioVisualizer);
     engine.rootContext()->setContextProperty("startInVisualizer", startVisualizer);

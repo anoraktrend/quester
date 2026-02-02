@@ -476,7 +476,20 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
+                    implicitWidth: 200
+                    implicitHeight: 6
                     color: palette.midlight
+                    radius: 3
+                }
+                contentItem: Item {
+                    implicitWidth: 200
+                    implicitHeight: 6
+                    Rectangle {
+                        width: progressBar.visualPosition * parent.width
+                        height: parent.height
+                        radius: 3
+                        color: palette.highlight
+                    }
                 }
             }
 
@@ -527,15 +540,41 @@ ApplicationWindow {
 
                 RowLayout {
                     spacing: 15
-                    Button { text: "◀◀"; onClicked: mpdClient.previous(); flat: true }
+                    Button { 
+                        text: "◀◀"
+                        onClicked: mpdClient.previous()
+                        flat: true 
+                        background: Rectangle {
+                            radius: 20
+                            color: "transparent"
+                            border.color: palette.accent
+                            border.width: 1
+                        }
+                    }
                     Button {
                         id: playPauseButton
                         text: mpdClient.state === "play" ? "❚❚" : "▶"
                         onClicked: mpdClient.togglePlayPause()
                         font.pixelSize: 20
                         width: 40; height: 40
+                        background: Rectangle {
+                            radius: 20
+                            color: parent.down ? palette.mid : palette.button
+                            border.color: palette.accent
+                            border.width: 1
+                        }
                     }
-                    Button { text: "▶▶"; onClicked: mpdClient.next(); flat: true }
+                    Button {
+                        text: "▶▶"
+                        onClicked: mpdClient.previous()
+                        flat: true 
+                        background: Rectangle {
+                            radius: 20
+                            color: "transparent"
+                            border.color: palette.accent
+                            border.width: 1
+                        }
+                    }
                 }
             }
         }
@@ -650,6 +689,7 @@ ApplicationWindow {
         background: Rectangle {
             color: palette.window
             border.color: palette.midlight
+            radius: 10
         }
 
         ListView {
@@ -669,6 +709,7 @@ ApplicationWindow {
                 }
                 background: Rectangle {
                     color: parent.highlighted ? palette.highlight : (parent.down ? palette.midlight : "transparent")
+                    radius: 5
                 }
                 onClicked: {
                     AudioVisualizer.currentPreset = modelData

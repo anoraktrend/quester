@@ -54,6 +54,7 @@ private:
 
     void createContext();
     void createStream(const char* deviceName);
+    void stopImpl();
 
     pa_threaded_mainloop *m_mainloop = nullptr;
     pa_context *m_context = nullptr;
@@ -73,6 +74,7 @@ public:
 
 private:
     static void on_process(void *userdata);
+    void stopImpl();
     struct pw_thread_loop *m_loop = nullptr;
     struct pw_context *m_context = nullptr;
     struct pw_core *m_core = nullptr;
@@ -89,6 +91,7 @@ public:
     void stop() override;
 
 private:
+    void stopImpl();
     QString m_path;
     std::atomic<bool> m_running;
     std::thread m_thread;

@@ -8,7 +8,7 @@ from pathlib import Path
 
 def run_command(command):
     try:
-        subprocess.run(command, check=True, shell=True)
+        subprocess.run(command, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running command: {command}")
         sys.exit(1)
@@ -16,13 +16,14 @@ def run_command(command):
 def install_dependencies():
     if os.path.exists("/etc/debian_version"):
         print("Detected Debian/Ubuntu")
-        run_command("sudo apt update && sudo apt install -y mpd mpc")
+        run_command(["sudo", "apt", "update"])
+        run_command(["sudo", "apt", "install", "-y", "mpd", "mpc"])
     elif os.path.exists("/etc/fedora-release"):
         print("Detected Fedora")
-        run_command("sudo dnf install -y mpd mpc")
+        run_command(["sudo", "dnf", "install", "-y", "mpd", "mpc"])
     elif os.path.exists("/etc/arch-release"):
         print("Detected Arch Linux")
-        run_command("sudo pacman -S --noconfirm mpd mpc")
+        run_command(["sudo", "pacman", "-S", "--noconfirm", "mpd", "mpc"])
     else:
         print("Unsupported distribution. Please install MPD manually.")
         sys.exit(1)
@@ -66,7 +67,7 @@ audio_output {
     format          "44100:16:2"
 }
 """
-        with open(mpd_conf_path, "w") as f:
+        with open(mpd_conf_path, "w", encoding="utf-8") as f:
             f.write(config_content)
     else:
         print(f"Configuration file already exists at {mpd_conf_path}. Skipping creation.")
@@ -78,7 +79,7 @@ def main():
 
     if shutil.which("systemctl"):
         print("Enabling and starting MPD user service...")
-        run_command("systemctl --user enable --now mpd")
+        run_command(["systemctl", "--user", "enable", "--now", "mpd"])
         print("MPD started. Run 'mpc update' to scan your music library.")
     else:
         print("Systemd not found. Please start MPD manually.")
