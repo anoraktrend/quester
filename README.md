@@ -50,12 +50,14 @@ sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdcl
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/your_username/Quester.git
    cd Quester
    ```
 
 2. Create a build directory and configure with CMake:
+
    ```bash
    mkdir build
    cd build
@@ -63,11 +65,13 @@ sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdcl
    ```
 
 3. Build the application:
+
    ```bash
    make
    ```
 
 4. (Optional) Install system-wide:
+
    ```bash
    sudo make install
    ```
@@ -80,6 +84,38 @@ Run the application from the build directory:
 
 ```bash
 ./quester
+```
+
+## Visualizer Presets
+
+Quester allows you to customize the audio visualizer colors by creating preset files in the presets directory, /etc/config/Quester/presets or ~/.config/Quester/presets.
+To add your own presets, create a directory named presets inside your Quester config folder and add a .json file there.
+
+### JSON Structure
+
+The JSON file should contain a single root object where keys are preset names and values are color definitions.
+
+#### Simple Color List
+
+A simple array of hex color strings creates a horizontal gradient.
+
+```json
+{
+"Rainbow": ["#E50000", "#FF8D00", "#FFEE00", "#028121", "#004CFF", "#770088"] 
+} 
+```
+
+### Weighted Gradients
+
+Use an object with colors and weights to control the size of color sections.
+
+```json
+{
+   "Uneven": {
+      "colors": ["#FF0000", "#00FF00", "#0000FF"],
+      "weights": [1, 4, 1]
+   } 
+} 
 ```
 
 ## Contributing
