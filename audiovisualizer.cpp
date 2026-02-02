@@ -15,16 +15,16 @@
 #include <QtMath>
 
 template<class T>
-const T &max(const T &a, const T &b)
+auto max(const T &a, const T &b) -> const T &
 {
     return (a < b) ? b : a;
 }
 
-static double *monstercat_filter(
-    double *bars, int number_of_bars, int waves, double monstercat, int height)
+static auto monstercat_filter(
+    double *bars, int number_of_bars, int waves, double monstercat, int height) -> double *
 {
-    int z;
-    int m_y, de;
+    int z = 0;
+    int m_y = 0, de = 0;
     if (waves > 0) {
         for (z = 0; z < number_of_bars; z++) { // waves
             bars[z] = bars[z] / 1.25;
@@ -219,8 +219,7 @@ void PulseAudioThread::createStream(const char *deviceName)
             m_stream,
             deviceName,
             &bufattr,
-            (pa_stream_flags_t) (PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE
-                                 | PA_STREAM_START_CORKED))
+            static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_START_CORKED)) // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange)
         < 0) {
         emit error(pa_strerror(pa_context_errno(m_context)));
         if (m_mainloop)
@@ -236,7 +235,7 @@ void PulseAudioThread::stream_state_callback(pa_stream *s, void *userdata)
 
     switch (pa_stream_get_state(s)) {
     case PA_STREAM_READY:
-        pa_stream_cork(s, 0, NULL, NULL);
+        pa_stream_cork(s, 0, nullptr, nullptr);
         break;
     case PA_STREAM_FAILED:
     case PA_STREAM_TERMINATED:
@@ -254,17 +253,27 @@ void PulseAudioThread::stream_read_callback(pa_stream *s, size_t length, void *u
     if (p->m_quit)
         return;
 
-    const void *data;
-    if (pa_stream_peek(s, &data, &length) < 0) {
-        return;
-    }
+    const void *data = nullptr;
+    size_t peek_length = 0;
 
-    if (length > 0) {
-        QByteArray buffer(static_cast<const char *>(data), length);
-        emit p->dataReady(buffer);
-    }
+    while (pa_stream_readable_size(s) > 0) {
+        if (pa_stream_peek(s, &data, &peek_length) < 0) {
+            return;
+        }
+        if (peek_length == 0)
+            break;
 
-    pa_stream_drop(s);
+        if (data) {
+            QByteArray buffer(static_cast<const char *>(data), peek_length);
+            emit p->dataReady(buffer);
+        } else {
+            // Hole in stream, fill with silence
+            QByteArray buffer(peek_length, 0);
+            emit p->dataReady(buffer);
+        }
+
+        pa_stream_drop(s);
+    }
 }
 
 // --- AudioVisualizer Implementation ---
@@ -304,7 +313,7 @@ AudioVisualizer::~AudioVisualizer()
     stop();
 }
 
-int AudioVisualizer::width() const
+auto AudioVisualizer::width() const -> int
 {
     return m_width;
 }
@@ -327,7 +336,7 @@ void AudioVisualizer::setWidth(int width)
     emit widthChanged();
 }
 
-int AudioVisualizer::height() const
+auto AudioVisualizer::height() const -> int
 {
     return m_height;
 }
@@ -372,7 +381,7 @@ void AudioVisualizer::start()
         &AudioVisualizer::onDataReady,
         Qt::QueuedConnection);
     connect(m_pulseThread, &PulseAudioThread::error, this, &AudioVisualizer::onPulseError);
-    connect(m_pulseThread, &PulseAudioThread::finished, [this]() {
+    connect(m_pulseThread, &PulseAudioThread::finished, [this]() -> void {
         if (m_active) {
             m_active = false;
             emit activeChanged();
@@ -433,7 +442,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         m_buffer = m_buffer.right(requiredBytes);
     }
 
-    const int16_t *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
+    const auto *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
 
     for (int i = 0; i < m_fft_size; ++i) {
         // Average stereo channels to mono and normalize
@@ -500,7 +509,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         bars[i] = calculatedBars[halfBars - 1 - srcIdx] / m_maxPeak;
     }
 
-    double h = (double)m_height;
+    auto h = (double)m_height;
     if (h < 1.0) h = 1.0;
 
     for (int i = 0; i < m_numBars; i++) {
@@ -539,12 +548,12 @@ void AudioVisualizer::onPulseError(const QString &errorString)
     stop();
 }
 
-QList<qreal> AudioVisualizer::magnitudes() const
+auto AudioVisualizer::magnitudes() const -> QList<qreal>
 {
     return m_magnitudes;
 }
 
-bool AudioVisualizer::active() const
+auto AudioVisualizer::active() const -> bool
 {
     return m_active;
 }
@@ -553,7 +562,7 @@ void AudioVisualizer::loadPresets()
 {
     m_presets.clear();
 
-    auto parsePresets = [this](const QJsonObject &root) {
+    auto parsePresets = [this](const QJsonObject &root) -> void {
         for (auto it = root.begin(); it != root.end(); ++it) {
             QString name = it.key();
             QJsonValue val = it.value();
@@ -638,12 +647,12 @@ void AudioVisualizer::loadPresets()
     emit presetsChanged();
 }
 
-QStringList AudioVisualizer::presetNames() const
+auto AudioVisualizer::presetNames() const -> QStringList
 {
     return m_presets.keys();
 }
 
-QString AudioVisualizer::currentPreset() const
+auto AudioVisualizer::currentPreset() const -> QString
 {
     return m_currentPresetName;
 }
@@ -662,7 +671,7 @@ void AudioVisualizer::setCurrentPreset(const QString &name)
     emit currentPresetChanged();
 }
 
-QVariantList AudioVisualizer::barColors() const
+auto AudioVisualizer::barColors() const -> QVariantList
 {
     return m_barColors;
 }

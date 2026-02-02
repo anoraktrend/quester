@@ -18,7 +18,7 @@ class ThemeImageProvider : public QQuickImageProvider
 public:
     ThemeImageProvider() : QQuickImageProvider(QQuickImageProvider::Pixmap) {}
 
-    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override
+    auto requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) -> QPixmap override
     {
         int width = requestedSize.width() > 0 ? requestedSize.width() : 32;
         int height = requestedSize.height() > 0 ? requestedSize.height() : 32;
@@ -29,7 +29,7 @@ public:
     }
 };
 
-int main(int argc, char *argv[])
+auto main(int argc, char *argv[]) -> int
 {
     QGuiApplication app(argc, argv);
     QString iconPath;
@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
         &engine,
         &QQmlApplicationEngine::objectCreated,
         &app,
-        [&](QObject *obj, const QUrl &objUrl) {
+        [&](QObject *obj, const QUrl &objUrl) -> void {
             if (!obj && url == objUrl)
                 QCoreApplication::exit(-1);
 
