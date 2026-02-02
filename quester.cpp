@@ -585,6 +585,12 @@ void MpdClient::refreshLibrary()
         mpd_connection_clear_error(m_connection);
     }
 
+    QCollator collator;
+    collator.setNumericMode(true);
+    std::sort(albums.begin(), albums.end(), [&](const AlbumItem &a, const AlbumItem &b) {
+        return collator.compare(a.name, b.name) < 0;
+    });
+
     m_albumModel->setAlbums(albums);
     saveLibraryToCache(albums);
 
