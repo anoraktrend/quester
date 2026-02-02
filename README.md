@@ -33,13 +33,11 @@ Quester is a desktop client for the Music Player Daemon (MPD). It provides a flu
 ## Gallery
 
 
-![Screenshot](img/quester-gallery-01.png) | ![Screenshot](img/quester-gallery-02.png) 
+![Screenshot](img/quester-gallery-01.png)  ![Screenshot](img/quester-gallery-02.png) 
 
-![Screenshot](img/quester-gallery-03.png) | ![Screenshot](img/quester-gallery-04.png) 
+![Screenshot](img/quester-gallery-03.png) ![Screenshot](img/quester-gallery-04.png) 
 
-![Screenshot](img/quester-gallery-05.png) | ![Screenshot](img/quester-gallery-06.png)
-
-![Screenshot](img/quester-gallery-07.png) | 
+![Screenshot](img/quester-gallery-05.png)![Screenshot](img/quester-gallery-06.png)![Screenshot](img/quester-gallery-07.png) 
 
 ## Prerequisites
 
