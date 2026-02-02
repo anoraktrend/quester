@@ -476,7 +476,7 @@ ApplicationWindow {
                 value: mpdClient.elapsed
 
                 background: Rectangle {
-                    color: palette.dark
+                    color: palette.midlight
                 }
             }
 
