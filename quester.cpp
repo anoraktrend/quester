@@ -458,11 +458,7 @@ void MpdClient::fetchAlbumArt(const QString &album)
     emit albumArtChanged();
 
     // Check Cache
-    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
-    // Use artist and album for a more unique hash for caching
-    QByteArray hashName
-        = QCryptographicHash::hash((m_artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
-    QString cachePath = cacheDir + hashName + ".jpg";
+    QString cachePath = getCachePath(m_artist, album);
 
     // If cache exists, use it and return
     if (QFile::exists(cachePath)) {
@@ -474,9 +470,6 @@ void MpdClient::fetchAlbumArt(const QString &album)
     // --- MPD Native Art Fetch ---
     QByteArray mpdData = getMpdPicture(m_currentUri);
     if (!mpdData.isEmpty()) {
-        QDir dir = QFileInfo(cachePath).dir();
-        if (!dir.exists())
-            dir.mkpath(".");
         QFile file(cachePath);
         if (file.open(QIODevice::WriteOnly)) {
             file.write(mpdData);
@@ -523,9 +516,6 @@ void MpdClient::fetchAlbumArt(const QString &album)
                                 QByteArray data = imgReply->readAll();
 
                                 // Save to cache
-                                QDir dir = QFileInfo(cachePath).dir();
-                                if (!dir.exists())
-                                    dir.mkpath(".");
                                 QFile file(cachePath);
                                 if (file.open(QIODevice::WriteOnly)) {
                                     file.write(data);
@@ -716,14 +706,7 @@ void MpdClient::refreshLibrary()
                 QString albumName = tagValue;
                 if (!albumName.isEmpty() && !addedAlbums.contains(albumName)) {
                     // Check cache immediately for initial display
-                    QString cacheDir = QStandardPaths::writableLocation(
-                                           QStandardPaths::CacheLocation)
-                                       + "/covers/";
-                    QByteArray hashName = QCryptographicHash::hash(
-                                              (currentArtist + albumName).toUtf8(),
-                                              QCryptographicHash::Md5)
-                                              .toHex();
-                    QString cachePath = cacheDir + hashName + ".jpg";
+                    QString cachePath = getCachePath(currentArtist, albumName);
                     QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
 
                     albums.append({currentArtist, albumName, art, "", false});
@@ -1091,6 +1074,8 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
 {
     // Try to find URI if missing
     if (index >= 0 && index < m_albumModel->m_albums.count()) {
+        QString artist = m_albumModel->m_albums[index].artist;
+
         if (m_albumModel->m_albums[index].uri.isEmpty()) {
             // Find a song in this album to get a representative URI
             if (mpd_search_db_songs(m_connection, true)) {
@@ -1117,18 +1102,7 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
         if (!uri.isEmpty()) {
             QByteArray mpdData = getMpdPicture(uri);
             if (!mpdData.isEmpty()) {
-                QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-                                   + "/covers/";
-                QByteArray hashName
-                    = QCryptographicHash::hash(
-                          (m_albumModel->m_albums[index].artist + albumName).toUtf8(),
-                          QCryptographicHash::Md5)
-                          .toHex();
-                QString cachePath = cacheDir + hashName + ".jpg";
-
-                QDir dir = QFileInfo(cachePath).dir();
-                if (!dir.exists())
-                    dir.mkpath(".");
+                QString cachePath = getCachePath(artist, albumName);
                 QFile file(cachePath);
                 if (file.open(QIODevice::WriteOnly)) {
                     file.write(mpdData);
@@ -1140,12 +1114,14 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
         }
     }
 
+    if (index < 0 || index >= m_albumModel->m_albums.count()) return;
+    QString artist = m_albumModel->m_albums[index].artist;
+
     QUrl url("https://www.theaudiodb.com/api/v1/json/123/searchalbum.php");
     QUrlQuery query;
     // Use artist from model for better accuracy
-    if (index >= 0 && index < m_albumModel->m_albums.count()
-        && m_albumModel->m_albums[index].artist != tr("Unknown Artist")) {
-        query.addQueryItem("s", m_albumModel->m_albums[index].artist);
+    if (artist != tr("Unknown Artist")) {
+        query.addQueryItem("s", artist);
     }
     query.addQueryItem("a", albumName);
     url.setQuery(query);
@@ -1154,7 +1130,7 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
     request.setRawHeader("User-Agent", "Quester/1.0");
 
     QNetworkReply *reply = m_networkManager->get(request);
-    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, index, albumName]() -> void {
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, index, albumName, artist]() -> void {
         reply->deleteLater();
         if (reply->error() == QNetworkReply::NoError) {
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
@@ -1170,31 +1146,11 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
                         imgReply,
                         &QNetworkReply::finished,
                         this,
-                        [this, imgReply, index, albumName]() -> void {
+                        [this, imgReply, index, albumName, artist]() -> void {
                             imgReply->deleteLater();
                             if (imgReply->error() == QNetworkReply::NoError) {
                                 QByteArray data = imgReply->readAll();
-                                QString cacheDir = QStandardPaths::writableLocation(
-                                                       QStandardPaths::CacheLocation)
-                                                   + "/covers/";
-                                QByteArray hashName;
-                                if (index >= 0 && index < m_albumModel->m_albums.count()) {
-                                    hashName = QCryptographicHash::hash(
-                                                   (m_albumModel->m_albums[index].artist + albumName)
-                                                       .toUtf8(),
-                                                   QCryptographicHash::Md5)
-                                                   .toHex();
-                                } else {
-                                    hashName = QCryptographicHash::hash(
-                                                   albumName.toUtf8(), QCryptographicHash::Md5)
-                                                   .toHex();
-                                }
-                                QString cachePath = cacheDir + hashName + ".jpg";
-
-                                QDir dir = QFileInfo(cachePath).dir();
-                                if (!dir.exists())
-                                    dir.mkpath(".");
-
+                                QString cachePath = getCachePath(artist, albumName);
                                 QFile file(cachePath);
                                 if (file.open(QIODevice::WriteOnly)) {
                                     file.write(data);
@@ -1207,6 +1163,17 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
             }
         }
     });
+}
+
+auto MpdClient::getCachePath(const QString &artist, const QString &album) -> QString
+{
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
+    QDir dir(cacheDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
+    return cacheDir + hashName + ".jpg";
 }
 
 auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray

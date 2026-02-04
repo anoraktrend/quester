@@ -240,6 +240,7 @@ private:
     void fetchAlbumArt(const QString &album);
     void fetchCoverForModel(int index, const QString &albumName);
     void fetchAlbumArtFromAPIs(const QString &artist, const QString &album, const QString &cachePath, bool isMainArt, int modelIndex); // New helper
+    auto getCachePath(const QString &artist, const QString &album) -> QString;
     auto getMpdPicture(const QString &uri) -> QByteArray;
     void connect();
     void sendIdle();
