@@ -5,6 +5,7 @@ import QtQuick.Controls
 
 
 
+import Quester 1.0
 import Qt.labs.platform 1.1 as Platform
 
 ApplicationWindow {
@@ -48,13 +49,51 @@ ApplicationWindow {
         ToolButton {
             id: presetMenuButton
             text: qsTr("Colors")
-            visible: coverFlow.state === "visualizerView"
+            visible: coverFlow.state !== "libraryView"
+            width: visible ? implicitWidth : 0
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: menuButton.left
             anchors.rightMargin: 10
             onClicked: presetDialog.open()
         }
 
+        ToolButton {
+            id: sortmenuButton
+            icon.source: "image://theme/sort-presence"
+            icon.color: palette.windowText
+            icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
+            visible: coverFlow.state === "libraryView"
+            width: visible ? implicitWidth : 0
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: presetMenuButton.left
+
+            onClicked: sortby.open()
+    
+            Menu {
+                id: sortby
+                y: parent.height
+                title: qsTr("Sort By")
+
+                 MenuItem {
+                    text: qsTr("Artist")
+                    checkable: true
+                    checked: mpdClient.sortMode === MpdClient.Artist
+                    onTriggered: mpdClient.sortMode = MpdClient.Artist
+                }
+                MenuItem {
+                    text: qsTr("Album")
+                    checkable: true
+                    checked: mpdClient.sortMode === MpdClient.Album
+                    onTriggered: mpdClient.sortMode = MpdClient.Album
+                    }
+                MenuItem {
+                    text: qsTr("Artist & Year")
+                    checkable: true
+                    checked: mpdClient.sortMode === MpdClient.ArtistYear
+                    onTriggered: mpdClient.sortMode = MpdClient.ArtistYear
+                }
+            }
+        }
         // Application Menu Button (Hamburger Menu)
         ToolButton {
             id: menuButton
@@ -132,6 +171,11 @@ ApplicationWindow {
                         mpdClient.browsePath(mpdClient.currentPath)
                         appMenu.close()
                     }
+                }
+
+                MenuSeparator {
+                    visible: coverFlow.state === "libraryView"
+                    height: visible ? implicitHeight : 0
                 }
 
                 MenuSeparator {}

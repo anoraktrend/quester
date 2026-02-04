@@ -20,6 +20,7 @@ struct AlbumItem {
     QString artUrl;
     QString uri;
     bool artLoading = false;
+    int year = 0;
 };
 
 struct TrackItem {
@@ -50,7 +51,8 @@ public:
     enum class AlbumRoles : std::uint16_t {
         NameRole = Qt::UserRole + 1,
         ArtRole,
-        ArtistRole // Added ArtistRole
+        ArtistRole,
+        YearRole
     };
     Q_ENUM(AlbumRoles)
 
@@ -147,6 +149,7 @@ class MpdClient : public QObject
     Q_PROPERTY(bool single READ single WRITE setSingle NOTIFY singleChanged)
     Q_PROPERTY(bool consume READ consume WRITE setConsume NOTIFY consumeChanged)
     Q_PROPERTY(QStringList playlists READ playlists NOTIFY playlistsChanged)
+    Q_PROPERTY(SortMode sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -155,6 +158,13 @@ public:
     auto operator=(const MpdClient&) -> MpdClient& = delete;
     MpdClient(MpdClient&&) = delete;
     auto operator=(MpdClient&&) -> MpdClient& = delete;
+
+    enum class SortMode : std::uint8_t {
+        Artist,
+        Album,
+        ArtistYear
+    };
+    Q_ENUM(SortMode)
 
     [[nodiscard]] auto artist() const -> QString;
     [[nodiscard]] auto title() const -> QString;
@@ -174,6 +184,7 @@ public:
     [[nodiscard]] auto single() const -> bool;
     [[nodiscard]] auto consume() const -> bool;
     [[nodiscard]] auto playlists() const -> QStringList;
+    [[nodiscard]] auto sortMode() const -> SortMode;
 
     void setWindow(QQuickWindow *window);
 
@@ -186,6 +197,7 @@ public Q_SLOTS:
     void setRandom(bool on);
     void setSingle(bool on);
     void setConsume(bool on);
+    void setSortMode(SortMode mode);
 
     // Playback controls
     void play();
@@ -231,6 +243,7 @@ Q_SIGNALS:
     void singleChanged();
     void consumeChanged();
     void playlistsChanged();
+    void sortModeChanged();
 
 private Q_SLOTS:
     void updateStatus();
@@ -239,8 +252,17 @@ private Q_SLOTS:
 private:
     void fetchAlbumArt(const QString &album);
     void fetchCoverForModel(int index, const QString &albumName);
-    void fetchAlbumArtFromAPIs(const QString &artist, const QString &album, const QString &cachePath, bool isMainArt, int modelIndex); // New helper
+    struct FetchParams {
+        QString artist;
+        QString album;
+        QString mbid;
+        QString cachePath;
+        bool isMainArt;
+        int modelIndex;
+    };
+    void fetchAlbumArtFromAPIs(const FetchParams &params);
     auto getCachePath(const QString &artist, const QString &album) -> QString;
+    void sortAlbums(QList<AlbumItem> &albums);
     auto getMpdPicture(const QString &uri) -> QByteArray;
     void connect();
     void sendIdle();
@@ -265,6 +287,7 @@ private:
     QString m_album;
     QString m_state;
     QString m_albumArt;
+    QString m_currentMbid;
     qint64 m_duration = 0;
     qint64 m_elapsed = 0;
     int m_currentSongId = -1;
@@ -277,6 +300,7 @@ private:
     bool m_single = false;
     bool m_consume = false;
     QStringList m_playlists;
+    SortMode m_sortMode = SortMode::Artist;
 
     QQuickWindow *m_window = nullptr;
 

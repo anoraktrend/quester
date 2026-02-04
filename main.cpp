@@ -7,6 +7,7 @@
 #include <QTranslator>
 #include <QLocale>
 #include <QQmlContext>
+#include <QtQml>
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QtQuickControls2/QQuickStyle>
@@ -89,6 +90,8 @@ auto main(int argc, char *argv[]) -> int
     MpdClient mpdClient;
     AudioVisualizer audioVisualizer;
     bool startVisualizer = app.arguments().contains(QStringLiteral("--visualizer"));
+
+    qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
