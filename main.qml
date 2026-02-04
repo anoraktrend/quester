@@ -79,7 +79,7 @@ ApplicationWindow {
                 
                 MenuItem {
                     text: qsTr("Queue")
-                    visible: coverFlow.state !== "libraryView"
+                    visible: coverFlow.state !== "queueView"
                     height: visible ? implicitHeight : 0
                     onClicked: coverFlow.state = "queueView"
                 }
