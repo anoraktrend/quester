@@ -1,4 +1,5 @@
 #include "audiovisualizer.h"
+#include <fftw3.h>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -126,7 +127,7 @@ void PulseAudioInput::start()
 {
     m_mainloop = pa_threaded_mainloop_new();
     if (!m_mainloop) {
-        emit error("pa_threaded_mainloop_new() failed");
+        Q_EMIT error(QStringLiteral("pa_threaded_mainloop_new() failed"));
         return;
     }
     pa_mainloop_api *api = pa_threaded_mainloop_get_api(m_mainloop);
@@ -135,7 +136,7 @@ void PulseAudioInput::start()
     createContext();
 
     if (pa_threaded_mainloop_start(m_mainloop) < 0) {
-        emit error("pa_threaded_mainloop_start() failed");
+        Q_EMIT error(QStringLiteral("pa_threaded_mainloop_start() failed"));
     }
 }
 
@@ -143,7 +144,7 @@ void PulseAudioInput::createContext()
 {
     pa_context_set_state_callback(m_context, context_state_callback, this);
     if (pa_context_connect(m_context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
-        emit error("pa_context_connect() failed");
+        Q_EMIT error(QStringLiteral("pa_context_connect() failed"));
     }
 }
 
@@ -170,14 +171,14 @@ void PulseAudioInput::context_state_callback(pa_context *c, void *userdata)
     }
 }
 
-void PulseAudioInput::server_info_callback(pa_context *c, const pa_server_info *i, void *userdata)
+void PulseAudioInput::server_info_callback(pa_context * /*c*/, const pa_server_info *i, void *userdata)
 {
     auto *p = static_cast<PulseAudioInput *>(userdata);
     if (!i || p->m_quit || p->m_stream) {
         return;
     }
 
-    QString monitor_source = QString(i->default_sink_name) + ".monitor";
+    QString monitor_source = QString::fromUtf8(i->default_sink_name) + QStringLiteral(".monitor");
     p->createStream(monitor_source.toUtf8().constData());
 }
 
@@ -212,7 +213,7 @@ void PulseAudioInput::sink_input_info_callback(
 }
 
 void PulseAudioInput::sink_info_callback(
-    pa_context *c, const pa_sink_info *i, int eol, void *userdata)
+    pa_context * /*c*/, const pa_sink_info *i, int eol, void *userdata)
 {
     auto *p = static_cast<PulseAudioInput *>(userdata);
     if (eol > 0 || !i || p->m_quit || p->m_stream) {
@@ -234,7 +235,7 @@ void PulseAudioInput::createStream(const char *deviceName)
 
     m_stream = pa_stream_new(m_context, "Quester Record", &ss, nullptr);
     if (!m_stream) {
-        emit error("pa_stream_new() failed");
+        Q_EMIT error(QStringLiteral("pa_stream_new() failed"));
         if (m_mainloop)
             pa_threaded_mainloop_stop(m_mainloop);
         return;
@@ -257,7 +258,7 @@ void PulseAudioInput::createStream(const char *deviceName)
             &bufattr,
             static_cast<pa_stream_flags_t>(PA_STREAM_ADJUST_LATENCY | PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_AUTO_TIMING_UPDATE | PA_STREAM_START_CORKED)) // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange, cppcoreguidelines-pro-type-cstyle-cast)
         < 0) {
-        emit error(pa_strerror(pa_context_errno(m_context)));
+        Q_EMIT error(QString::fromLatin1(pa_strerror(pa_context_errno(m_context))));
         if (m_mainloop)
             pa_threaded_mainloop_stop(m_mainloop);
     }
@@ -283,7 +284,7 @@ void PulseAudioInput::stream_state_callback(pa_stream *s, void *userdata)
     }
 }
 
-void PulseAudioInput::stream_read_callback(pa_stream *s, size_t length, void *userdata)
+void PulseAudioInput::stream_read_callback(pa_stream *s, size_t, void *userdata)
 {
     auto *p = static_cast<PulseAudioInput *>(userdata);
     if (p->m_quit)
@@ -301,11 +302,11 @@ void PulseAudioInput::stream_read_callback(pa_stream *s, size_t length, void *us
 
         if (data) {
             QByteArray buffer(static_cast<const char *>(data), static_cast<qsizetype>(peek_length));
-            emit p->dataReady(buffer);
+            Q_EMIT p->dataReady(buffer);
         } else {
             // Hole in stream, fill with silence
             QByteArray buffer(static_cast<qsizetype>(peek_length), 0);
-            emit p->dataReady(buffer);
+            Q_EMIT p->dataReady(buffer);
         }
 
         pa_stream_drop(s);
@@ -329,7 +330,8 @@ void PipeWireInput::start()
     m_core = pw_context_connect(m_context, nullptr, 0);
 
     std::array<uint8_t, BUFFER_SIZE> buffer{};
-    struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer.data(), buffer.size());
+    struct spa_pod_builder b = {};
+    spa_pod_builder_init(&b, buffer.data(), buffer.size());
     std::array<const struct spa_pod *, 1> params{};
 
     struct spa_audio_info_raw info = {};
@@ -339,10 +341,14 @@ void PipeWireInput::start()
 
     params[0] = spa_format_audio_raw_build(&b, SPA_PARAM_EnumFormat, &info);
 
-    static const struct pw_stream_events stream_events = {
-        .version = PW_VERSION_STREAM_EVENTS,
-        .process = on_process
-    };
+    static struct pw_stream_events stream_events = {};
+    stream_events.version = PW_VERSION_STREAM_EVENTS;
+    stream_events.destroy = nullptr;
+    stream_events.state_changed = nullptr;
+    stream_events.param_changed = nullptr;
+    stream_events.add_buffer = nullptr;
+    stream_events.remove_buffer = nullptr;
+    stream_events.process = on_process;
 
     m_stream = pw_stream_new_simple(
         pw_thread_loop_get_loop(m_loop),
@@ -410,7 +416,7 @@ void PipeWireInput::on_process(void *userdata)
 
     if (size > 0) {
         QByteArray bytes(reinterpret_cast<const char*>(data), static_cast<qsizetype>(size)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-        emit p->dataReady(bytes);
+        Q_EMIT p->dataReady(bytes);
     }
 
     pw_stream_queue_buffer(p->m_stream, b);
@@ -431,14 +437,14 @@ void FifoInput::start()
     m_thread = std::thread([this]() -> void {
         int fd = open(m_path.toUtf8().constData(), O_RDONLY); // NOLINT(cppcoreguidelines-pro-type-vararg)
         if (fd < 0) {
-            emit error("Could not open FIFO: " + m_path);
+            Q_EMIT error(QStringLiteral("Could not open FIFO: ") + m_path);
             return;
         }
         std::array<char, FIFO_BUFFER_SIZE> buffer{};
         while (m_running) {
             ssize_t bytes = read(fd, buffer.data(), buffer.size());
             if (bytes > 0) {
-                emit dataReady(QByteArray(buffer.data(), static_cast<qsizetype>(bytes)));
+                Q_EMIT dataReady(QByteArray(buffer.data(), static_cast<qsizetype>(bytes)));
             } else {
                 usleep(FIFO_SLEEP_USEC);
             }
@@ -464,12 +470,12 @@ void FifoInput::stopImpl()
 
 AudioVisualizer::AudioVisualizer(QObject *parent)
     : QObject(parent)
-    , m_input(nullptr)
-    , m_active(false), m_decayTimer(new QTimer(this))
     , m_fftw_plan(nullptr)
-    , m_fftw_in(nullptr)
-    , m_fftw_out(nullptr)
+    , m_fftw_in(nullptr), m_fftw_out(nullptr)
     , m_fft_size(FFT_SIZE)
+    , m_input(nullptr)
+    , m_active(false)
+    , m_decayTimer(new QTimer(this))
 {
     
     connect(m_decayTimer, &QTimer::timeout, this, &AudioVisualizer::performDecay);
@@ -478,19 +484,19 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
     loadPresets();
 
     // Ensure System preset exists
-    if (!m_presets.contains("System")) {
+    if (!m_presets.contains(QStringLiteral("System"))) {
         Preset system;
         system.colors = {QColor(Qt::gray)};
-        m_presets.insert("System", system);
+        m_presets.insert(QStringLiteral("System"), system);
     }
 
-    QSettings settings("Quester", "Quester");
-    m_topDown = settings.value("visualizerTopDown", false).toBool();
-    QString saved = settings.value("visualizerPreset", "System").toString();
+    QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    m_topDown = settings.value(QStringLiteral("visualizerTopDown"), false).toBool();
+    QString saved = settings.value(QStringLiteral("visualizerPreset"), QStringLiteral("System")).toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;
     } else {
-        m_currentPresetName = "rainbow";
+        m_currentPresetName = QStringLiteral("rainbow");
     }
     updateBarColors();
 }
@@ -518,9 +524,9 @@ void AudioVisualizer::setWidth(int width)
         m_magnitudes.fill(0.0, m_numBars);
         m_smoothBuffer.fill(0.0, m_numBars);
         updateBarColors();
-        emit magnitudesChanged();
+        Q_EMIT magnitudesChanged();
     }
-    emit widthChanged();
+    Q_EMIT widthChanged();
 }
 
 auto AudioVisualizer::height() const -> int
@@ -532,7 +538,7 @@ void AudioVisualizer::setHeight(int height)
 {
     if (m_height == height) return;
     m_height = height;
-    emit heightChanged();
+    Q_EMIT heightChanged();
 }
 
 auto AudioVisualizer::topDownMode() const -> bool
@@ -544,9 +550,9 @@ void AudioVisualizer::setTopDownMode(bool topDownMode)
 {
     if (m_topDown == topDownMode) return;
     m_topDown = topDownMode;
-    QSettings settings("Quester", "Quester");
-    settings.setValue("visualizerTopDown", m_topDown);
-    emit topDownModeChanged();
+    QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    settings.setValue(QStringLiteral("visualizerTopDown"), m_topDown);
+    Q_EMIT topDownModeChanged();
 }
 
 void AudioVisualizer::start()
@@ -575,13 +581,13 @@ void AudioVisualizer::start()
     m_buffer.clear();
     m_smoothBuffer.fill(0.0, m_numBars);
 
-    QSettings settings("Quester", "Quester");
-    QString source = settings.value("audioSource", "pulseaudio").toString();
+    QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    QString source = settings.value(QStringLiteral("audioSource"), QStringLiteral("pulseaudio")).toString();
 
-    if (source == "pipewire") {
+    if (source == QStringLiteral("pipewire")) {
         m_input = new PipeWireInput(this); // NOLINT(cppcoreguidelines-owning-memory)
-    } else if (source == "fifo") {
-        QString path = settings.value("fifoPath", "/tmp/mpd.fifo").toString();
+    } else if (source == QStringLiteral("fifo")) {
+        QString path = settings.value("fifoPath", QStringLiteral("/tmp/mpd.fifo")).toString();
         m_input = new FifoInput(path, this); // NOLINT(cppcoreguidelines-owning-memory)
     } else {
         m_input = new PulseAudioInput(this); // NOLINT(cppcoreguidelines-owning-memory)
@@ -598,7 +604,7 @@ void AudioVisualizer::start()
     m_input->start();
 
     m_active = true;
-    emit activeChanged();
+    Q_EMIT activeChanged();
     m_decayTimer->start(DECAY_TIMER_MS);
 }
 
@@ -607,7 +613,7 @@ void AudioVisualizer::stop()
     if (!m_active)
         return;
     m_active = false;
-    emit activeChanged();
+    Q_EMIT activeChanged();
 
     if (m_input) {
         m_input->stop();
@@ -754,7 +760,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         m_magnitudes.append(val);
     }
 
-    emit magnitudesChanged();
+    Q_EMIT magnitudesChanged();
     m_decayTimer->start(DECAY_TIMER_MS);
 }
 
@@ -783,7 +789,7 @@ void AudioVisualizer::performDecay()
         if (smoothVal > 0.0) hasSignal = true;
     }
 
-    emit magnitudesChanged();
+    Q_EMIT magnitudesChanged();
 
     if (hasSignal) {
         m_decayTimer->start(DECAY_TIMER_FAST_MS);
@@ -817,8 +823,8 @@ void AudioVisualizer::loadPresets()
                 colorsArray = val.toArray();
             } else if (val.isObject()) {
                 QJsonObject obj = val.toObject();
-                colorsArray = obj["colors"].toArray();
-                QJsonArray weightsArray = obj["weights"].toArray();
+                colorsArray = obj[QStringLiteral("colors")].toArray();
+                QJsonArray weightsArray = obj[QStringLiteral("weights")].toArray();
                 for (const auto &w : weightsArray) {
                     preset.weights.append(w.toDouble());
                 }
@@ -836,10 +842,10 @@ void AudioVisualizer::loadPresets()
 
     // 1. Load bundled/system presets
     QStringList paths
-        = {"/home/lucy/git/Quester/visualizerGradients/presets.json", // Hardcoded dev path
-           QCoreApplication::applicationDirPath() + "/visualizerGradients/presets.json",
-           QCoreApplication::applicationDirPath() + "/../visualizerGradients/presets.json",
-           "visualizerGradients/presets.json"};
+        = {QStringLiteral("/home/lucy/git/Quester/visualizerGradients/presets.json"), // Hardcoded dev path
+           QCoreApplication::applicationDirPath() + QStringLiteral("/visualizerGradients/presets.json"),
+           QCoreApplication::applicationDirPath() + QStringLiteral("/../visualizerGradients/presets.json"),
+           QStringLiteral("visualizerGradients/presets.json")};
 
     for (const QString &path : paths) {
         if (QFile::exists(path)) {
@@ -860,7 +866,7 @@ void AudioVisualizer::loadPresets()
     QStringList locations;
 
     // Explicitly requested path (Low priority)
-    locations << "/etc/config";
+    locations << QStringLiteral("/etc/config");
 
     // Generic Data (e.g. /usr/share)
     QStringList dataLocs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
@@ -873,9 +879,9 @@ void AudioVisualizer::loadPresets()
     locations << configLocs;
 
     for (const QString &location : locations) {
-        QDir presetDir(location + "/Quester/presets");
+        QDir presetDir(QStringLiteral("%1/Quester/presets").arg(location));
         if (presetDir.exists()) {
-            const auto fileInfos = presetDir.entryInfoList(QStringList() << "*.json", QDir::Files);
+            const auto fileInfos = presetDir.entryInfoList(QStringList() << QStringLiteral("*.json"), QDir::Files);
             for (const QFileInfo &info : fileInfos) {
                 QFile file(info.absoluteFilePath());
                 if (file.open(QIODevice::ReadOnly)) {
@@ -888,7 +894,7 @@ void AudioVisualizer::loadPresets()
         }
     }
 
-    emit presetsChanged();
+    Q_EMIT presetsChanged();
 }
 
 auto AudioVisualizer::presetNames() const -> QStringList
@@ -908,11 +914,11 @@ void AudioVisualizer::setCurrentPreset(const QString &name)
 
     m_currentPresetName = name;
 
-    QSettings settings("Quester", "Quester");
-    settings.setValue("visualizerPreset", name);
+    QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    settings.setValue(QStringLiteral("visualizerPreset"), name);
 
     updateBarColors();
-    emit currentPresetChanged();
+    Q_EMIT currentPresetChanged();
 }
 
 auto AudioVisualizer::barColors() const -> QVariantList
@@ -936,7 +942,7 @@ void AudioVisualizer::updateBarColors()
     if (colors.size() == 1) {
         for (int i = 0; i < m_numBars; ++i)
             m_barColors.append(colors.first());
-        emit barColorsChanged();
+        Q_EMIT barColorsChanged();
         return;
     }
 
@@ -985,16 +991,16 @@ void AudioVisualizer::updateBarColors()
 
         m_barColors.append(QColor(r, g, b));
     }
-    emit barColorsChanged();
+    Q_EMIT barColorsChanged();
 }
 
 void AudioVisualizer::updateSystemColors(const QColor &highlight, const QColor &text)
 {
     Preset system;
     system.colors = {highlight, text};
-    m_presets.insert("System", system);
+    m_presets.insert(QStringLiteral("System"), system);
 
-    if (m_currentPresetName == "System") {
+    if (m_currentPresetName == QStringLiteral("System")) {
         updateBarColors();
     }
 }

@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 #include <QQuickWindow>
 #include <mpd/client.h>
+#include <hwy/highway.h> // Highway SIMD library
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches
@@ -37,16 +38,17 @@ class AlbumModel : public QAbstractListModel
 {
     Q_OBJECT
 public:
-    enum AlbumRoles {
+    enum class AlbumRoles : std::uint16_t {
         NameRole = Qt::UserRole + 1,
         ArtRole,
         ArtistRole // Added ArtistRole
     };
+    Q_ENUM(AlbumRoles)
 
     explicit AlbumModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
     void setAlbums(const QList<AlbumItem> &albums);
     void updateArt(int index, const QString &url);
     QList<AlbumItem> m_albums;
@@ -56,16 +58,17 @@ class TrackModel : public QAbstractListModel
 {
     Q_OBJECT
 public:
-    enum TrackRoles {
+    enum class TrackRoles : std::uint16_t {
         TitleRole = Qt::UserRole + 1,
         DurationRole,
         UriRole
     };
+    Q_ENUM(TrackRoles)
 
     explicit TrackModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
     void setTracks(const QList<TrackItem> &tracks);
     QList<TrackItem> m_tracks;
 };
@@ -74,16 +77,17 @@ class BrowserModel : public QAbstractListModel
 {
     Q_OBJECT
 public:
-    enum BrowserRoles {
+    enum class BrowserRoles : std::uint16_t {
         NameRole = Qt::UserRole + 1,
         PathRole,
         IsDirRole
     };
+    Q_ENUM(BrowserRoles)
 
     explicit BrowserModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
-    QHash<int, QByteArray> roleNames() const override;
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
     void setItems(const QList<BrowserItem> &items);
     QList<BrowserItem> m_items;
 };
@@ -106,24 +110,28 @@ class MpdClient : public QObject
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
-    ~MpdClient();
+    ~MpdClient() override;
+    MpdClient(const MpdClient&) = delete;
+    auto operator=(const MpdClient&) -> MpdClient& = delete;
+    MpdClient(MpdClient&&) = delete;
+    auto operator=(MpdClient&&) -> MpdClient& = delete;
 
-    QString artist() const;
-    QString title() const;
-    QString album() const;
-    QString state() const;
-    QString albumArt() const;
-    qint64 duration() const;
-    qint64 elapsed() const;
-    AlbumModel* albumModel() const;
-    TrackModel* trackModel() const;
-    BrowserModel* browserModel() const;
-    int currentAlbumIndex() const;
-    QString currentPath() const;
+    [[nodiscard]] auto artist() const -> QString;
+    [[nodiscard]] auto title() const -> QString;
+    [[nodiscard]] auto album() const -> QString;
+    [[nodiscard]] auto state() const -> QString;
+    [[nodiscard]] auto albumArt() const -> QString;
+    [[nodiscard]] auto duration() const -> qint64;
+    [[nodiscard]] auto elapsed() const -> qint64;
+    [[nodiscard]] auto albumModel() const -> AlbumModel*;
+    [[nodiscard]] auto trackModel() const -> TrackModel*;
+    [[nodiscard]] auto browserModel() const -> BrowserModel*;
+    [[nodiscard]] auto currentAlbumIndex() const -> int;
+    [[nodiscard]] auto currentPath() const -> QString;
 
     void setWindow(QQuickWindow *window);
 
-public slots:
+public Q_SLOTS:
     void setArtist(const QString &artist);
     void setTitle(const QString &title);
     void setAlbum(const QString &album);
@@ -147,7 +155,7 @@ public slots:
     Q_INVOKABLE void quitApplication();
     Q_INVOKABLE void toggleFullscreen();
 
-signals:
+Q_SIGNALS:
     void artistChanged();
     void titleChanged();
     void albumChanged();
@@ -158,7 +166,7 @@ signals:
     void currentAlbumIndexChanged();
     void currentPathChanged();
 
-private slots:
+private Q_SLOTS:
     void updateStatus();
     void handleMpdEvent();
 
@@ -166,7 +174,7 @@ private:
     void fetchAlbumArt(const QString &album);
     void fetchCoverForModel(int index, const QString &albumName);
     void fetchAlbumArtFromAPIs(const QString &artist, const QString &album, const QString &cachePath, bool isMainArt, int modelIndex); // New helper
-    QByteArray getMpdPicture(const QString &uri);
+    auto getMpdPicture(const QString &uri) -> QByteArray;
     void connect();
     void sendIdle();
     void leaveIdle();
@@ -179,7 +187,7 @@ private:
         int disc;
         int track;
     };
-    QList<SortableSong> getSongsForAlbum(const QString &artistName, const QString &albumName);
+    auto getSongsForAlbum(const QString &artistName, const QString &albumName) -> QList<SortableSong>;
     struct mpd_connection *m_connection;
     QSocketNotifier *m_notifier;
     QNetworkAccessManager *m_networkManager;
