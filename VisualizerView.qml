@@ -8,6 +8,7 @@ Pane {
     property string albumArt: ""
     property real contentBottomMargin: 0
     property bool active: false
+    property real barOpacity: 0.9
     signal clicked()
     padding: 0
     clip: true
@@ -51,7 +52,7 @@ Pane {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(4, visualizerRow.height * (root.magnitudes[index] || 0))
                 color: AudioVisualizer.barColors[index] || "white"
-                opacity: 0.9
+                opacity: root.barOpacity
                 radius: 4
                 
                 Behavior on Layout.preferredHeight {

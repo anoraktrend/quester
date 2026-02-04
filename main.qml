@@ -58,7 +58,7 @@ ApplicationWindow {
         // Application Menu Button (Hamburger Menu)
         ToolButton {
             id: menuButton
-            icon.source: "image://theme/BurgerMenu"
+            icon.source: "image://theme/hamburger-menu"
             icon.color: palette.windowText
             icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
             anchors.right: parent.right
@@ -72,14 +72,21 @@ ApplicationWindow {
 
                 MenuItem {
                     text: qsTr("Visualizer")
-                    visible: coverFlow.state === "libraryView"
+                    visible: coverFlow.state !== "visualizerView" 
                     height: visible ? implicitHeight : 0
                     onClicked: goToVisualizer()
                 }
                 
                 MenuItem {
+                    text: qsTr("Queue")
+                    visible: coverFlow.state !== "libraryView"
+                    height: visible ? implicitHeight : 0
+                    onClicked: coverFlow.state = "queueView"
+                }
+
+                MenuItem {
                     text: qsTr("Return to Library")
-                    visible: coverFlow.state === "visualizerView"
+                    visible: coverFlow.state !== "libraryView"
                     height: visible ? implicitHeight : 0
                     onTriggered: coverFlow.state = "libraryView"
                 }
@@ -162,7 +169,7 @@ ApplicationWindow {
         
         PathView {
             id: pathView
-            visible: coverFlow.viewMode === "flow"
+            visible: coverFlow.viewMode === "flow" && coverFlow.state === "libraryView"
             anchors.top: parent.top
             anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
@@ -228,10 +235,26 @@ ApplicationWindow {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: {
-                        // When an item is clicked, it becomes the current item.
-                        mpdClient.playAlbum(model.artist, model.name) // Play the album
-                        pathView.currentIndex = index
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            contextMenu.popup()
+                        } else {
+                            mpdClient.playAlbum(model.artist, model.name)
+                            pathView.currentIndex = index
+                        }
+                    }
+
+                    Menu {
+                        id: contextMenu
+                        MenuItem {
+                            text: qsTr("Play Album")
+                            onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                        }
+                        MenuItem {
+                            text: qsTr("Add to Queue")
+                            onTriggered: mpdClient.addAlbum(model.artist, model.name)
+                        }
                     }
                 }
             }
@@ -306,9 +329,26 @@ ApplicationWindow {
                         
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: {
-                                pathView.currentIndex = index
-                                coverFlow.viewMode = "flow"
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (mouse) => {
+                                if (mouse.button === Qt.RightButton) {
+                                    gridContextMenu.popup()
+                                } else {
+                                    pathView.currentIndex = index
+                                    coverFlow.viewMode = "flow"
+                                }
+                            }
+
+                            Menu {
+                                id: gridContextMenu
+                                MenuItem {
+                                    text: qsTr("Play Album")
+                                    onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                                }
+                                MenuItem {
+                                    text: qsTr("Add to Queue")
+                                    onTriggered: mpdClient.addAlbum(model.artist, model.name)
+                                }
                             }
                         }
                     }
@@ -371,6 +411,20 @@ ApplicationWindow {
                         mpdClient.playTrack(model.path)
                     }
                 }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: (mouse) => browserContextMenu.popup()
+                }
+
+                Menu {
+                    id: browserContextMenu
+                    MenuItem {
+                        text: qsTr("Add to Queue")
+                        onTriggered: mpdClient.addPath(model.path)
+                    }
+                }
             }
             ScrollBar.vertical: ScrollBar { }
         }
@@ -381,7 +435,8 @@ ApplicationWindow {
             magnitudes: AudioVisualizer.magnitudes
             albumArt: mpdClient.albumArt
             contentBottomMargin: 0
-            active: coverFlow.state === "visualizerView" && mpdClient.state === "play"
+            active: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
+            barOpacity: coverFlow.state === "queueView" ? 0.2 : 0.9
             z: 10
             onClicked: coverFlow.state = "libraryView"
 
@@ -413,6 +468,71 @@ ApplicationWindow {
                     AudioVisualizer.stop();
                 }
             }
+        }
+
+        ListView {
+            id: queueListView
+            anchors.top: parent.top
+            anchors.topMargin: headerBar.height + 10
+            anchors.bottom: bottomControls.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            clip: true
+            visible: false
+            opacity: 0.5
+            z: 15 // Above visualizer
+            model: mpdClient.queueModel
+
+            delegate: ItemDelegate {
+                width: ListView.view.width
+                height: 50
+                highlighted: model.isCurrent
+
+                background: Rectangle {
+                    color: parent.highlighted ? Qt.rgba(palette.highlight.r, palette.highlight.g, palette.highlight.b, 0.4) : 
+                           (parent.down ? Qt.rgba(palette.midlight.r, palette.midlight.g, palette.midlight.b, 0.4) : "transparent")
+                    radius: 4
+                }
+
+                contentItem: RowLayout {
+                Rectangle {
+                        color: parent.highlighted ? Qt.rgba(palette.highlight.r, palette.highlight.g, palette.highlight.b, 0.4) : 
+                           (parent.down ? Qt.rgba(palette.midlight.r, palette.midlight.g, palette.midlight.b, 0.4) : "transparent")
+                        radius: 4
+                    }
+                    spacing: 10
+                    Text {
+                        text: model.title
+                        color: palette.text
+                        font.bold: model.isCurrent
+                        font.pixelSize: 14 * window.fontScale
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: model.artist
+                        color: palette.windowText
+                        font.pixelSize: 12 * window.fontScale
+                        Layout.preferredWidth: 150
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: model.duration
+                        color: palette.windowText
+                        font.pixelSize: 12 * window.fontScale
+                    }
+                }
+
+                onClicked: mpdClient.playQueueId(model.id)
+                
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: (mouse) => mpdClient.removeId(model.id)
+                }
+            }
+            ScrollBar.vertical: ScrollBar { }
         }
 
         Rectangle {
@@ -584,6 +704,20 @@ ApplicationWindow {
                 
                 onClicked: mpdClient.playTrack(model.uri)
 
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onClicked: (mouse) => trackContextMenu.popup()
+                }
+
+                Menu {
+                    id: trackContextMenu
+                    MenuItem {
+                        text: qsTr("Add to Queue")
+                        onTriggered: mpdClient.addTrack(model.uri)
+                    }
+                }
+
                 contentItem: Item {
                     Text {
                         anchors.left: parent.left
@@ -616,10 +750,17 @@ ApplicationWindow {
             },
             State {
                 name: "visualizerView"
-                PropertyChanges { target: pathView; opacity: 0.0; visible: false }
+                PropertyChanges { target: pathView; opacity: 0.0 }
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
+            },
+            State {
+                name: "queueView"
+                PropertyChanges { target: pathView; opacity: 0.0 }
+                PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
+                PropertyChanges { target: gradientRect; opacity: 0.0 }
+                PropertyChanges { target: queueListView; opacity: 1.0; visible: true }
             }
         ]
     }

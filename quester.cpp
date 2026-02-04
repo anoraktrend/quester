@@ -30,6 +30,8 @@
 constexpr int TIMER_INTERVAL = 100;
 constexpr int MPD_PORT = 6600;
 constexpr int MPD_TIMEOUT_MS = 30000;
+constexpr int SECONDS_PER_MINUTE = 60;
+constexpr int DECIMAL_BASE = 10;
 
 // --- AlbumModel Implementation ---
 auto AlbumModel::rowCount(const QModelIndex &parent) const -> int
@@ -154,6 +156,66 @@ void BrowserModel::setItems(const QList<BrowserItem> &items)
     endResetModel();
 }
 
+// --- QueueModel Implementation ---
+auto QueueModel::rowCount(const QModelIndex &parent) const -> int
+{
+    if (parent.isValid())
+        return 0;
+    return static_cast<int>(m_queue.count());
+}
+
+auto QueueModel::data(const QModelIndex &index, int role) const -> QVariant
+{
+    if (!index.isValid() || index.row() >= m_queue.count())
+        return {};
+    const QueueItem &item = m_queue[index.row()];
+    if (role == static_cast<int>(QueueRoles::IdRole))
+        return item.id;
+    if (role == static_cast<int>(QueueRoles::TitleRole))
+        return item.title;
+    if (role == static_cast<int>(QueueRoles::ArtistRole))
+        return item.artist;
+    if (role == static_cast<int>(QueueRoles::AlbumRole))
+        return item.album;
+    if (role == static_cast<int>(QueueRoles::DurationRole))
+        return item.duration;
+    if (role == static_cast<int>(QueueRoles::UriRole))
+        return item.uri;
+    if (role == static_cast<int>(QueueRoles::IsCurrentRole))
+        return item.id == m_currentSongId;
+    return {};
+}
+
+auto QueueModel::roleNames() const -> QHash<int, QByteArray>
+{
+    QHash<int, QByteArray> roles;
+    roles[static_cast<int>(QueueRoles::IdRole)] = "id";
+    roles[static_cast<int>(QueueRoles::TitleRole)] = "title";
+    roles[static_cast<int>(QueueRoles::ArtistRole)] = "artist";
+    roles[static_cast<int>(QueueRoles::AlbumRole)] = "album";
+    roles[static_cast<int>(QueueRoles::DurationRole)] = "duration";
+    roles[static_cast<int>(QueueRoles::UriRole)] = "uri";
+    roles[static_cast<int>(QueueRoles::IsCurrentRole)] = "isCurrent";
+    return roles;
+}
+
+void QueueModel::setQueue(const QList<QueueItem> &queue)
+{
+    beginResetModel();
+    m_queue = queue;
+    endResetModel();
+}
+
+void QueueModel::setCurrentSongId(int id)
+{
+    if (m_currentSongId == id)
+        return;
+    m_currentSongId = id;
+    // Refresh all data to update IsCurrentRole. 
+    // For a large queue, we might want to be more specific, but this is safe.
+    emit dataChanged(index(0), index(static_cast<int>(m_queue.count()) - 1), {static_cast<int>(QueueRoles::IsCurrentRole)});
+}
+
 MpdClient::MpdClient(QObject *parent)
     : QObject(parent)
     , m_connection(nullptr)
@@ -161,6 +223,7 @@ MpdClient::MpdClient(QObject *parent)
     , m_albumModel(new AlbumModel(this))
     , m_trackModel(new TrackModel(this))
     , m_browserModel(new BrowserModel(this))
+    , m_queueModel(new QueueModel(this))
     , m_timer(new QTimer(this)), 
      m_notifier(nullptr)
 {
@@ -199,13 +262,14 @@ void MpdClient::connect()
         QObject::connect(m_notifier, &QSocketNotifier::activated, this, &MpdClient::handleMpdEvent);
 
         updateStatus(); // Initial status fetch
+        refreshQueue(); // Initial queue fetch
         sendIdle();     // Enter idle loop
     }
 }
 
 void MpdClient::sendIdle()
 {
-    if (m_connection) {
+    if (m_connection && !m_isIdle) {
         if (mpd_send_idle(m_connection)) {
             m_isIdle = true;
         }
@@ -237,6 +301,9 @@ void MpdClient::handleMpdEvent()
     }
     if (events & MPD_IDLE_STORED_PLAYLIST) {
         refreshPlaylists();
+    }
+    if (events & MPD_IDLE_QUEUE) {
+        refreshQueue();
     }
 
     // Re-enter idle mode
@@ -341,6 +408,9 @@ void MpdClient::updateStatus()
 
             if (song_id != m_currentSongId) {
                 m_currentSongId = song_id;
+                if (m_queueModel) {
+                    m_queueModel->setCurrentSongId(m_currentSongId);
+                }
                 fetchAlbumArt(m_album);
             }
 
@@ -511,6 +581,10 @@ auto MpdClient::browserModel() const -> BrowserModel *
 {
     return m_browserModel;
 }
+auto MpdClient::queueModel() const -> QueueModel *
+{
+    return m_queueModel;
+}
 auto MpdClient::currentPath() const -> QString
 {
     return m_currentPath;
@@ -619,7 +693,10 @@ void MpdClient::refreshLibrary()
 
     m_timer->stop();
 
-    leaveIdle();
+    bool wasIdle = m_isIdle;
+    if (wasIdle) {
+        leaveIdle();
+    }
 
     QList<AlbumItem> albums;
     QSet<QString> addedAlbums;
@@ -685,7 +762,9 @@ void MpdClient::refreshLibrary()
         }
     }
 
-    sendIdle();
+    if (wasIdle) {
+        sendIdle();
+    }
     m_timer->start(TIMER_INTERVAL);
 }
 
@@ -709,6 +788,63 @@ void MpdClient::loadAlbumTracks(int index)
 
     m_trackModel->setTracks(tracks);
     m_timer->start(TIMER_INTERVAL);
+    sendIdle();
+}
+
+void MpdClient::refreshQueue()
+{
+    if (!m_connection)
+        return;
+
+    m_timer->stop();
+    bool wasIdle = m_isIdle;
+    if (wasIdle) {
+        leaveIdle();
+    }
+
+    QList<QueueItem> queue;
+    if (mpd_send_list_queue_meta(m_connection)) {
+        struct mpd_entity *entity = nullptr;
+        while ((entity = mpd_recv_entity(m_connection)) != nullptr) {
+            if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
+                const struct mpd_song *song = mpd_entity_get_song(entity);
+                int id = static_cast<int>(mpd_song_get_id(song));
+                const char *uri = mpd_song_get_uri(song);
+                const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+                const char *artist = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
+                const char *album = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
+                unsigned duration = mpd_song_get_duration(song);
+
+                queue.append({
+                    id,
+                    title ? QString::fromUtf8(title) : QString::fromUtf8(uri).section('/', -1),
+                    artist ? QString::fromUtf8(artist) : tr("Unknown Artist"),
+                    album ? QString::fromUtf8(album) : tr("Unknown Album"),
+                    QString("%1:%2").arg(duration / SECONDS_PER_MINUTE).arg(duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0')),
+                    QString::fromUtf8(uri)
+                });
+            }
+            mpd_entity_free(entity);
+        }
+        mpd_response_finish(m_connection);
+    } else {
+        mpd_connection_clear_error(m_connection);
+    }
+
+    m_queueModel->setQueue(queue);
+    m_queueModel->setCurrentSongId(m_currentSongId);
+
+    if (wasIdle) {
+        sendIdle();
+    }
+    m_timer->start(TIMER_INTERVAL);
+}
+
+void MpdClient::playQueueId(int id)
+{
+    if (!m_connection) return;
+    leaveIdle();
+    mpd_run_play_id(m_connection, id);
     sendIdle();
 }
 
@@ -749,12 +885,14 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     QList<SortableSong> songList = getSongsForAlbum(artistName, albumName);
 
     if (!songList.isEmpty()) {
-        mpd_command_list_begin(m_connection, true);
+        mpd_command_list_begin(m_connection, false);
         for (const auto &s : songList) {
             mpd_send_add(m_connection, s.uri.toUtf8().constData());
         }
         mpd_command_list_end(m_connection);
-        mpd_response_finish(m_connection);
+        if (!mpd_response_finish(m_connection)) {
+            mpd_connection_clear_error(m_connection);
+        }
     }
 
     // 3. Start playing from the beginning of the (now populated) playlist.
@@ -767,6 +905,48 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
     sendIdle(); // Re-enter idle mode
     m_timer->start(TIMER_INTERVAL);
     updateStatus(); // Force an immediate status update
+}
+
+void MpdClient::addAlbum(const QString &artistName, const QString &albumName)
+{
+    if (!m_connection || albumName.isEmpty())
+        return;
+
+    m_timer->stop();
+    leaveIdle();
+
+    QList<SortableSong> songList = getSongsForAlbum(artistName, albumName);
+
+    if (!songList.isEmpty()) {
+        mpd_command_list_begin(m_connection, false);
+        for (const auto &s : songList) {
+            mpd_send_add(m_connection, s.uri.toUtf8().constData());
+        }
+        mpd_command_list_end(m_connection);
+        if (!mpd_response_finish(m_connection)) {
+            mpd_connection_clear_error(m_connection);
+        }
+    }
+
+    sendIdle();
+    m_timer->start(TIMER_INTERVAL);
+}
+
+void MpdClient::addTrack(const QString &uri)
+{
+    if (!m_connection || uri.isEmpty())
+        return;
+
+    m_timer->stop();
+    leaveIdle();
+    mpd_run_add(m_connection, uri.toUtf8().constData());
+    sendIdle();
+    m_timer->start(TIMER_INTERVAL);
+}
+
+void MpdClient::addPath(const QString &path)
+{
+    addTrack(path); // mpd_run_add handles both files and directories
 }
 
 auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &albumName) -> QList<MpdClient::SortableSong>
@@ -836,7 +1016,10 @@ void MpdClient::browsePath(const QString &path)
         return;
 
     m_timer->stop();
-    leaveIdle();
+    bool wasIdle = m_isIdle;
+    if (wasIdle) {
+        leaveIdle();
+    }
 
     QList<BrowserItem> items;
 
@@ -882,7 +1065,9 @@ void MpdClient::browsePath(const QString &path)
     m_currentPath = path;
     emit currentPathChanged();
 
-    sendIdle();
+    if (wasIdle) {
+        sendIdle();
+    }
     m_timer->start(TIMER_INTERVAL);
 }
 
@@ -1221,7 +1406,7 @@ void MpdClient::refreshPlaylists()
 
     if (mpd_send_list_playlists(m_connection)) {
         QStringList newPlaylists;
-        struct mpd_playlist *pl;
+        struct mpd_playlist *pl = nullptr;
         while ((pl = mpd_recv_playlist(m_connection)) != nullptr) {
             newPlaylists.append(QString::fromUtf8(mpd_playlist_get_path(pl)));
             mpd_playlist_free(pl);

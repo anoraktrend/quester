@@ -34,6 +34,15 @@ struct BrowserItem {
     bool isDir;
 };
 
+struct QueueItem {
+    int id;
+    QString title;
+    QString artist;
+    QString album;
+    QString duration;
+    QString uri;
+};
+
 class AlbumModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -92,6 +101,31 @@ public:
     QList<BrowserItem> m_items;
 };
 
+class QueueModel : public QAbstractListModel
+{
+    Q_OBJECT
+public:
+    enum class QueueRoles : std::uint16_t {
+        IdRole = Qt::UserRole + 1,
+        TitleRole,
+        ArtistRole,
+        AlbumRole,
+        DurationRole,
+        UriRole,
+        IsCurrentRole
+    };
+    Q_ENUM(QueueRoles)
+
+    explicit QueueModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
+    void setQueue(const QList<QueueItem> &queue);
+    void setCurrentSongId(int id);
+    QList<QueueItem> m_queue;
+    int m_currentSongId = -1;
+};
+
 class MpdClient : public QObject
 {
     Q_OBJECT
@@ -105,6 +139,7 @@ class MpdClient : public QObject
     Q_PROPERTY(AlbumModel* albumModel READ albumModel CONSTANT)
     Q_PROPERTY(TrackModel* trackModel READ trackModel CONSTANT)
     Q_PROPERTY(BrowserModel* browserModel READ browserModel CONSTANT)
+    Q_PROPERTY(QueueModel* queueModel READ queueModel CONSTANT)
     Q_PROPERTY(int currentAlbumIndex READ currentAlbumIndex NOTIFY currentAlbumIndexChanged)
     Q_PROPERTY(QString currentPath READ currentPath NOTIFY currentPathChanged)
     Q_PROPERTY(bool repeat READ repeat WRITE setRepeat NOTIFY repeatChanged)
@@ -131,6 +166,7 @@ public:
     [[nodiscard]] auto albumModel() const -> AlbumModel*;
     [[nodiscard]] auto trackModel() const -> TrackModel*;
     [[nodiscard]] auto browserModel() const -> BrowserModel*;
+    [[nodiscard]] auto queueModel() const -> QueueModel*;
     [[nodiscard]] auto currentAlbumIndex() const -> int;
     [[nodiscard]] auto currentPath() const -> QString;
     [[nodiscard]] auto repeat() const -> bool;
@@ -163,6 +199,11 @@ public Q_SLOTS:
     void loadAlbumTracks(int index);
     Q_INVOKABLE void playTrack(const QString &uri);
     Q_INVOKABLE void playAlbum(const QString &artistName, const QString &albumName); // New slot
+    Q_INVOKABLE void addAlbum(const QString &artistName, const QString &albumName);
+    Q_INVOKABLE void refreshQueue();
+    Q_INVOKABLE void playQueueId(int id);
+    Q_INVOKABLE void addTrack(const QString &uri);
+    Q_INVOKABLE void addPath(const QString &path);
     Q_INVOKABLE void browsePath(const QString &path);
     Q_INVOKABLE void refreshPlaylists();
     Q_INVOKABLE void loadPlaylist(const QString &name);
@@ -241,6 +282,7 @@ private:
     AlbumModel *m_albumModel;
     TrackModel *m_trackModel;
     BrowserModel *m_browserModel;
+    QueueModel *m_queueModel;
     QString m_currentPath;
 };
 
