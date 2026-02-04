@@ -9,6 +9,7 @@
 #include <QQmlContext>
 #include <QQuickImageProvider>
 #include <QQuickWindow>
+#include <QtQuickControls2/QQuickStyle>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtGlobal>
@@ -65,6 +66,10 @@ public:
 auto main(int argc, char *argv[]) -> int
 {
     QGuiApplication app(argc, argv);
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
+        QQuickStyle::setStyle("Fusion");
+    }
+
     QString iconPath;
 #ifdef QT_QML_SOURCE_DIR
     iconPath = QStringLiteral(QT_QML_SOURCE_DIR) + "/Quester.svg";
@@ -92,12 +97,11 @@ auto main(int argc, char *argv[]) -> int
     engine.rootContext()->setContextProperty(QStringLiteral("AudioVisualizer"), &audioVisualizer);
     engine.rootContext()->setContextProperty(QStringLiteral("startInVisualizer"), startVisualizer);
 
-    QUrl url;
-    bool found = false;
+const QUrl url(u"qrc:/qt/qml/net/helltop/quester/main.qml"_s);
 
     // The QT_QML_SOURCE_DIR macro is set by CMake to the project's source directory.
     // This allows the application to run directly from the build directory for development.
-    engine.loadFromModule("net.helltop.quester", "Main");
+    // engine.loadFromModule("net.helltop.quester", "main");
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreated,

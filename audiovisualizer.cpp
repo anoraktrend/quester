@@ -2,7 +2,6 @@
 #include <fftw3.h>
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>

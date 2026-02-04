@@ -2,13 +2,16 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+ToolBar {
     id: root
     implicitHeight: 50
     property bool transparentBackground: false
-    gradient: Gradient {
-        GradientStop { position: 0.0; color: root.transparentBackground ? palette.dark : palette.mid}
-        GradientStop { position: 1.0; color: "transparent" }
+    property real fontScale: 1.0
+    background: Rectangle {
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: root.transparentBackground ? palette.dark : palette.mid}
+            GradientStop { position: 1.0; color: "transparent" }
+        }
     }
 
     SystemPalette { id: palette }
@@ -30,7 +33,7 @@ Rectangle {
             text: qsTr("Quester")
             color: palette.windowText
             font.bold: true
-            font.pixelSize: 16
+            font.pixelSize: 16 * root.fontScale
             Layout.fillWidth: true
         }
     }

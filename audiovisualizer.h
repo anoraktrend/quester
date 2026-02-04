@@ -24,7 +24,11 @@ class AudioInput : public QObject
     Q_OBJECT
 public:
     explicit AudioInput(QObject *parent = nullptr) : QObject(parent) {}
-    virtual ~AudioInput() = default;
+    ~AudioInput() override = default;
+    AudioInput(const AudioInput &) = delete;
+    auto operator=(const AudioInput &) -> AudioInput & = delete;
+    AudioInput(AudioInput &&) = delete;
+    auto operator=(AudioInput &&) -> AudioInput & = delete;
     virtual void start() = 0;
     virtual void stop() = 0;
 
@@ -38,7 +42,12 @@ class PulseAudioInput : public AudioInput
     Q_OBJECT
 public:
     explicit PulseAudioInput(QObject *parent = nullptr);
-    ~PulseAudioInput();
+    ~PulseAudioInput() override;
+
+    PulseAudioInput(const PulseAudioInput &) = delete;
+    auto operator=(const PulseAudioInput &) -> PulseAudioInput & = delete;
+    PulseAudioInput(PulseAudioInput &&) = delete;
+    auto operator=(PulseAudioInput &&) -> PulseAudioInput & = delete;
 
     void start() override;
     void stop() override;
@@ -68,7 +77,11 @@ class PipeWireInput : public AudioInput
     Q_OBJECT
 public:
     explicit PipeWireInput(QObject *parent = nullptr);
-    ~PipeWireInput();
+    ~PipeWireInput() override;
+    PipeWireInput(const PipeWireInput &) = delete;
+    auto operator=(const PipeWireInput &) -> PipeWireInput & = delete;
+    PipeWireInput(PipeWireInput &&) = delete;
+    auto operator=(PipeWireInput &&) -> PipeWireInput & = delete;
     void start() override;
     void stop() override;
 
@@ -86,7 +99,11 @@ class FifoInput : public AudioInput
     Q_OBJECT
 public:
     explicit FifoInput(QString path, QObject *parent = nullptr);
-    ~FifoInput();
+    ~FifoInput() override;
+    FifoInput(const FifoInput &) = delete;
+    auto operator=(const FifoInput &) -> FifoInput & = delete;
+    FifoInput(FifoInput &&) = delete;
+    auto operator=(FifoInput &&) -> FifoInput & = delete;
     void start() override;
     void stop() override;
 
@@ -111,20 +128,24 @@ class AudioVisualizer : public QObject
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
-    ~AudioVisualizer();
+    ~AudioVisualizer() override;
+    AudioVisualizer(const AudioVisualizer &) = delete;
+    auto operator=(const AudioVisualizer &) -> AudioVisualizer & = delete;
+    AudioVisualizer(AudioVisualizer &&) = delete;
+    auto operator=(AudioVisualizer &&) -> AudioVisualizer & = delete;
 
-    QList<qreal> magnitudes() const;
-    bool active() const;
-    int width() const;
+    [[nodiscard]] auto magnitudes() const -> QList<qreal>;
+    [[nodiscard]] auto active() const -> bool;
+    [[nodiscard]] auto width() const -> int;
     void setWidth(int width);
-    int height() const;
+    [[nodiscard]] auto height() const -> int;
     void setHeight(int height);
-    QStringList presetNames() const;
-    QString currentPreset() const;
+    [[nodiscard]] auto presetNames() const -> QStringList;
+    [[nodiscard]] auto currentPreset() const -> QString;
     void setCurrentPreset(const QString &name);
-    QVariantList barColors() const;
+    [[nodiscard]] auto barColors() const -> QVariantList;
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
-    bool topDownMode() const;
+    [[nodiscard]] auto topDownMode() const -> bool;
     void setTopDownMode(bool topDownMode);
 
 public slots:
@@ -159,8 +180,13 @@ private:
     bool m_active;
     QTimer *m_decayTimer{};
     int m_width = 0;
-    int m_height = 600;
-    int m_numBars = 32;
+    // Define named constants to avoid magic numbers
+    static constexpr int DefaultHeight = 600;
+    static constexpr int DefaultNumBars = 32;
+
+    // Use the constants for initialization
+    int m_height = DefaultHeight;
+    int m_numBars = DefaultNumBars;
     double m_maxPeak = 100.0;
     bool m_topDown = false;
 

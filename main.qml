@@ -15,6 +15,7 @@ ApplicationWindow {
     title: qsTr("Quester")
     color: palette.window
 
+    property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
     SystemPalette { id: palette }
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
@@ -27,6 +28,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         transparentBackground: coverFlow.state === "visualizerView"
+        fontScale: window.fontScale
 
         Action {
             id: fullscreenAction
@@ -56,8 +58,9 @@ ApplicationWindow {
         // Application Menu Button (Hamburger Menu)
         ToolButton {
             id: menuButton
-            text: "\u2630" // Hamburger icon
-            font.pixelSize: 20
+            icon.source: "image://theme/BurgerMenu"
+            icon.color: palette.windowText
+            icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
 
@@ -326,7 +329,7 @@ ApplicationWindow {
                         anchors.topMargin: 22
                         width: parent.width
                         text: model.artist
-                        font.pixelSize: 12
+                        font.pixelSize: 12 * window.fontScale
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignHCenter
                         color: palette.windowText
@@ -349,46 +352,23 @@ ApplicationWindow {
             visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
             model: mpdClient.browserModel
             
-            delegate: Item {
+            delegate: ItemDelegate {
                 width: ListView.view.width
                 height: 50
+                text: model.name
+                icon.source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
+                icon.width: 24
+                icon.height: 24
                 
-                Rectangle {
-                    anchors.fill: parent
-                    color: index % 2 == 0 ? palette.base : palette.alternateBase
-                    
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (model.isDir) {
-                                mpdClient.browsePath(model.path)
-                            } else {
-                                mpdClient.playTrack(model.path)
-                            }
-                        }
-                    }
+                background: Rectangle {
+                    color: parent.down ? palette.midlight : (index % 2 == 0 ? palette.base : palette.alternateBase)
                 }
-                
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 20
-                    spacing: 10
 
-                    Image {
-                        source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
-                        sourceSize: Qt.size(24, 24)
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-
-                    Text {
-                        text: model.name
-                        color: palette.text
-                        font.pixelSize: 16
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
-                        elide: Text.ElideRight
+                onClicked: {
+                    if (model.isDir) {
+                        mpdClient.browsePath(model.path)
+                    } else {
+                        mpdClient.playTrack(model.path)
                     }
                 }
             }
@@ -523,7 +503,7 @@ ApplicationWindow {
                     spacing: 2
                     Text {
                         text: mpdClient.title
-                        font.pixelSize: 18
+                        font.pixelSize: 18 * window.fontScale
                         font.bold: true
                         color: palette.windowText
                         Layout.fillWidth: true
@@ -531,7 +511,7 @@ ApplicationWindow {
                     }
                     Text {
                         text: mpdClient.artist + " - " + mpdClient.album
-                        font.pixelSize: 14
+                        font.pixelSize: 14 * window.fontScale
                         color: palette.windowText
                         Layout.fillWidth: true
                         elide: Text.ElideRight
@@ -541,7 +521,9 @@ ApplicationWindow {
                 RowLayout {
                     spacing: 15
                     Button { 
-                        text: "◀◀"
+                        icon.source: "image://theme/media-skip-backward"
+                        icon.color: palette.windowText
+                        icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
                         onClicked: mpdClient.previous()
                         flat: true 
                         background: Rectangle {
@@ -553,10 +535,11 @@ ApplicationWindow {
                     }
                     Button {
                         id: playPauseButton
-                        text: mpdClient.state === "play" ? "❚❚" : "▶"
+                        icon.source: mpdClient.state === "play" ? "image://theme/media-playback-pause" : "image://theme/media-playback-start"
+                        icon.color: palette.windowText
+                        icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
                         onClicked: mpdClient.togglePlayPause()
-                        font.pixelSize: 20
-                        width: 40; height: 40
+                        width: 100; height: 40
                         background: Rectangle {
                             radius: 20
                             color: parent.down ? palette.mid : palette.button
@@ -565,8 +548,10 @@ ApplicationWindow {
                         }
                     }
                     Button {
-                        text: "▶▶"
-                        onClicked: mpdClient.previous()
+                        icon.source: "image://theme/media-skip-forward"
+                        icon.color: palette.windowText
+                        icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
+                        onClicked: mpdClient.next()
                         flat: true 
                         background: Rectangle {
                             radius: 20
@@ -589,36 +574,33 @@ ApplicationWindow {
             model: mpdClient.trackModel
             visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "flow"
             
-            delegate: Item {
+            delegate: ItemDelegate {
                 width: ListView.view.width
                 height: 40
                 
-                Rectangle {
-                    anchors.fill: parent
-                    color: index % 2 == 0 ? palette.base : palette.alternateBase
-                    
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: mpdClient.playTrack(model.uri)
+                background: Rectangle {
+                    color: parent.down ? palette.midlight : (index % 2 == 0 ? palette.base : palette.alternateBase)
+                }
+                
+                onClicked: mpdClient.playTrack(model.uri)
+
+                contentItem: Item {
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 20
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: model.title
+                        color: palette.text
+                        font.pixelSize: 14 * window.fontScale
                     }
-                }
-                
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 20
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: model.title
-                    color: palette.text
-                    font.pixelSize: 14
-                }
-                
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 20
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: model.duration
-                    color: palette.windowText
-                    font.pixelSize: 12
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 20
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: model.duration
+                        color: palette.windowText
+                        font.pixelSize: 12 * window.fontScale
+                    }
                 }
             }
             ScrollBar.vertical: ScrollBar { }

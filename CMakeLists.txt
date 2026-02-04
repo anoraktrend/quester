@@ -11,6 +11,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 
+set(QT_MAJOR_VERSION 6)
+
+set(REQUIRED_QT_VERSION 6.5.2)
+set(REQUIRED_KF_VERSION 5.240.0)
+
+
 # Set a default build type if none was specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -19,13 +25,22 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-include(GNUInstallDirs)
+find_package(ECM ${REQUIRED_KF_VERSION} REQUIRED NO_MODULE)
+set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+# set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${ECM_MODULE_PATH})
+
+if(UNIX AND NOT APPLE AND NOT ANDROID)
+    include(KDEInstallDirs)
+    include(KDECMakeSettings)
+endif()
+
 
 find_package(Qt6 COMPONENTS
     Core
     Gui
     Qml
     Quick
+    QuickControls2
     QmlModels
     Network
     Multimedia
@@ -66,7 +81,7 @@ target_compile_definitions(quester PRIVATE
     "APP_DATADIR=\"${CMAKE_INSTALL_FULL_DATADIR}/Quester\"")
 
 qt_add_qml_module(quester
-    URI Quester
+    URI net.helltop.quester
     VERSION 1.0
     QML_FILES
         main.qml
@@ -80,6 +95,7 @@ target_link_libraries(quester
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
+    Qt6::QuickControls2
     Qt6::QmlModels
     Qt6::Network
     Qt6::Multimedia
@@ -96,23 +112,23 @@ target_link_libraries(quester
 
 # Install the executable to the standard binary location (e.g., /usr/local/bin)
 install(TARGETS quester
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RUNTIME DESTINATION ${KDE_INSTALL_BINDIR}
 )
 
 # Install the application icon.
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Quester.svg
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+    DESTINATION ${KDE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
     RENAME quester.svg
 )
 
 
 # Install the .desktop file to the standard applications directory
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/quester.desktop
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+    DESTINATION ${KDE_INSTALL_APPDIR}
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/Quester/presets
+    DESTINATION ${KDE_INSTALL_DATADIR}/Quester/presets
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/

@@ -1,3 +1,5 @@
 build/
 cava/
+quester
 *.tar.gz
+AI_DEVELOPER_GUIDE.md

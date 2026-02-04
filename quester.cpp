@@ -4,6 +4,9 @@
 #include <mpd/recv.h>
 #include <mpd/directory.h>
 #include <mpd/entity.h>
+#include <mpd/player.h>
+#include <mpd/playlist.h>
+#include <mpd/queue.h>
 #include <mpd/response.h>
 #include <mpd/search.h>
 #include <mpd/song.h>
@@ -41,11 +44,11 @@ auto AlbumModel::data(const QModelIndex &index, int role) const -> QVariant
     if (!index.isValid() || index.row() >= m_albums.count())
         return {};
     const AlbumItem &item = m_albums[index.row()];
-    if (role == NameRole)
+    if (role == static_cast<int>(AlbumRoles::NameRole))
         return item.name;
-    if (role == ArtRole)
+    if (role == static_cast<int>(AlbumRoles::ArtRole))
         return item.artUrl;
-    if (role == ArtistRole)
+    if (role == static_cast<int>(AlbumRoles::ArtistRole))
         return item.artist; // Return artist for ArtistRole
     return {};
 }
@@ -53,9 +56,9 @@ auto AlbumModel::data(const QModelIndex &index, int role) const -> QVariant
 auto AlbumModel::roleNames() const -> QHash<int, QByteArray>
 {
     QHash<int, QByteArray> roles;
-    roles[NameRole] = "name";
-    roles[ArtRole] = "art";
-    roles[ArtistRole] = "artist"; // Map ArtistRole to "artist"
+    roles[static_cast<int>(AlbumRoles::NameRole)] = "name";
+    roles[static_cast<int>(AlbumRoles::ArtRole)] = "art";
+    roles[static_cast<int>(AlbumRoles::ArtistRole)] = "artist"; // Map ArtistRole to "artist"
     return roles;
 }
 
@@ -72,7 +75,7 @@ void AlbumModel::updateArt(int index, const QString &url)
         return;
     m_albums[index].artUrl = url;
     m_albums[index].artLoading = false;
-    emit dataChanged(this->index(index), this->index(index), {ArtRole});
+    emit dataChanged(this->index(index), this->index(index), {static_cast<int>(AlbumRoles::ArtRole)});
 }
 
 // --- TrackModel Implementation ---
@@ -88,11 +91,11 @@ auto TrackModel::data(const QModelIndex &index, int role) const -> QVariant
     if (!index.isValid() || index.row() >= m_tracks.count())
         return {};
     const TrackItem &item = m_tracks[index.row()];
-    if (role == TitleRole)
+    if (role == static_cast<int>(TrackRoles::TitleRole))
         return item.title;
-    if (role == DurationRole)
+    if (role == static_cast<int>(TrackRoles::DurationRole))
         return item.duration;
-    if (role == UriRole)
+    if (role == static_cast<int>(TrackRoles::UriRole))
         return item.uri;
     return {};
 }
@@ -100,9 +103,9 @@ auto TrackModel::data(const QModelIndex &index, int role) const -> QVariant
 auto TrackModel::roleNames() const -> QHash<int, QByteArray>
 {
     QHash<int, QByteArray> roles;
-    roles[TitleRole] = "title";
-    roles[DurationRole] = "duration";
-    roles[UriRole] = "uri";
+    roles[static_cast<int>(TrackRoles::TitleRole)] = "title";
+    roles[static_cast<int>(TrackRoles::DurationRole)] = "duration";
+    roles[static_cast<int>(TrackRoles::UriRole)] = "uri";
     return roles;
 }
 
@@ -126,11 +129,11 @@ auto BrowserModel::data(const QModelIndex &index, int role) const -> QVariant
     if (!index.isValid() || index.row() >= m_items.count())
         return {};
     const BrowserItem &item = m_items[index.row()];
-    if (role == NameRole)
+    if (role == static_cast<int>(BrowserRoles::NameRole))
         return item.name;
-    if (role == PathRole)
+    if (role == static_cast<int>(BrowserRoles::PathRole))
         return item.path;
-    if (role == IsDirRole)
+    if (role == static_cast<int>(BrowserRoles::IsDirRole))
         return item.isDir;
     return {};
 }
@@ -138,9 +141,9 @@ auto BrowserModel::data(const QModelIndex &index, int role) const -> QVariant
 auto BrowserModel::roleNames() const -> QHash<int, QByteArray>
 {
     QHash<int, QByteArray> roles;
-    roles[NameRole] = "name";
-    roles[PathRole] = "path";
-    roles[IsDirRole] = "isDir";
+    roles[static_cast<int>(BrowserRoles::NameRole)] = "name";
+    roles[static_cast<int>(BrowserRoles::PathRole)] = "path";
+    roles[static_cast<int>(BrowserRoles::IsDirRole)] = "isDir";
     return roles;
 }
 
@@ -229,8 +232,11 @@ void MpdClient::handleMpdEvent()
     // Read the idle response
     enum mpd_idle events = mpd_recv_idle(m_connection, true);
 
-    if (events & (MPD_IDLE_PLAYER | MPD_IDLE_MIXER)) {
+    if (events & (MPD_IDLE_PLAYER | MPD_IDLE_MIXER | MPD_IDLE_OPTIONS)) {
         updateStatus();
+    }
+    if (events & MPD_IDLE_STORED_PLAYLIST) {
+        refreshPlaylists();
     }
 
     // Re-enter idle mode
@@ -265,6 +271,28 @@ void MpdClient::updateStatus()
         default:
             setState("unknown");
             break;
+        }
+
+        bool repeat = mpd_status_get_repeat(status);
+        bool random = mpd_status_get_random(status);
+        bool single = mpd_status_get_single(status);
+        bool consume = mpd_status_get_consume(status);
+
+        if (m_repeat != repeat) {
+            m_repeat = repeat;
+            emit repeatChanged();
+        }
+        if (m_random != random) {
+            m_random = random;
+            emit randomChanged();
+        }
+        if (m_single != single) {
+            m_single = single;
+            emit singleChanged();
+        }
+        if (m_consume != consume) {
+            m_consume = consume;
+            emit consumeChanged();
         }
 
         qint64 elapsed = mpd_status_get_elapsed_time(status);
@@ -487,6 +515,26 @@ auto MpdClient::currentPath() const -> QString
 {
     return m_currentPath;
 }
+auto MpdClient::repeat() const -> bool
+{
+    return m_repeat;
+}
+auto MpdClient::random() const -> bool
+{
+    return m_random;
+}
+auto MpdClient::single() const -> bool
+{
+    return m_single;
+}
+auto MpdClient::consume() const -> bool
+{
+    return m_consume;
+}
+auto MpdClient::playlists() const -> QStringList
+{
+    return m_playlists;
+}
 
 void MpdClient::setArtist(const QString &artist)
 {
@@ -514,6 +562,38 @@ void MpdClient::setState(const QString &state)
     if (m_state != state) {
         m_state = state;
         emit stateChanged();
+    }
+}
+void MpdClient::setRepeat(bool on)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_repeat(m_connection, on);
+        sendIdle();
+    }
+}
+void MpdClient::setRandom(bool on)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_random(m_connection, on);
+        sendIdle();
+    }
+}
+void MpdClient::setSingle(bool on)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_single(m_connection, on);
+        sendIdle();
+    }
+}
+void MpdClient::setConsume(bool on)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_consume(m_connection, on);
+        sendIdle();
     }
 }
 
@@ -1127,4 +1207,81 @@ void MpdClient::previous()
         mpd_run_previous(m_connection);
         sendIdle();
     }
+}
+
+void MpdClient::refreshPlaylists()
+{
+    if (!m_connection)
+        return;
+
+    bool wasIdle = m_isIdle;
+    if (wasIdle) {
+        leaveIdle();
+    }
+
+    if (mpd_send_list_playlists(m_connection)) {
+        QStringList newPlaylists;
+        struct mpd_playlist *pl;
+        while ((pl = mpd_recv_playlist(m_connection)) != nullptr) {
+            newPlaylists.append(QString::fromUtf8(mpd_playlist_get_path(pl)));
+            mpd_playlist_free(pl);
+        }
+        mpd_response_finish(m_connection);
+
+        if (m_playlists != newPlaylists) {
+            m_playlists = newPlaylists;
+            emit playlistsChanged();
+        }
+    } else {
+        mpd_connection_clear_error(m_connection);
+    }
+
+    if (wasIdle) {
+        sendIdle();
+    }
+}
+
+void MpdClient::loadPlaylist(const QString &name)
+{
+    if (!m_connection || name.isEmpty())
+        return;
+    leaveIdle();
+    mpd_run_load(m_connection, name.toUtf8().constData());
+    sendIdle();
+}
+
+void MpdClient::savePlaylist(const QString &name)
+{
+    if (!m_connection || name.isEmpty())
+        return;
+    leaveIdle();
+    mpd_run_save(m_connection, name.toUtf8().constData());
+    sendIdle();
+}
+
+void MpdClient::removePlaylist(const QString &name)
+{
+    if (!m_connection || name.isEmpty())
+        return;
+    leaveIdle();
+    mpd_run_rm(m_connection, name.toUtf8().constData());
+    sendIdle();
+}
+
+void MpdClient::clearQueue()
+{
+    if (!m_connection)
+        return;
+    leaveIdle();
+    mpd_run_clear(m_connection);
+    sendIdle();
+}
+
+void MpdClient::removeId(int id)
+{
+    if (!m_connection)
+        return;
+    leaveIdle();
+    mpd_run_delete_id(m_connection, id);
+    sendIdle();
 }

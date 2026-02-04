@@ -107,6 +107,11 @@ class MpdClient : public QObject
     Q_PROPERTY(BrowserModel* browserModel READ browserModel CONSTANT)
     Q_PROPERTY(int currentAlbumIndex READ currentAlbumIndex NOTIFY currentAlbumIndexChanged)
     Q_PROPERTY(QString currentPath READ currentPath NOTIFY currentPathChanged)
+    Q_PROPERTY(bool repeat READ repeat WRITE setRepeat NOTIFY repeatChanged)
+    Q_PROPERTY(bool random READ random WRITE setRandom NOTIFY randomChanged)
+    Q_PROPERTY(bool single READ single WRITE setSingle NOTIFY singleChanged)
+    Q_PROPERTY(bool consume READ consume WRITE setConsume NOTIFY consumeChanged)
+    Q_PROPERTY(QStringList playlists READ playlists NOTIFY playlistsChanged)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -128,6 +133,11 @@ public:
     [[nodiscard]] auto browserModel() const -> BrowserModel*;
     [[nodiscard]] auto currentAlbumIndex() const -> int;
     [[nodiscard]] auto currentPath() const -> QString;
+    [[nodiscard]] auto repeat() const -> bool;
+    [[nodiscard]] auto random() const -> bool;
+    [[nodiscard]] auto single() const -> bool;
+    [[nodiscard]] auto consume() const -> bool;
+    [[nodiscard]] auto playlists() const -> QStringList;
 
     void setWindow(QQuickWindow *window);
 
@@ -136,6 +146,10 @@ public Q_SLOTS:
     void setTitle(const QString &title);
     void setAlbum(const QString &album);
     void setState(const QString &state);
+    void setRepeat(bool on);
+    void setRandom(bool on);
+    void setSingle(bool on);
+    void setConsume(bool on);
 
     // Playback controls
     void play();
@@ -150,6 +164,12 @@ public Q_SLOTS:
     Q_INVOKABLE void playTrack(const QString &uri);
     Q_INVOKABLE void playAlbum(const QString &artistName, const QString &albumName); // New slot
     Q_INVOKABLE void browsePath(const QString &path);
+    Q_INVOKABLE void refreshPlaylists();
+    Q_INVOKABLE void loadPlaylist(const QString &name);
+    Q_INVOKABLE void savePlaylist(const QString &name);
+    Q_INVOKABLE void removePlaylist(const QString &name);
+    Q_INVOKABLE void clearQueue();
+    Q_INVOKABLE void removeId(int id);
 
     // Application/Window controls
     Q_INVOKABLE void quitApplication();
@@ -165,6 +185,11 @@ Q_SIGNALS:
     void elapsedChanged();
     void currentAlbumIndexChanged();
     void currentPathChanged();
+    void repeatChanged();
+    void randomChanged();
+    void singleChanged();
+    void consumeChanged();
+    void playlistsChanged();
 
 private Q_SLOTS:
     void updateStatus();
@@ -204,6 +229,12 @@ private:
     QString m_currentUri;
     int m_currentAlbumIndex = -1;
     bool m_isIdle = false;
+
+    bool m_repeat = false;
+    bool m_random = false;
+    bool m_single = false;
+    bool m_consume = false;
+    QStringList m_playlists;
 
     QQuickWindow *m_window = nullptr;
 
