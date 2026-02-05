@@ -97,7 +97,7 @@ ApplicationWindow {
         // Application Menu Button (Hamburger Menu)
         ToolButton {
             id: menuButton
-            icon.source: "image://theme/hamburger-menu"
+            icon.source: "image://theme/application-menu"
             icon.color: palette.windowText
             icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
             anchors.right: parent.right
