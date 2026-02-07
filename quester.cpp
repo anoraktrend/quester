@@ -33,6 +33,11 @@ constexpr int MPD_PORT = 6600;
 constexpr int MPD_TIMEOUT_MS = 30000;
 constexpr int SECONDS_PER_MINUTE = 60;
 constexpr int DECIMAL_BASE = 10;
+constexpr int HASH_SHIFT_LOW = 6;
+constexpr int HASH_SHIFT_HIGH = 16;
+constexpr int COLOR_MASK = 0xFFFFFF;
+constexpr int HEX_COLOR_WIDTH = 6;
+constexpr int HEX_BASE = 16;
 
 // --- AlbumModel Implementation ---
 auto AlbumModel::rowCount(const QModelIndex &parent) const -> int
@@ -264,7 +269,7 @@ void MpdClient::connect()
         int fd = mpd_connection_get_fd(m_connection);
         if (m_notifier)
             delete m_notifier;
-        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this); // NOLINT(cppcoreguidelines-owning-memory)
         QObject::connect(m_notifier, &QSocketNotifier::activated, this, &MpdClient::handleMpdEvent);
 
         updateStatus();
@@ -365,6 +370,12 @@ void MpdClient::updateStatus()
             emit consumeChanged();
         }
 
+        int volume = mpd_status_get_volume(status);
+        if (m_volume != volume) {
+            m_volume = volume;
+            emit volumeChanged();
+        }
+
         qint64 elapsed = mpd_status_get_elapsed_time(status);
         qint64 total = mpd_status_get_total_time(status);
 
@@ -443,9 +454,9 @@ void MpdClient::fetchAlbumArt(const QString &album)
 
     unsigned int hash = 0;
     for (QChar c : album) {
-        hash = c.unicode() + (hash << 6) + (hash << 16) - hash;
+        hash = c.unicode() + (hash << HASH_SHIFT_LOW) + (hash << HASH_SHIFT_HIGH) - hash;
     }
-    QString color = QString("#%1").arg(hash & 0xFFFFFF, 6, 16, QLatin1Char('0'));
+    QString color = QString("#%1").arg(hash & COLOR_MASK, HEX_COLOR_WIDTH, HEX_BASE, QLatin1Char('0'));
     QString letter = album.left(1).toUpper();
 
     QString svg = QString(
@@ -497,8 +508,10 @@ auto MpdClient::repeat() const -> bool { return m_repeat; }
 auto MpdClient::random() const -> bool { return m_random; }
 auto MpdClient::single() const -> bool { return m_single; }
 auto MpdClient::consume() const -> bool { return m_consume; }
+auto MpdClient::volume() const -> int { return m_volume; }
 auto MpdClient::playlists() const -> QStringList { return m_playlists; }
 auto MpdClient::sortMode() const -> SortMode { return m_sortMode; }
+auto MpdClient::uri() const -> QString { return m_currentUri; }
 
 void MpdClient::setArtist(const QString &artist) {
     if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
@@ -524,6 +537,9 @@ void MpdClient::setSingle(bool on) {
 void MpdClient::setConsume(bool on) {
     if (m_connection) { leaveIdle(); mpd_run_consume(m_connection, on); sendIdle(); }
 }
+void MpdClient::setVolume(int volume) {
+    if (m_connection) { leaveIdle(); mpd_run_set_volume(m_connection, volume); sendIdle(); }
+}
 void MpdClient::setSortMode(SortMode mode) {
     if (m_sortMode == mode) return;
     m_sortMode = mode;
@@ -543,6 +559,26 @@ void MpdClient::play() {
     if (m_connection) { leaveIdle(); mpd_run_play(m_connection); sendIdle(); }
 }
 
+void MpdClient::seek(qint64 time)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_seek_current(m_connection, static_cast<float>(time), false);
+        sendIdle();
+        updateStatus();
+    }
+}
+
+void MpdClient::seekTo(qint64 time)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_seek_current(m_connection, static_cast<float>(time), true);
+        sendIdle();
+        updateStatus();
+    }
+}
+
 void MpdClient::refreshLibrary()
 {
     if (!m_connection)
@@ -559,7 +595,7 @@ void MpdClient::refreshLibrary()
     QSet<QString> addedMbids;
     QSet<QString> addedArtistAlbums;
 
-    if (mpd_send_command(m_connection, "list", "album", "group", "artist", "group", "date", "group", "musicbrainz_albumid", nullptr)) {
+    if (mpd_send_command(m_connection, "list", "album", "group", "artist", "group", "date", "group", "musicbrainz_albumid", nullptr)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
         struct mpd_pair *pair = nullptr;
         QString currentArtist = tr("Unknown Artist");
         QString currentMbid;
@@ -827,7 +863,7 @@ auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &album
             SortableSong s;
             s.uri = uri ? QString::fromUtf8(uri) : "";
             s.title = title ? QString::fromUtf8(title) : tr("Unknown Title");
-            s.duration = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0'));
+            s.duration = QString("%1:%2").arg(duration / SECONDS_PER_MINUTE).arg(duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0'));
             s.track = trackStr ? std::atoi(trackStr) : 0;
             s.disc = discStr ? std::atoi(discStr) : 0;
             
@@ -1157,7 +1193,7 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
         long long totalSize = 0;
 
         while (true) {
-            if (!mpd_send_command(m_connection, cmd, uri.toUtf8().constData(),
+            if (!mpd_send_command(m_connection, cmd, uri.toUtf8().constData(), // NOLINT(cppcoreguidelines-pro-type-vararg)
                     QByteArray::number(offset).constData(), nullptr)) {
                 mpd_connection_clear_error(m_connection);
                 break;
@@ -1302,6 +1338,15 @@ void MpdClient::togglePlayPause()
         pause();
     } else {
         play();
+    }
+}
+
+void MpdClient::stop()
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_stop(m_connection);
+        sendIdle();
     }
 }
 

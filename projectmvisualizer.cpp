@@ -8,29 +8,56 @@
 #include <QFile>
 #include <QTextStream>
 #include <algorithm>
+#include <QFileInfo>
+#include <QCoreApplication>
 
 class ProjectMRenderer : public QQuickFramebufferObject::Renderer
 {
 public:
     ProjectMRenderer() {
-        // Basic ProjectM initialization. 
-        // Paths may vary by distribution; these are common defaults for Linux.
+        QSettings settings("Quester", "Quester");
         QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/Quester/projectm";
         QDir dir(configDir);
         if (!dir.exists()) dir.mkpath(".");
-
         QString configFilePath = configDir + "/config.inp";
-        QFile configFile(configFilePath);
-        if (!configFile.exists()) {
-            if (configFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                QTextStream out(&configFile);
-                out << "Texture Size = 2048\n";
-                out << "Mesh X = 64\n";
-                out << "Mesh Y = 48\n";
-                out << "FPS = 60\n";
-                configFile.close();
+
+        QString presetPath = settings.value("projectMPresetPath").toString();
+        if (presetPath.isEmpty()) {
+            const QStringList candidates = {
+                QCoreApplication::applicationDirPath() + "/projectM-presets",
+                QStringLiteral(APP_DATADIR) + "/projectM-presets",
+                "/usr/share/projectM/presets",
+                "/usr/local/share/projectM/presets",
+                QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
+            };
+
+            for (const QString &p : candidates) {
+                if (QDir(p).exists()) {
+                    presetPath = p;
+                    break;
+                }
             }
         }
+        
+        QFile configFile(configFilePath);
+        if (configFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            QTextStream out(&configFile);
+            out << "Texture Size = " << settings.value("projectMTextureSize", 2048).toString() << "\n";
+            out << "Mesh X = " << settings.value("projectMMeshX", 64).toString() << "\n";
+            out << "Mesh Y = " << settings.value("projectMMeshY", 48).toString() << "\n";
+            out << "FPS = " << settings.value("projectMFPS", 60).toString() << "\n";
+            out << "Preset Path = " << presetPath << "\n";
+            out << "Title Font = Sans\n";
+            out << "Menu Font = Sans\n";
+            out << "Smooth Preset Duration = " << settings.value("projectMSmoothPresetDuration", 5).toString() << "\n";
+            out << "Preset Duration = " << settings.value("projectMPresetDuration", 15).toString() << "\n";
+            out << "Beat Sensitivity = " << settings.value("projectMBeatSensitivity", 10.0).toString() << "\n";
+            out << "Aspect Correction = 1\n";
+            out << "Shuffle Enabled = " << (settings.value("projectMShuffleEnabled", true).toBool() ? "1" : "0") << "\n";
+            out << "Soft Cut Ratings Enabled = 0\n";
+            configFile.close();
+        }
+
         std::string configPath = configFilePath.toStdString();
 
         // Attempt to initialize projectM. 
@@ -51,7 +78,7 @@ public:
     }
 
     void render() override {
-        if (!m_projectM) return;
+        if (!m_projectM || m_width <= 0 || m_height <= 0 || !m_running) return;
         m_projectM->renderFrame();
         update(); // Request continuous rendering
     }
@@ -64,13 +91,38 @@ public:
 
     void synchronize(QQuickFramebufferObject *item) override {
         auto *viz = static_cast<ProjectMVisualizer *>(item);
+        m_running = viz->active();
+        if (m_running) update();
+
         if (!m_projectM) return;
 
         // Handle resizing
-        if (m_width != viz->width() || m_height != viz->height()) {
-            m_width = viz->width();
-            m_height = viz->height();
-            // m_projectM->projectM_reset(); // Private in this version
+        int newWidth = static_cast<int>(viz->width());
+        int newHeight = static_cast<int>(viz->height());
+        if (newWidth > 0 && newHeight > 0 && (m_width != newWidth || m_height != newHeight)) {
+            m_width = newWidth;
+            m_height = newHeight;
+            m_projectM->projectM_resetGL(m_width, m_height);
+        }
+
+        if (m_width <= 0 || m_height <= 0) return;
+
+        // Handle Preset Selection
+        bool hardCut = false;
+        QString requestedPreset = viz->takePresetRequest(hardCut);
+        if (!requestedPreset.isEmpty()) {
+            try {
+                unsigned int count = m_projectM->getPlaylistSize();
+                for (unsigned int i = 0; i < count; ++i) {
+                    QString name = QString::fromStdString(m_projectM->getPresetName(i));
+                    if (QFileInfo(name).completeBaseName() == requestedPreset) {
+                        m_projectM->selectPreset(i, hardCut);
+                        break;
+                    }
+                }
+            } catch (...) {
+                qWarning() << "Failed to select projectM preset:" << requestedPreset;
+            }
         }
 
         // Feed Audio Data
@@ -105,12 +157,15 @@ private:
     projectM *m_projectM = nullptr;
     int m_width = -1;
     int m_height = -1;
+    bool m_running = false;
 };
 
 ProjectMVisualizer::ProjectMVisualizer(QQuickItem *parent)
     : QQuickFramebufferObject(parent)
     , m_active(false)
     , m_input(nullptr)
+    , m_presetRequested(false)
+    , m_hardCut(false)
 {
     setMirrorVertically(true); // FBOs are often flipped
 }
@@ -139,6 +194,7 @@ void ProjectMVisualizer::setActive(bool active)
     else stopInput();
     
     emit activeChanged();
+    update();
 }
 
 void ProjectMVisualizer::startInput()
@@ -185,4 +241,64 @@ QByteArray ProjectMVisualizer::takePcmData()
     QByteArray data = m_pcmBuffer;
     m_pcmBuffer.clear();
     return data;
+}
+
+QString ProjectMVisualizer::takePresetRequest(bool &hardCut)
+{
+    QMutexLocker locker(&m_mutex);
+    if (!m_presetRequested) return QString();
+    m_presetRequested = false;
+    hardCut = m_hardCut;
+    return m_requestedPreset;
+}
+
+QStringList ProjectMVisualizer::getPresetList(const QString &presetPath) const
+{
+    QStringList presets;
+    
+    QDir dir(presetPath);
+    if (!dir.exists()) {
+        // Try default paths if the provided path doesn't exist
+        const QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/projectM-presets",
+            QStringLiteral(APP_DATADIR) + "/projectM-presets",
+            "/usr/share/projectM/presets",
+            "/usr/local/share/projectM/presets",
+            QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
+        };
+        
+        for (const QString &p : candidates) {
+            if (QDir(p).exists()) {
+                dir.setPath(p);
+                break;
+            }
+        }
+    }
+    
+    if (dir.exists()) {
+        // Get all .milk and .prjm files
+        QFileInfoList files = dir.entryInfoList(QStringList() << "*.milk" << "*.prjm", QDir::Files);
+        
+        for (const QFileInfo &file : files) {
+            QString name = file.completeBaseName();
+            if (!name.isEmpty()) {
+                presets << name;
+            }
+        }
+        
+        // Sort alphabetically
+        presets.sort();
+        presets.removeDuplicates();
+    }
+    
+    return presets;
+}
+
+void ProjectMVisualizer::selectPresetByName(const QString &presetName, bool hardCut)
+{
+    QMutexLocker locker(&m_mutex);
+    m_requestedPreset = presetName;
+    m_hardCut = hardCut;
+    m_presetRequested = true;
+    update(); // Request synchronization
 }

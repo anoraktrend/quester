@@ -44,11 +44,14 @@ find_package(Qt6 COMPONENTS
     QmlModels
     Network
     Multimedia
+    DBus
+    Widgets
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
 
 qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
 
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
@@ -70,6 +73,8 @@ qt_add_executable(quester
     audiovisualizer.h
     projectmvisualizer.cpp
     projectmvisualizer.h
+    dbus.cpp
+    dbus.h
     ${quester_resources}
 )
 
@@ -88,9 +93,10 @@ qt_add_qml_module(quester
     URI net.helltop.quester
     VERSION 1.0
     QML_FILES
-        main.qml
-        HeaderBar.qml
-        VisualizerView.qml
+        qml/main.qml
+        qml/HeaderBar.qml
+        qml/VisualizerView.qml
+    RESOURCE_PREFIX qml
 )
 
 target_link_libraries(quester
@@ -103,6 +109,8 @@ target_link_libraries(quester
     Qt6::QmlModels
     Qt6::Network
     Qt6::Multimedia
+    Qt6::DBus
+    Qt6::Widgets
     PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3
@@ -139,3 +147,9 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
     DESTINATION /etc/config/Quester/presets
 )
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop")
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop/
+        DESTINATION ${KDE_INSTALL_DATADIR}/Quester/projectM-presets
+    )
+endif()

@@ -8,6 +8,7 @@ import QtQuick.Effects
 
 import Quester 1.0
 import Qt.labs.platform 1.1 as Platform
+import QtCore
 
 ApplicationWindow {
     id: window
@@ -32,172 +33,30 @@ ApplicationWindow {
         anchors.right: parent.right
         transparentBackground: coverFlow.state === "visualizerView"
         fontScale: window.fontScale
+        
+        viewState: coverFlow.state
+        viewMode: coverFlow.viewMode
+        useProjectM: window.useProjectM
 
-        Action {
-            id: fullscreenAction
-            text: qsTr("Toggle Fullscreen")
-            shortcut: "F11"
-            onTriggered: mpdClient.toggleFullscreen()
+        onOpenSettings: settingsDialog.open()
+        onOpenVisualizerSettings: {
+            settingsTabBar.currentIndex = 1
+            settingsDialog.open()
         }
-
-        Action {
-            id: quitAction
-            text: qsTr("Quit")
-            shortcut: "Ctrl+Q"
-            onTriggered: mpdClient.quitApplication()
+        onRequestVisualizer: goToVisualizer()
+        onRequestQueue: coverFlow.state = "queueView"
+        onRequestPlaylists: coverFlow.state = "playlistsView"
+        onRequestLibrary: coverFlow.state = "libraryView"
+        onRequestRefresh: mpdClient.refreshLibrary()
+        onToggleProjectM: {
+            window.useProjectM = !window.useProjectM
         }
-
-
-        ToolButton {
-            id: presetMenuButton
-            text: qsTr("Colors")
-            visible: coverFlow.state !== "libraryView"
-            width: visible ? implicitWidth : 0
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: menuButton.left
-            anchors.rightMargin: 10
-            onClicked: presetDialog.open()
-        }
-
-        ToolButton {
-            id: sortmenuButton
-            icon.source: "image://theme/sort-presence"
-            icon.color: palette.windowText
-            icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
-            visible: coverFlow.state === "libraryView"
-            width: visible ? implicitWidth : 0
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: presetMenuButton.left
-
-            onClicked: sortby.open()
-    
-            Menu {
-                id: sortby
-                y: parent.height
-                title: qsTr("Sort By")
-
-                 MenuItem {
-                    text: qsTr("Artist")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.AlbumArtist
-                    onTriggered: mpdClient.sortMode = MpdClient.AlbumArtist
-                }
-                MenuItem {
-                    text: qsTr("Album")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.Album
-                    onTriggered: mpdClient.sortMode = MpdClient.Album
-                    }
-                MenuItem {
-                    text: qsTr("Artist & Year")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.ArtistYear
-                    onTriggered: mpdClient.sortMode = MpdClient.ArtistYear
-                }
-            }
-        }
-        // Application Menu Button (Hamburger Menu)
-        ToolButton {
-            id: menuButton
-            icon.source: "image://theme/application-menu"
-            icon.color: palette.windowText
-            icon.width: 24 * window.fontScale; icon.height: 24 * window.fontScale
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-
-            onClicked: appMenu.open()
-
-            Menu {
-                id: appMenu
-                y: parent.height
-
-                MenuItem {
-                    text: qsTr("Visualizer")
-                    visible: coverFlow.state !== "visualizerView" 
-                    height: visible ? implicitHeight : 0
-                    onClicked: goToVisualizer()
-                }
-                
-                MenuItem {
-                    text: qsTr("Toggle ProjectM")
-                    checkable: true
-                    visible: coverFlow.state !== "visualizerView"
-                    checked: window.useProjectM
-                    onTriggered: window.useProjectM = !window.useProjectM
-                }
-
-                MenuItem {
-                    text: qsTr("Queue")
-                    visible: coverFlow.state !== "queueView"
-                    height: visible ? implicitHeight : 0
-                    onClicked: coverFlow.state = "queueView"
-                }
-
-                MenuItem {
-                    text: qsTr("Return to Library")
-                    visible: coverFlow.state !== "libraryView"
-                    height: visible ? implicitHeight : 0
-                    onTriggered: coverFlow.state = "libraryView"
-                }
-
-                MenuItem {
-                    text: qsTr("Refresh Library")
-                    onTriggered: mpdClient.refreshLibrary()
-                }
-
-
-                MenuSeparator {
-                    visible: coverFlow.state === "libraryView"
-                    height: visible ? implicitHeight : 0
-                }
-
-                RadioButton {
-                    text: qsTr("Cover Flow")
-                    visible: coverFlow.state === "libraryView"
-                    height: visible ? implicitHeight : 0
-                    checked: coverFlow.viewMode === "flow"
-                    onClicked: {
-                        coverFlow.viewMode = "flow"
-                        appMenu.close()
-                    }
-                }
-                RadioButton {
-                    text: qsTr("Grid View")
-                    visible: coverFlow.state === "libraryView"
-                    height: visible ? implicitHeight : 0
-                    checked: coverFlow.viewMode === "grid"
-                    onClicked: {
-                        coverFlow.viewMode = "grid"
-                        appMenu.close()
-                    }
-                }
-                RadioButton {
-                    text: qsTr("Browser")
-                    visible: coverFlow.state === "libraryView"
-                    height: visible ? implicitHeight : 0
-                    checked: coverFlow.viewMode === "browser"
-                    onClicked: {
-                        coverFlow.viewMode = "browser"
-                        mpdClient.browsePath(mpdClient.currentPath)
-                        appMenu.close()
-                    }
-                }
-
-                MenuSeparator {
-                    visible: coverFlow.state === "libraryView"
-                    height: visible ? implicitHeight : 0
-                }
-
-                MenuSeparator {}
-
-                MenuItem { action: fullscreenAction }
-                MenuItem { action: quitAction }
-            }
-        }
+        onSetViewMode: (mode) => coverFlow.viewMode = mode
+        onRequestBrowser: mpdClient.browsePath(mpdClient.currentPath)
     }
     
     Component.onCompleted: {
-        AudioVisualizer.updateSystemColors(palette.highlight, palette.text)
+        mpdClient.consume = true
     }
 
     function goToVisualizer() {
@@ -522,100 +381,20 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
         }
 
-        Item {
+        VisualizerView {
             id: visualizerView
             anchors.fill: parent
             z: 10
             visible: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
             opacity: visible ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 500 } }
-
-            property var magnitudes: AudioVisualizer.magnitudes
-            property var barColors: AudioVisualizer.barColors
-
-            onWidthChanged: if (width > 0) AudioVisualizer.width = width
-            onHeightChanged: if (height > 0) AudioVisualizer.height = height
-            Component.onCompleted: {
-                if (width > 0) AudioVisualizer.width = width
-                if (height > 0) AudioVisualizer.height = height
-            }
-
-            onVisibleChanged: {
-                if (visible) AudioVisualizer.start()
-                else AudioVisualizer.stop()
-            }
-
-            ProjectMVisualizer {
-                id: projectM
-                anchors.fill: parent
-                visible: window.useProjectM && visualizerView.visible
-                active: visible
-                z: 5
-            }
-
-            Image {
-                id: bg
-                anchors.fill: parent
-                source: mpdClient.albumArt
-                visible: true
-                z: -1
-                fillMode: Image.PreserveAspectFit
-            }
-            Image {
-                id: vizBgSource
-                anchors.fill: parent
-                source: mpdClient.albumArt
-                visible: false
-                fillMode: Image.PreserveAspectCrop
-            }
-
-            MultiEffect {
-                anchors.fill: parent
-                source: vizBgSource
-                blurEnabled: true
-                blurMax: 64
-                blur: 1.0
-                saturation: 0.8
-            }
-
-            MultiEffect {
-                anchors.fill: parent
-                source: vizBgSource
-                blurEnabled: true
-                blurMax: 64
-                blur: 1.0
-                saturation: 0.8
-                brightness: -0.5
-            }
-
-            MultiEffect {
-                anchors.fill: parent
-                source: bg
-                brightness: -0.3
-            }
-
-            Row {
-                anchors.bottom: parent.bottom
-                spacing: 2
-                Repeater {
-                    model: visualizerView.magnitudes
-                    visible: !window.useProjectM
-                    Rectangle {
-                        width: 2
-                        height: visualizerView.height * modelData * 0.6
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 100
-                        color: visualizerView.barColors && visualizerView.barColors.length > index ? visualizerView.barColors[index] : palette.text
-                        opacity: coverFlow.state === "queueView" ? 0.2 : 1
-                        radius: 1
-                    }
-                }
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                onClicked: coverFlow.state = "libraryView"
-            }
+            
+            albumArt: mpdClient.albumArt
+            useProjectM: window.useProjectM
+            barOpacity: coverFlow.state !== "visualizerView" ? 0.2 : 1.0
+            fallbackColor: palette.text
+            
+            onClicked: coverFlow.state = "libraryView"
         }
 
         ListView {
@@ -702,8 +481,17 @@ ApplicationWindow {
             x: 0
             width: parent.width
             height: 100
-            y: parent.height - height
+            y: parent.height - 100
             z: 20
+            clip: true
+
+            Rectangle {
+                anchors.fill: parent
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 1.0; color: "#80000000" }
+                }
+            }
 
             Behavior on y {
              
@@ -712,32 +500,54 @@ ApplicationWindow {
 
 
 
-            ProgressBar {
+            Slider {
                 id: progressBar
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.leftMargin: 20
                 anchors.rightMargin: 20
+                hoverEnabled: true
                 from: 0
                 to: mpdClient.duration > 0 ? mpdClient.duration : 1
-                value: mpdClient.elapsed
+                
+                Binding on value {
+                    when: !progressBar.pressed
+                    value: mpdClient.elapsed
+                }
+
+                onMoved: mpdClient.seek(value)
 
                 background: Rectangle {
+                    x: progressBar.leftPadding
+                    y: progressBar.topPadding + progressBar.availableHeight / 2 - height / 2
                     implicitWidth: 200
                     implicitHeight: 6
+                    width: progressBar.availableWidth
+                    height: implicitHeight
                     color: palette.midlight
                     radius: 3
                 }
-                contentItem: Item {
-                    implicitWidth: 200
-                    implicitHeight: 6
-                    Rectangle {
-                        width: progressBar.visualPosition * parent.width
-                        height: parent.height
-                        radius: 3
-                        color: palette.highlight
-                    }
+
+                handle: Rectangle {
+                    x: progressBar.leftPadding + progressBar.visualPosition * (progressBar.availableWidth - width)
+                    y: progressBar.topPadding + progressBar.availableHeight / 2 - height / 2
+                    implicitWidth: 16
+                    implicitHeight: 16
+                    radius: 8
+                    color: palette.highlight
+                    border.color: palette.midlight
+                    border.width: 1
+                    visible: progressBar.pressed || progressBar.hovered
+                }
+
+                // Custom progress fill inside the background
+                Rectangle {
+                    parent: progressBar.background
+                    width: progressBar.visualPosition * parent.width
+                    height: parent.height
+                    radius: 3
+                    color: palette.highlight
                 }
             }
 
@@ -788,6 +598,19 @@ ApplicationWindow {
 
                 RowLayout {
                     spacing: 15
+                Button {
+                    id: randomButton
+                    icon.source: "image://theme/media-playlist-shuffle"
+                    icon.color: mpdClient.random ? palette.highlight : palette.windowText
+                    icon.width: 20 * window.fontScale; icon.height: 20 * window.fontScale
+                    opacity: mpdClient.random ? 1.0 : 0.6
+                    flat: true
+                    background: Rectangle { color: "transparent" }
+                    onClicked: mpdClient.random = !mpdClient.random
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Shuffle: ") + (mpdClient.random ? qsTr("On") : qsTr("Off"))
+                }
+
                     Button { 
                         icon.source: "image://theme/media-skip-backward"
                         icon.color: palette.windowText
@@ -828,6 +651,40 @@ ApplicationWindow {
                             border.width: 1
                         }
                     }
+                Button {
+                    id: modeButton
+                    property int mode: {
+                        if (mpdClient.repeat && mpdClient.single) return 2
+                        if (mpdClient.repeat) return 1
+                        return 0
+                    }
+                    icon.source: {
+                        switch(mode) {
+                            case 1: return "image://theme/media-playlist-repeat"
+                            case 2: return "image://theme/media-playlist-repeat-song"
+                            default: return "image://theme/media-playlist-repeat"
+                        }
+                    }
+                    icon.color: mode === 0 ? palette.windowText : palette.highlight
+                    icon.width: 20 * window.fontScale; icon.height: 20 * window.fontScale
+                    opacity: mode === 0 ? 0.6 : 1.0
+                    flat: true
+                    background: Rectangle { color: "transparent" }
+                    onClicked: {
+                        if (mode === 0) {
+                            mpdClient.repeat = true
+                            mpdClient.single = false
+                        } else if (mode === 1) {
+                            mpdClient.repeat = true
+                            mpdClient.single = true
+                        } else {
+                            mpdClient.repeat = false
+                            mpdClient.single = false
+                        }
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: mode === 0 ? qsTr("Repeat: Off") : (mode === 1 ? qsTr("Repeat: All") : qsTr("Repeat: One"))
+                }
                 }
             }
         }
@@ -888,6 +745,66 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
         }
 
+        RowLayout {
+            id: playlistHeader
+            anchors.top: parent.top
+            anchors.topMargin: headerBar.height + 10
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            visible: coverFlow.state === "playlistsView"
+            
+            Label { text: qsTr("Playlists"); font.bold: true; color: palette.text }
+            Item { Layout.fillWidth: true }
+            Button {
+                text: qsTr("Save Queue")
+                onClicked: savePlaylistDialog.open()
+            }
+        }
+
+        ListView {
+            id: playlistListView
+            anchors.top: playlistHeader.bottom
+            anchors.topMargin: 10
+            anchors.bottom: bottomControls.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 10
+            clip: true
+            visible: coverFlow.state === "playlistsView"
+            model: mpdClient.playlists
+            
+            delegate: ItemDelegate {
+                width: ListView.view.width
+                height: 50
+
+                background: Rectangle {
+                    color: parent.down ? palette.midlight : (index % 2 == 0 ? palette.base : palette.alternateBase)
+                }
+
+                contentItem: RowLayout {
+                    Text {
+                        text: modelData
+                        color: palette.text
+                        font.pixelSize: 14 * window.fontScale
+                        Layout.fillWidth: true
+                    }
+                    Button {
+                        text: qsTr("Load")
+                        onClicked: mpdClient.loadPlaylist(modelData)
+                    }
+                    Button {
+                        text: qsTr("Remove")
+                        onClicked: {
+                            removePlaylistDialog.playlistName = modelData
+                            removePlaylistDialog.open()
+                        }
+                    }
+                }
+            }
+            ScrollBar.vertical: ScrollBar { }
+        }
+
         states: [
             State {
                 name: "libraryView"
@@ -895,6 +812,7 @@ ApplicationWindow {
                 PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
                 PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
                 PropertyChanges { target: gradientRect; opacity: 1.0 }
+                PropertyChanges { target: bottomControls; y: parent.height - 100 }
             },
             State {
                 name: "visualizerView"
@@ -902,6 +820,7 @@ ApplicationWindow {
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
+                PropertyChanges { target: bottomControls; y: parent.height - 100 }
             },
             State {
                 name: "queueView"
@@ -909,15 +828,23 @@ ApplicationWindow {
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
                 PropertyChanges { target: queueListView; opacity: 1.0; visible: true }
+                PropertyChanges { target: bottomControls; y: parent.height - 100 }
+            },
+            State {
+                name: "playlistsView"
+                PropertyChanges { target: pathView; opacity: 0.0 }
+                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
+                PropertyChanges { target: queueListView; opacity: 0.0; visible: false }
+                PropertyChanges { target: gradientRect; opacity: 0.0 }
             }
         ]
     }
 
     Dialog {
-        id: presetDialog
-        title: qsTr("Select Preset")
+        id: settingsDialog
+        title: qsTr("Settings")
         anchors.centerIn: parent
-        width: Math.min(400, parent.width - 40)
+        width: Math.min(500, parent.width - 40)
         height: Math.min(500, parent.height - 40)
         modal: true
         standardButtons: Dialog.Close
@@ -927,31 +854,301 @@ ApplicationWindow {
             radius: 10
         }
 
-        ListView {
+        ColumnLayout {
             anchors.fill: parent
-            model: AudioVisualizer.presetNames
-            delegate: ItemDelegate {
-                width: ListView.view.width
-                text: modelData
-                highlighted: AudioVisualizer.currentPreset === modelData
+            anchors.margins: 10
 
-                contentItem: Text {
-                    text: parent.text
-                    font: parent.font
-                    color: parent.highlighted ? palette.highlightedText : palette.text
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
+            TabBar {
+                id: settingsTabBar
+                Layout.fillWidth: true
+                TabButton { text: qsTr("General") }
+                TabButton { text: qsTr("Visualizer") }
+                TabButton { text: qsTr("ProjectM") }
+            }
+
+            StackLayout {
+                currentIndex: settingsTabBar.currentIndex
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                // General Tab
+                Item {
+                    ColumnLayout {
+                        spacing: 10
+                        Label { text: qsTr("Sort Library By:"); font.bold: true; color: palette.text }
+                        RadioButton {
+                            text: qsTr("Artist")
+                            checked: mpdClient.sortMode === MpdClient.AlbumArtist
+                            onClicked: mpdClient.sortMode = MpdClient.AlbumArtist
+                        }
+                        RadioButton {
+                            text: qsTr("Album")
+                            checked: mpdClient.sortMode === MpdClient.Album
+                            onClicked: mpdClient.sortMode = MpdClient.Album
+                        }
+                        RadioButton {
+                            text: qsTr("Artist & Year")
+                            checked: mpdClient.sortMode === MpdClient.ArtistYear
+                            onClicked: mpdClient.sortMode = MpdClient.ArtistYear
+                        }
+
+                        CheckBox {
+                            text: qsTr("Consume Mode")
+                            checked: mpdClient.consume
+                            onClicked: mpdClient.consume = checked
+                        }
+                        
+                        Button {
+                            text: qsTr("Refresh Library")
+                            onClicked: mpdClient.refreshLibrary()
+                        }
+                    }
                 }
-                background: Rectangle {
-                    color: parent.highlighted ? palette.highlight : (parent.down ? palette.midlight : "transparent")
-                    radius: 5
+
+                // Visualizer Tab
+                Item {
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 10
+
+                        Label { 
+                            text: qsTr("Visualizer Settings") 
+                            font.bold: true 
+                            color: palette.text
+                        }
+
+                        GridLayout {
+                            columns: 2
+                            columnSpacing: 10
+                            rowSpacing: 10
+                            Layout.fillWidth: true
+
+                            Label { text: qsTr("Color Preset:") }
+                            ComboBox {
+                                model: AudioVisualizer.presetNames
+                                currentIndex: model.indexOf(AudioVisualizer.currentPreset)
+                                onActivated: AudioVisualizer.currentPreset = currentText
+                                Layout.fillWidth: true
+                            }
+
+                            Label { text: qsTr("Appearance:") }
+                            ComboBox {
+                                model: [qsTr("Bottom Up"), qsTr("Top Down"), qsTr("Centered")]
+                                currentIndex: visualizerView.settings.visualizerMode
+                                onActivated: visualizerView.settings.visualizerMode = currentIndex
+                            }
+                        }
+                        
+                        Item { Layout.fillHeight: true }
+                    }
                 }
-                onClicked: {
-                    AudioVisualizer.currentPreset = modelData
-                    presetDialog.close()
+
+                // ProjectM Tab
+                Item {
+                    ScrollView {
+                        anchors.fill: parent
+                        clip: true
+                        
+                        ColumnLayout {
+                            width: parent.width
+                            spacing: 10
+
+                            Label { 
+                                text: qsTr("ProjectM Preset Path") 
+                                color: palette.text
+                                font.bold: true 
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField {
+                                    id: presetPathField
+                                    text: visualizerView.settings.projectMPresetPath
+                                    placeholderText: qsTr("Default")
+                                    readOnly: true
+                                    Layout.fillWidth: true
+                                    color: palette.text
+                                    background: Rectangle { color: palette.base; border.color: palette.mid }
+                                }
+                                Button {
+                                    text: qsTr("Browse...")
+                                    onClicked: folderDialog.open()
+                                }
+                            }
+                            
+                            Label {
+                                text: qsTr("Note: Changes require restarting the visualizer (toggle off/on).")
+                                color: palette.windowText
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: 10
+                                rowSpacing: 10
+                                Layout.fillWidth: true
+
+                                Label { text: qsTr("Texture Size:") }
+                                ComboBox {
+                                    model: [1024, 2048, 4096]
+                                    currentIndex: model.indexOf(visualizerView.settings.projectMTextureSize)
+                                    onCurrentIndexChanged: visualizerView.settings.projectMTextureSize = model[currentIndex]
+                                }
+
+                                Label { text: qsTr("Mesh X:") }
+                                SpinBox {
+                                    from: 16
+                                    to: 256
+                                    value: visualizerView.settings.projectMMeshX
+                                    onValueChanged: visualizerView.settings.projectMMeshX = value
+                                }
+
+                                Label { text: qsTr("Mesh Y:") }
+                                SpinBox {
+                                    from: 12
+                                    to: 192
+                                    value: visualizerView.settings.projectMMeshY
+                                    onValueChanged: visualizerView.settings.projectMMeshY = value
+                                }
+
+                                Label { text: qsTr("FPS:") }
+                                SpinBox {
+                                    from: 15
+                                    to: 60
+                                    value: visualizerView.settings.projectMFPS
+                                    onValueChanged: visualizerView.settings.projectMFPS = value
+                                }
+
+                                Label { text: qsTr("Smooth Preset Duration:") }
+                                SpinBox {
+                                    from: 0
+                                    to: 30
+                                    value: visualizerView.settings.projectMSmoothPresetDuration
+                                    onValueChanged: visualizerView.settings.projectMSmoothPresetDuration = value
+                                }
+
+                                Label { text: qsTr("Preset Duration:") }
+                                SpinBox {
+                                    from: 5
+                                    to: 600
+                                    value: visualizerView.settings.projectMPresetDuration
+                                    onValueChanged: visualizerView.settings.projectMPresetDuration = value
+                                }
+                                
+                                Label { text: qsTr("Beat Sensitivity:") }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Slider {
+                                        Layout.fillWidth: true
+                                        from: 0
+                                        to: 100
+                                        value: visualizerView.settings.projectMBeatSensitivity
+                                        onValueChanged: visualizerView.settings.projectMBeatSensitivity = value
+                                    }
+                                    Label {
+                                        text: visualizerView.settings.projectMBeatSensitivity.toFixed(1)
+                                    }
+                                }
+
+                                CheckBox {
+                                    text: qsTr("Shuffle Enabled")
+                                    checked: visualizerView.settings.projectMShuffleEnabled
+                                    onClicked: visualizerView.settings.projectMShuffleEnabled = checked
+                                    Layout.columnSpan: 2
+                                }
+
+                                CheckBox {
+                                    text: qsTr("Show Bars with ProjectM")
+                                    checked: visualizerView.settings.projectMShowBars
+                                    onClicked: visualizerView.settings.projectMShowBars = checked
+                                    Layout.columnSpan: 2
+                                }
+
+                                Label { 
+                                    text: qsTr("Bar Opacity:") 
+                                    visible: visualizerView.settings.projectMShowBars
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: visualizerView.settings.projectMShowBars
+                                    Slider {
+                                        Layout.fillWidth: true
+                                        from: 0.1
+                                        to: 1.0
+                                        value: visualizerView.settings.projectMBarOpacity
+                                        onValueChanged: visualizerView.settings.projectMBarOpacity = value
+                                    }
+                                    Label { text: visualizerView.settings.projectMBarOpacity.toFixed(1) }
+                                }
+
+                                Label { text: qsTr("Selected Preset:") }
+                                ComboBox {
+                                    id: presetComboBox
+                                    model: visualizerView.presetModel
+                                    currentIndex: -1
+                                    Layout.columnSpan: 2
+                                    width: parent.width
+                                    
+                                    onModelChanged: {
+                                        if (visualizerView.settings.projectMSelectedPreset) {
+                                            var idx = model.indexOf(visualizerView.settings.projectMSelectedPreset)
+                                            if (idx >= 0) currentIndex = idx
+                                        }
+                                    }
+
+                                    onCurrentIndexChanged: {
+                                        if (currentIndex >= 0) {
+                                            visualizerView.settings.projectMSelectedPreset = model[currentIndex]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            ScrollBar.vertical: ScrollBar { }
+        }
+    }
+
+    Dialog {
+        id: removePlaylistDialog
+        property string playlistName
+        title: qsTr("Remove Playlist")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        modal: true
+        
+        Label {
+            text: qsTr("Are you sure you want to remove the playlist '%1'?").arg(removePlaylistDialog.playlistName)
+        }
+
+        onAccepted: mpdClient.removePlaylist(playlistName)
+    }
+
+    Dialog {
+        id: savePlaylistDialog
+        title: qsTr("Save Queue as Playlist")
+        standardButtons: Dialog.Save | Dialog.Cancel
+        modal: true
+        
+        ColumnLayout {
+            Label { text: qsTr("Playlist Name:") }
+            TextField { id: playlistNameField }
+        }
+
+        onAccepted: mpdClient.savePlaylist(playlistNameField.text)
+    }
+
+    Platform.FolderDialog {
+        id: folderDialog
+        title: qsTr("Select ProjectM Presets Folder")
+        onAccepted: {
+            var path = folder.toString()
+            if (path.startsWith("file://")) {
+                path = path.substring(7)
+            }
+            visualizerView.settings.projectMPresetPath = path
         }
     }
 }

@@ -1,5 +1,7 @@
 # Quester [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
->## A modern, visually rich MPD client built with Qt 6 and QML.
+
+> ## A modern, visually rich MPD client built with Qt 6 and QML
+
 ## Table of Contents
 
 - [About](#about)
@@ -7,37 +9,30 @@
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Visualizer Configuration](#visualizer-configuration)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## About
 
-Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your well tagged music library.  
-
-**Frequently Asked Questions:**
-___
-	**Q**: What if I don't have a well tagged music library?
-	**A**: You should really have a well tagged music library. Use [Picard](https://picard.musicbrainz.org/) and/or[Beets](https://beets.io/) to fix that. Beets is my favorite, it can be used to import and organize your music in your library.
-	**Q: ** What if my music isn't in MusicBrainz?
-	**A:**  In the unlikely event that you have music from an artist or album that isn't already in the MusicBrainz database, you can add it yourself! 
+Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your music library.
 
 ## Features
 
-- **Album Browser:** Cover-flow style navigation for your music library.
+- **Album Browser:** Cover-flow style navigation and Grid View for your music library.
+- **Dual Visualizers:**
+  - **Spectrum Analyzer:** Custom bar visualizer using FFTW with customizable color presets.
+  - **projectM:** Integrated support for Milkdrop-compatible visualizations.
+- **MPRIS Support:** Full D-Bus integration for control via system media keys and widgets. (In development, currently doesn't work)
 - **Automatic Artwork:** Fetches album art from MPD (embedded/local) or TheAudioDB API.
-- **Audio Visualizer:** Real-time audio visualization using PulseAudio and FFTW with customizable color presets.
 - **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
-- **Tracklist:** View and play specific tracks from the selected album.
-- **Fullscreen Mode:** Immersive listening experience.
+- **Queue Management:** Manage your play queue and playlists easily.
+- **Touch Ready:** UI elements sized and spaced for touch interaction.
 
 ## Gallery
 
-
-![Screenshot](img/quester-gallery-01.png)  ![Screenshot](img/quester-gallery-02.png) 
-
-![Screenshot](img/quester-gallery-03.png) ![Screenshot](img/quester-gallery-04.png) 
-
-![Screenshot](img/quester-gallery-05.png)![Screenshot](img/quester-gallery-06.png)![Screenshot](img/quester-gallery-07.png) 
+![Screenshot](img/quester-gallery-01.png)
+![Screenshot](img/quester-gallery-02.png)
 
 ## Prerequisites
 
@@ -45,16 +40,21 @@ To build Quester, you need the following dependencies installed on your system:
 
 - **C++ Compiler** (supporting C++17)
 - **CMake** (3.16 or higher)
-- **Qt 6** (6.2 or higher; Core, Gui, Qml, Quick, Network)
+- **Qt 6** (6.2 or higher; Core, Gui, Qml, Quick, Network, Multimedia, DBus, Widgets)
 - **libmpdclient**
 - **FFTW3**
-- **PulseAudio** (libpulse specifically, it uses the pulse api for the visualizer)
-- **libprojectm** (for advanced visualizations)
+- **PulseAudio** (libpulse)
+- **PipeWire** (libpipewire-0.3)
+- **Highway** (libhwy)
+- **libprojectM**
 
 ### Ubuntu/Debian
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev libpipewire-0.3-dev libhwy-dev
+sudo apt install build-essential cmake \
+    qt6-base-dev qt6-declarative-dev qt6-multimedia-dev \
+    libmpdclient-dev libfftw3-dev libpulse-dev \
+    libpipewire-0.3-dev libhwy-dev libprojectm-dev
 ```
 
 ## Installation
@@ -96,37 +96,39 @@ Run the application from the build directory:
 ./quester
 ```
 
-## Visualizer Presets
+## Visualizer Configuration
 
-Quester allows you to customize the audio visualizer colors by creating preset files in the presets directory, /etc/config/Quester/presets or ~/.config/Quester/presets.
-To add your own presets, create a directory named presets inside your Quester config folder and add a .json file there.
+### Bar Visualizer Presets
 
-### JSON Structure
+Quester allows you to customize the bar visualizer colors by creating preset files.
+To add your own presets, create a directory named `presets` inside your Quester config folder (e.g., `~/.config/Quester/presets/`) and add a `.json` file there.
+
+**JSON Structure:**
 
 The JSON file should contain a single root object where keys are preset names and values are color definitions.
 
-#### Simple Color List
-
-A simple array of hex color strings creates a horizontal gradient.
+*Simple Color List (Gradient):*
 
 ```json
 {
-"Rainbow": ["#E50000", "#FF8D00", "#FFEE00", "#028121", "#004CFF", "#770088"] 
-} 
+  "Rainbow": ["#E50000", "#FF8D00", "#FFEE00", "#028121", "#004CFF", "#770088"]
+}
 ```
 
-### Weighted Gradients
-
-Use an object with colors and weights to control the size of color sections.
+*Weighted Gradients:*
 
 ```json
 {
    "Uneven": {
       "colors": ["#FF0000", "#00FF00", "#0000FF"],
       "weights": [1, 4, 1]
-   } 
-} 
+   }
+}
 ```
+
+### projectM
+
+Quester supports projectM visualizations. You can configure the preset path, texture size, and other rendering settings in the application settings dialog.
 
 ## Contributing
 
