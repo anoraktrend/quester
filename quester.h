@@ -18,6 +18,7 @@ struct AlbumItem {
     QString artist; // Added artist for more accurate searches
     QString name;
     QString artUrl;
+    QString mbid; // MusicBrainz ID for precise album identification
     QString uri;
     bool artLoading = false;
     int year = 0;
@@ -52,7 +53,8 @@ public:
         NameRole = Qt::UserRole + 1,
         ArtRole,
         ArtistRole,
-        YearRole
+        YearRole,
+        MbidRole
     };
     Q_ENUM(AlbumRoles)
 
@@ -198,6 +200,7 @@ public Q_SLOTS:
     void setSingle(bool on);
     void setConsume(bool on);
     void setSortMode(SortMode mode);
+    void cleanup();
 
     // Playback controls
     void play();
@@ -210,8 +213,8 @@ public Q_SLOTS:
     void refreshLibrary(); // Existing
     void loadAlbumTracks(int index);
     Q_INVOKABLE void playTrack(const QString &uri);
-    Q_INVOKABLE void playAlbum(const QString &artistName, const QString &albumName); // New slot
-    Q_INVOKABLE void addAlbum(const QString &artistName, const QString &albumName);
+    Q_INVOKABLE void playAlbum(const QString &artistName, const QString &albumName, const QString &mbid = QString()); // New slot
+    Q_INVOKABLE void addAlbum(const QString &artistName, const QString &albumName, const QString &mbid = QString());
     Q_INVOKABLE void refreshQueue();
     Q_INVOKABLE void playQueueId(int id);
     Q_INVOKABLE void addTrack(const QString &uri);
@@ -261,7 +264,7 @@ private:
         int modelIndex;
     };
     void fetchAlbumArtFromAPIs(const FetchParams &params);
-    auto getCachePath(const QString &artist, const QString &album) -> QString;
+    auto getCachePath(const QString &artist, const QString &album, const QString &mbid = QString()) -> QString;
     void sortAlbums(QList<AlbumItem> &albums);
     auto getMpdPicture(const QString &uri) -> QByteArray;
     void connect();
@@ -276,7 +279,7 @@ private:
         int disc;
         int track;
     };
-    auto getSongsForAlbum(const QString &artistName, const QString &albumName) -> QList<SortableSong>;
+    auto getSongsForAlbum(const QString &artistName, const QString &albumName, const QString &mbid = QString()) -> QList<SortableSong>;
     struct mpd_connection *m_connection;
     QSocketNotifier *m_notifier;
     QNetworkAccessManager *m_networkManager;

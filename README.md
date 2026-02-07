@@ -42,6 +42,7 @@ To build Quester, you need the following dependencies installed on your system:
 - **libmpdclient**
 - **FFTW3**
 - **PulseAudio** (libpulse specifically, it uses the pulse api for the visualizer)
+- **libprojectm** (for advanced visualizations)
 
 ### Ubuntu/Debian
 

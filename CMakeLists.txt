@@ -60,6 +60,7 @@ qt_add_resources(quester_resources resources.qrc)
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 pkg_check_modules(SPA REQUIRED libspa-0.2)
 pkg_check_modules(HWY REQUIRED libhwy)
+pkg_check_modules(PROJECTM REQUIRED libprojectM)
 
 qt_add_executable(quester
     main.cpp
@@ -67,6 +68,8 @@ qt_add_executable(quester
     quester.h
     audiovisualizer.cpp
     audiovisualizer.h
+    projectmvisualizer.cpp
+    projectmvisualizer.h
     ${quester_resources}
 )
 
@@ -74,6 +77,7 @@ qt_add_executable(quester
 target_include_directories(quester PRIVATE
     ${PIPEWIRE_INCLUDE_DIRS}
     ${SPA_INCLUDE_DIRS}
+    ${PROJECTM_INCLUDE_DIRS}
 )
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
@@ -106,6 +110,7 @@ target_link_libraries(quester
     ${PIPEWIRE_LIBRARIES}
     ${SPA_LIBRARIES}
     ${HWY_LIBRARIES}
+    ${PROJECTM_LIBRARIES}
 )
 
 # --- Installation Rules ---

@@ -18,6 +18,7 @@ ApplicationWindow {
     color: palette.window
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
+    property bool useProjectM: false
     SystemPalette { id: palette }
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
@@ -117,6 +118,13 @@ ApplicationWindow {
                     onClicked: goToVisualizer()
                 }
                 
+                MenuItem {
+                    text: qsTr("Toggle ProjectM")
+                    checkable: true
+                    checked: window.useProjectM
+                    onTriggered: window.useProjectM = !window.useProjectM
+                }
+
                 MenuItem {
                     text: qsTr("Queue")
                     visible: coverFlow.state !== "queueView"
@@ -536,12 +544,20 @@ ApplicationWindow {
                 else AudioVisualizer.stop()
             }
 
+            ProjectMVisualizer {
+                id: projectM
+                anchors.fill: parent
+                visible: window.useProjectM && visualizerView.visible
+                active: visible
+                z: 5
+            }
+
             Image {
                 id: bg
                 anchors.fill: parent
                 source: mpdClient.albumArt
                 visible: true
-                z: 0
+                z: -1
                 fillMode: Image.PreserveAspectFit
             }
             Image {
@@ -582,6 +598,7 @@ ApplicationWindow {
                 spacing: 2
                 Repeater {
                     model: visualizerView.magnitudes
+                    visible: !window.useProjectM
                     Rectangle {
                         width: 2
                         height: visualizerView.height * modelData * 0.6
@@ -659,7 +676,7 @@ ApplicationWindow {
                 MouseArea {
                     anchors.fill: parent
                     acceptedButtons: Qt.RightButton
-                    onClicked: (mouse) => mpdClient.removeId(model.id)
+                    onClicked: mpdClient.removeId(model.id)
                 }
             }
             ScrollBar.vertical: ScrollBar { }
