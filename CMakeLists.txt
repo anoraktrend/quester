@@ -149,7 +149,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
 )
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop")
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/projectM-presets/
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop/
         DESTINATION ${KDE_INSTALL_DATADIR}/Quester/projectM-presets
     )
 endif()
