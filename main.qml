@@ -606,7 +606,7 @@ ApplicationWindow {
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: 100
                         color: visualizerView.barColors && visualizerView.barColors.length > index ? visualizerView.barColors[index] : palette.text
-                        opacity: coverFlow.state === "queueView" ? 0.2 : 0.9
+                        opacity: coverFlow.state === "queueView" ? 0.2 : 1
                         radius: 1
                     }
                 }
