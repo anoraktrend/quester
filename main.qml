@@ -78,8 +78,8 @@ ApplicationWindow {
                  MenuItem {
                     text: qsTr("Artist")
                     checkable: true
-                    checked: mpdClient.sortMode === MpdClient.Artist
-                    onTriggered: mpdClient.sortMode = MpdClient.Artist
+                    checked: mpdClient.sortMode === MpdClient.AlbumArtist
+                    onTriggered: mpdClient.sortMode = MpdClient.AlbumArtist
                 }
                 MenuItem {
                     text: qsTr("Album")
@@ -323,7 +323,7 @@ ApplicationWindow {
                             if (mouse.button === Qt.RightButton) {
                                 contextMenu.popup()
                             } else {
-                                mpdClient.playAlbum(model.albumArtist, model.album)
+                                mpdClient.playAlbum(model.artist, model.name, model.mbid)
                                 pathView.currentIndex = index
                             }
                         }
@@ -332,11 +332,11 @@ ApplicationWindow {
                             id: contextMenu
                             MenuItem {
                                 text: qsTr("Play Album")
-                                onTriggered: mpdClient.playAlbum(model.albumArtist, model.album)
+                                onTriggered: mpdClient.playAlbum(model.artist, model.name, model.mbid)
                             }
                             MenuItem {
                                 text: qsTr("Add to Queue")
-                                onTriggered: mpdClient.addAlbum(model.albumArtist, model.album)
+                                onTriggered: mpdClient.addAlbum(model.artist, model.name, model.mbid)
                             }
                         }
                     }
@@ -423,15 +423,15 @@ ApplicationWindow {
                                 }
                             }
 
-                            Menu {
+                                Menu {
                                 id: gridContextMenu
                                 MenuItem {
                                     text: qsTr("Play Album")
-                                    onTriggered: mpdClient.playAlbum(model.albumArtist, model.album)
+                                    onTriggered: mpdClient.playAlbum(model.artist, model.name, model.mbid)
                                 }
                                 MenuItem {
                                     text: qsTr("Add to Queue")
-                                    onTriggered: mpdClient.addAlbum(model.albumArtist, model.album)
+                                    onTriggered: mpdClient.addAlbum(model.artist, model.name, model.mbid)
                                 }
                             }
                         }
@@ -513,44 +513,90 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
         }
 
-        VisualizerView {
+        Item {
             id: visualizerView
             anchors.fill: parent
-            magnitudes: AudioVisualizer.magnitudes
-            albumArt: mpdClient.albumArt
-            contentBottomMargin: 0
-            active: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
-            barOpacity: coverFlow.state === "queueView" ? 0.2 : 0.9
             z: 10
-            onClicked: coverFlow.state = "libraryView"
+            visible: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
+            opacity: visible ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 500 } }
 
-            onWidthChanged: {
-                if (width > 0) {
-                    AudioVisualizer.width = width;
-                }
-            }
-            
-            onHeightChanged: {
-                if (height > 0) {
-                    AudioVisualizer.height = height;
-                }
-            }
-            
+            property var magnitudes: AudioVisualizer.magnitudes
+            property var barColors: AudioVisualizer.barColors
+
+            onWidthChanged: if (width > 0) AudioVisualizer.width = width
+            onHeightChanged: if (height > 0) AudioVisualizer.height = height
             Component.onCompleted: {
-                if (width > 0) {
-                    AudioVisualizer.width = width;
-                }
-                if (height > 0) {
-                    AudioVisualizer.height = height;
+                if (width > 0) AudioVisualizer.width = width
+                if (height > 0) AudioVisualizer.height = height
+            }
+
+            onVisibleChanged: {
+                if (visible) AudioVisualizer.start()
+                else AudioVisualizer.stop()
+            }
+
+            Image {
+                id: bg
+                anchors.fill: parent
+                source: mpdClient.albumArt
+                visible: true
+                z: 0
+                fillMode: Image.PreserveAspectFit
+            }
+            Image {
+                id: vizBgSource
+                anchors.fill: parent
+                source: mpdClient.albumArt
+                visible: false
+                fillMode: Image.PreserveAspectCrop
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: vizBgSource
+                blurEnabled: true
+                blurMax: 64
+                blur: 1.0
+                saturation: 0.8
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: vizBgSource
+                blurEnabled: true
+                blurMax: 64
+                blur: 1.0
+                saturation: 0.8
+                brightness: -0.5
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: bg
+                brightness: -0.3
+            }
+
+            Row {
+                anchors.bottom: parent.bottom
+                spacing: 2
+                Repeater {
+                    model: visualizerView.magnitudes
+                    Rectangle {
+                        width: 2
+                        height: visualizerView.height * modelData * 0.6
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 100
+                        color: visualizerView.barColors && visualizerView.barColors.length > index ? visualizerView.barColors[index] : palette.text
+                        opacity: coverFlow.state === "queueView" ? 0.2 : 0.9
+                        radius: 1
+                    }
                 }
             }
 
-            onActiveChanged: {
-                if (active) {
-                    AudioVisualizer.start();
-                } else {
-                    AudioVisualizer.stop();
-                }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: coverFlow.state = "libraryView"
             }
         }
 
