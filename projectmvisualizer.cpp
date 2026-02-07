@@ -9,6 +9,7 @@
 #include <QTextStream>
 #include <algorithm>
 #include <QFileInfo>
+#include <QCoreApplication>
 
 class ProjectMRenderer : public QQuickFramebufferObject::Renderer
 {
@@ -23,6 +24,8 @@ public:
         QString presetPath = settings.value("projectMPresetPath").toString();
         if (presetPath.isEmpty()) {
             const QStringList candidates = {
+                QCoreApplication::applicationDirPath() + "/projectM-presets",
+                QStringLiteral(APP_DATADIR) + "/projectM-presets",
                 "/usr/share/projectM/presets",
                 "/usr/local/share/projectM/presets",
                 QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
@@ -257,6 +260,8 @@ QStringList ProjectMVisualizer::getPresetList(const QString &presetPath) const
     if (!dir.exists()) {
         // Try default paths if the provided path doesn't exist
         const QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/projectM-presets",
+            QStringLiteral(APP_DATADIR) + "/projectM-presets",
             "/usr/share/projectM/presets",
             "/usr/local/share/projectM/presets",
             QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
