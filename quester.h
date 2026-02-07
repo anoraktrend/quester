@@ -189,6 +189,7 @@ public:
     [[nodiscard]] auto sortMode() const -> SortMode;
 
     void setWindow(QQuickWindow *window);
+    [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
 
 public Q_SLOTS:
     void setArtist(const QString &artist);
@@ -208,6 +209,7 @@ public Q_SLOTS:
     void togglePlayPause();
     void next();
     void previous();
+    void seek(qint64 time);
 
     // Library
     void refreshLibrary(); // Existing

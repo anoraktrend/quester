@@ -44,11 +44,13 @@ find_package(Qt6 COMPONENTS
     QmlModels
     Network
     Multimedia
+    DBus
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
 
 qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
 
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
@@ -70,6 +72,8 @@ qt_add_executable(quester
     audiovisualizer.h
     projectmvisualizer.cpp
     projectmvisualizer.h
+    mprisclient.cpp
+    mprisclient.h
     ${quester_resources}
 )
 
@@ -88,9 +92,10 @@ qt_add_qml_module(quester
     URI net.helltop.quester
     VERSION 1.0
     QML_FILES
-        main.qml
-        HeaderBar.qml
-        VisualizerView.qml
+        qml/main.qml
+        qml/HeaderBar.qml
+        qml/VisualizerView.qml
+    RESOURCE_PREFIX qml
 )
 
 target_link_libraries(quester
@@ -103,6 +108,7 @@ target_link_libraries(quester
     Qt6::QmlModels
     Qt6::Network
     Qt6::Multimedia
+    Qt6::DBus
     PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3

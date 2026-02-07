@@ -22,16 +22,73 @@ public:
         QString configFilePath = configDir + "/config.inp";
         QFile configFile(configFilePath);
         if (!configFile.exists()) {
+            QString presetPath = "/usr/share/projectM/presets";
+            const QStringList candidates = {
+                "/usr/share/projectM/presets",
+                "/usr/local/share/projectM/presets",
+                QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
+            };
+
+            for (const QString &p : candidates) {
+                if (QDir(p).exists()) {
+                    presetPath = p;
+                    break;
+                }
+            }
+
             if (configFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 QTextStream out(&configFile);
                 out << "Texture Size = 2048\n";
                 out << "Mesh X = 64\n";
                 out << "Mesh Y = 48\n";
                 out << "FPS = 60\n";
+                out << "Preset Path = " << presetPath << "\n";
+                out << "Title Font = Sans\n";
+                out << "Menu Font = Sans\n";
+                out << "Smooth Preset Duration = 5\n";
+                out << "Preset Duration = 15\n";
+                out << "Beat Sensitivity = 10\n";
+                out << "Aspect Correction = 1\n";
+                out << "Shuffle Enabled = 1\n";
+                out << "Soft Cut Ratings Enabled = 0\n";
                 configFile.close();
             }
         }
         std::string configPath = configFilePath.toStdString();
+
+        // Check for custom preset path in settings and update config.inp if needed
+        QSettings settings("Quester", "Quester");
+        QString customPresetPath = settings.value("projectMPresetPath").toString();
+
+        if (!customPresetPath.isEmpty()) {
+            if (configFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QStringList lines;
+                QTextStream in(&configFile);
+                bool changed = false;
+                while (!in.atEnd()) {
+                    QString line = in.readLine();
+                    if (line.startsWith("Preset Path =")) {
+                        QString currentPath = line.section('=', 1).trimmed();
+                        if (currentPath != customPresetPath) {
+                            line = "Preset Path = " + customPresetPath;
+                            changed = true;
+                        }
+                    }
+                    lines.append(line);
+                }
+                configFile.close();
+                
+                if (changed) {
+                    if (configFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+                        QTextStream out(&configFile);
+                        for (const QString &l : lines) {
+                            out << l << "\n";
+                        }
+                        configFile.close();
+                    }
+                }
+            }
+        }
 
         // Attempt to initialize projectM. 
         // Note: Constructor signature might vary slightly between v3 and v4.
