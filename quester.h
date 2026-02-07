@@ -11,8 +11,13 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QQuickWindow>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QAction>
 #include <mpd/client.h>
 #include <hwy/highway.h> // Highway SIMD library
+#include <QElapsedTimer>
+#include "statistics.h"
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches
@@ -153,6 +158,10 @@ class MpdClient : public QObject
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QStringList playlists READ playlists NOTIFY playlistsChanged)
     Q_PROPERTY(SortMode sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
+    Q_PROPERTY(QVariantMap weeklyStats READ weeklyStats NOTIFY weeklyStatsChanged)
+    Q_PROPERTY(QVariantMap monthlyStats READ monthlyStats NOTIFY monthlyStatsChanged)
+    Q_PROPERTY(QVariantMap yearlyStats READ yearlyStats NOTIFY yearlyStatsChanged)
+    Q_PROPERTY(QVariantMap allTimeStats READ allTimeStats NOTIFY allTimeStatsChanged)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -190,6 +199,10 @@ public:
     [[nodiscard]] auto playlists() const -> QStringList;
     [[nodiscard]] auto sortMode() const -> SortMode;
     [[nodiscard]] auto uri() const -> QString;
+    [[nodiscard]] auto weeklyStats() const -> QVariantMap;
+    [[nodiscard]] auto monthlyStats() const -> QVariantMap;
+    [[nodiscard]] auto yearlyStats() const -> QVariantMap;
+    [[nodiscard]] auto allTimeStats() const -> QVariantMap;
 
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
@@ -238,6 +251,7 @@ public Q_SLOTS:
     // Application/Window controls
     Q_INVOKABLE void quitApplication();
     Q_INVOKABLE void toggleFullscreen();
+    Q_INVOKABLE void toggleWindow();
 
 Q_SIGNALS:
     void artistChanged();
@@ -256,6 +270,10 @@ Q_SIGNALS:
     void volumeChanged();
     void playlistsChanged();
     void sortModeChanged();
+    void weeklyStatsChanged();
+    void monthlyStatsChanged();
+    void yearlyStatsChanged();
+    void allTimeStatsChanged();
 
 private Q_SLOTS:
     void updateStatus();
@@ -322,6 +340,28 @@ private:
     BrowserModel *m_browserModel;
     QueueModel *m_queueModel;
     QString m_currentPath;
+
+    // System tray
+    QSystemTrayIcon *m_trayIcon = nullptr;
+    QMenu *m_trayMenu = nullptr;
+    QAction *m_showAction = nullptr;
+    QAction *m_playPauseAction = nullptr;
+    QAction *m_nextAction = nullptr;
+    QAction *m_prevAction = nullptr;
+    QAction *m_quitAction = nullptr;
+
+    // Statistics
+    StatisticsManager *m_stats;
+    QElapsedTimer m_playTimer;
+    qint64 m_currentSongPlayTime = 0;
+    QString m_lastArtist;
+    QString m_lastTitle;
+    QString m_lastAlbum;
+
+public:
+    void setupSystemTray();
+    void updateTrayIcon();
+    void updateTrayTooltip();
 };
 
 #endif // QUESTER_H

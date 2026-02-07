@@ -16,6 +16,10 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtGlobal>
+#include <QDBusMetaType>
+#include <unistd.h>
+#include <fcntl.h>
+#include <cstring>
 
 
 using namespace Qt::StringLiterals;
@@ -68,6 +72,29 @@ public:
 
 auto main(int argc, char *argv[]) -> int
 {
+    // Check for --detach argument
+    bool shouldDetach = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--detach") == 0) {
+            shouldDetach = true;
+            break;
+        }
+    }
+
+    if (shouldDetach) {
+        if (fork() > 0) return 0; // Parent exits
+        setsid(); // Create new session
+
+        // Redirect standard streams to /dev/null
+        int devNull = open("/dev/null", O_RDWR);
+        if (devNull != -1) {
+            dup2(devNull, STDIN_FILENO);
+            dup2(devNull, STDOUT_FILENO);
+            dup2(devNull, STDERR_FILENO);
+            if (devNull > 2) close(devNull);
+        }
+    }
+
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("Quester"));
     app.setOrganizationDomain(QStringLiteral("helltop.net"));
@@ -96,6 +123,16 @@ auto main(int argc, char *argv[]) -> int
     MpdClient mpdClient;
     DBusService dbusService(&mpdClient);
     AudioVisualizer audioVisualizer;
+
+    qDBusRegisterMetaType<QList<QDBusObjectPath>>();
+    qDBusRegisterMetaType<QList<QVariantMap>>();
+    qRegisterMetaType<MprisPlaylist>("MprisPlaylist");
+    qDBusRegisterMetaType<MprisPlaylist>();
+    qRegisterMetaType<QList<MprisPlaylist>>("QList<MprisPlaylist>");
+    qDBusRegisterMetaType<QList<MprisPlaylist>>();
+    qRegisterMetaType<MprisActivePlaylist>("MprisActivePlaylist");
+    qDBusRegisterMetaType<MprisActivePlaylist>();
+
     bool startVisualizer = app.arguments().contains(QStringLiteral("--visualizer"));
 
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
@@ -124,6 +161,8 @@ const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
             auto window = qobject_cast<QQuickWindow *>(obj);
             if (window) {
                 mpdClient.setWindow(window);
+                // Initialize system tray after window is available
+                mpdClient.setupSystemTray();
             }
         },
         Qt::QueuedConnection);

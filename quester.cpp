@@ -236,6 +236,7 @@ MpdClient::MpdClient(QObject *parent)
     , m_queueModel(new QueueModel(this))
     , m_timer(new QTimer(this))
     , m_notifier(nullptr)
+    , m_stats(new StatisticsManager(this))
 {
     QSettings settings("Quester", "Quester");
     m_sortMode = static_cast<SortMode>(settings.value("sortMode", static_cast<int>(SortMode::Artist)).toInt());
@@ -348,6 +349,17 @@ void MpdClient::updateStatus()
             break;
         }
 
+        // Playback tracking logic
+        if (m_state == "play") {
+            if (m_playTimer.isValid()) {
+                m_currentSongPlayTime += m_playTimer.restart();
+            } else {
+                m_playTimer.start();
+            }
+        } else {
+            m_playTimer.invalidate();
+        }
+
         bool repeat = mpd_status_get_repeat(status);
         bool random = mpd_status_get_random(status);
         bool single = mpd_status_get_single(status);
@@ -422,6 +434,19 @@ void MpdClient::updateStatus()
             }
 
             if (song_id != m_currentSongId) {
+                // Log previous song if played for more than 5 seconds
+                if (m_currentSongId != -1 && m_currentSongPlayTime > 5000) {
+                    m_stats->logPlay(m_lastArtist, m_lastTitle, m_lastAlbum, m_currentSongPlayTime);
+                    emit weeklyStatsChanged();
+                    emit monthlyStatsChanged();
+                    emit yearlyStatsChanged();
+                    emit allTimeStatsChanged();
+                }
+                m_currentSongPlayTime = 0;
+                m_lastArtist = m_artist;
+                m_lastTitle = m_title;
+                m_lastAlbum = m_album;
+
                 m_currentSongId = song_id;
                 if (m_queueModel) {
                     m_queueModel->setCurrentSongId(m_currentSongId);
@@ -512,6 +537,10 @@ auto MpdClient::volume() const -> int { return m_volume; }
 auto MpdClient::playlists() const -> QStringList { return m_playlists; }
 auto MpdClient::sortMode() const -> SortMode { return m_sortMode; }
 auto MpdClient::uri() const -> QString { return m_currentUri; }
+auto MpdClient::weeklyStats() const -> QVariantMap { return m_stats->getWeeklyStats(); }
+auto MpdClient::monthlyStats() const -> QVariantMap { return m_stats->getMonthlyStats(); }
+auto MpdClient::yearlyStats() const -> QVariantMap { return m_stats->getYearlyStats(); }
+auto MpdClient::allTimeStats() const -> QVariantMap { return m_stats->getAllTimeStats(); }
 
 void MpdClient::setArtist(const QString &artist) {
     if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
@@ -1008,6 +1037,19 @@ void MpdClient::toggleFullscreen()
     }
 }
 
+void MpdClient::toggleWindow()
+{
+    if (m_window) {
+        if (m_window->isVisible() && m_window->isActive()) {
+            m_window->hide();
+        } else {
+            m_window->show();
+            m_window->raise();
+            m_window->requestActivate();
+        }
+    }
+}
+
 void MpdClient::fetchCoverForModel(int index, const QString &albumName)
 {
     if (index < 0 || index >= m_albumModel->m_albums.count()) return;
@@ -1451,4 +1493,88 @@ void MpdClient::cleanup()
     if (m_notifier) {
         m_notifier->setEnabled(false);
     }
+}
+
+void MpdClient::setupSystemTray()
+{
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        return;
+    }
+
+    m_trayIcon = new QSystemTrayIcon(this);
+    m_trayMenu = new QMenu();
+    
+    // Create actions
+    m_showAction = new QAction(tr("Show/Hide"), this);
+    m_playPauseAction = new QAction(tr("Play/Pause"), this);
+    m_nextAction = new QAction(tr("Next"), this);
+    m_prevAction = new QAction(tr("Previous"), this);
+    m_quitAction = new QAction(tr("Quit"), this);
+
+    // Connect actions
+    QObject::connect(m_showAction, &QAction::triggered, this, &MpdClient::toggleWindow);
+    QObject::connect(m_playPauseAction, &QAction::triggered, this, &MpdClient::togglePlayPause);
+    QObject::connect(m_nextAction, &QAction::triggered, this, &MpdClient::next);
+    QObject::connect(m_prevAction, &QAction::triggered, this, &MpdClient::previous);
+    QObject::connect(m_quitAction, &QAction::triggered, this, &MpdClient::quitApplication);
+
+    // Add actions to menu
+    m_trayMenu->addAction(m_showAction);
+    m_trayMenu->addSeparator();
+    m_trayMenu->addAction(m_prevAction);
+    m_trayMenu->addAction(m_playPauseAction);
+    m_trayMenu->addAction(m_nextAction);
+    m_trayMenu->addSeparator();
+    m_trayMenu->addAction(m_quitAction);
+
+    m_trayIcon->setContextMenu(m_trayMenu);
+    m_trayIcon->setIcon(QIcon::fromTheme("quester", QIcon(":/Quester.svg")));
+    m_trayIcon->show();
+
+    // Connect to state changes to update tray icon
+    QObject::connect(this, &MpdClient::stateChanged, this, &MpdClient::updateTrayIcon);
+    QObject::connect(this, &MpdClient::artistChanged, this, &MpdClient::updateTrayTooltip);
+    QObject::connect(this, &MpdClient::titleChanged, this, &MpdClient::updateTrayTooltip);
+    QObject::connect(this, &MpdClient::albumChanged, this, &MpdClient::updateTrayTooltip);
+
+    // Handle tray activation (click)
+    QObject::connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            toggleWindow();
+        }
+    });
+
+    updateTrayIcon();
+    updateTrayTooltip();
+}
+
+void MpdClient::updateTrayIcon()
+{
+    if (!m_trayIcon) return;
+
+    QIcon icon;
+    if (m_state == "play") {
+        icon = QIcon::fromTheme("media-playback-start", QIcon(":/Quester.svg"));
+    } else if (m_state == "pause") {
+        icon = QIcon::fromTheme("media-playback-pause", QIcon(":/Quester.svg"));
+    } else {
+        icon = QIcon::fromTheme("quester", QIcon(":/Quester.svg"));
+    }
+    
+    m_trayIcon->setIcon(icon);
+}
+
+void MpdClient::updateTrayTooltip()
+{
+    if (!m_trayIcon) return;
+
+    QString tooltip = "Quester";
+    if (!m_artist.isEmpty() && !m_title.isEmpty()) {
+        tooltip += QString("\n%1 - %2").arg(m_artist, m_title);
+        if (!m_album.isEmpty()) {
+            tooltip += QString("\n%1").arg(m_album);
+        }
+    }
+    
+    m_trayIcon->setToolTip(tooltip);
 }

@@ -46,6 +46,7 @@ find_package(Qt6 COMPONENTS
     Multimedia
     DBus
     Widgets
+    Sql
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
@@ -75,6 +76,8 @@ qt_add_executable(quester
     projectmvisualizer.h
     dbus.cpp
     dbus.h
+    statistics.cpp
+    statistics.h
     ${quester_resources}
 )
 
@@ -96,6 +99,7 @@ qt_add_qml_module(quester
         qml/main.qml
         qml/HeaderBar.qml
         qml/VisualizerView.qml
+        qml/WrappedView.qml
     RESOURCE_PREFIX qml
 )
 
@@ -111,6 +115,7 @@ target_link_libraries(quester
     Qt6::Multimedia
     Qt6::DBus
     Qt6::Widgets
+    Qt6::Sql
     PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3

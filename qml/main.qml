@@ -47,6 +47,7 @@ ApplicationWindow {
         onRequestQueue: coverFlow.state = "queueView"
         onRequestPlaylists: coverFlow.state = "playlistsView"
         onRequestLibrary: coverFlow.state = "libraryView"
+        onRequestWrapped: coverFlow.state = "wrappedView"
         onRequestRefresh: mpdClient.refreshLibrary()
         onToggleProjectM: {
             window.useProjectM = !window.useProjectM
@@ -805,6 +806,12 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
         }
 
+        WrappedView {
+            id: wrappedView
+            anchors.fill: parent
+            visible: coverFlow.state === "wrappedView"
+        }
+
         states: [
             State {
                 name: "libraryView"
@@ -812,6 +819,7 @@ ApplicationWindow {
                 PropertyChanges { target: pathViewScale; xScale: 1.0; yScale: 1.0 }
                 PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
                 PropertyChanges { target: gradientRect; opacity: 1.0 }
+                PropertyChanges { target: wrappedView; visible: false }
                 PropertyChanges { target: bottomControls; y: parent.height - 100 }
             },
             State {
@@ -820,6 +828,7 @@ ApplicationWindow {
                 PropertyChanges { target: pathViewScale; xScale: 5.0; yScale: 5.0 }
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
+                PropertyChanges { target: wrappedView; visible: false }
                 PropertyChanges { target: bottomControls; y: parent.height - 100 }
             },
             State {
@@ -828,6 +837,7 @@ ApplicationWindow {
                 PropertyChanges { target: visualizerView; opacity: 1.0; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
                 PropertyChanges { target: queueListView; opacity: 1.0; visible: true }
+                PropertyChanges { target: wrappedView; visible: false }
                 PropertyChanges { target: bottomControls; y: parent.height - 100 }
             },
             State {
@@ -835,6 +845,15 @@ ApplicationWindow {
                 PropertyChanges { target: pathView; opacity: 0.0 }
                 PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
                 PropertyChanges { target: queueListView; opacity: 0.0; visible: false }
+                PropertyChanges { target: wrappedView; visible: false }
+                PropertyChanges { target: gradientRect; opacity: 0.0 }
+            },
+            State {
+                name: "wrappedView"
+                PropertyChanges { target: pathView; opacity: 0.0 }
+                PropertyChanges { target: visualizerView; opacity: 0.0; visible: false }
+                PropertyChanges { target: queueListView; opacity: 0.0; visible: false }
+                PropertyChanges { target: wrappedView; visible: true }
                 PropertyChanges { target: gradientRect; opacity: 0.0 }
             }
         ]

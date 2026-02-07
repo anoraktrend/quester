@@ -22,6 +22,7 @@ ToolBar {
     signal setViewMode(string mode)
     signal requestBrowser()
     signal requestPlaylists()
+    signal requestWrapped()
 
     background: Rectangle {
         gradient: Gradient {
@@ -109,6 +110,13 @@ ToolBar {
                     visible: root.viewState !== "playlistsView"
                     height: visible ? implicitHeight : 0
                     onClicked: root.requestPlaylists()
+                }
+
+                MenuItem {
+                    text: qsTr("Weekly Wrapped")
+                    visible: root.viewState !== "wrappedView"
+                    height: visible ? implicitHeight : 0
+                    onClicked: root.requestWrapped()
                 }
 
                 MenuItem {
