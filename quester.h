@@ -150,6 +150,7 @@ class MpdClient : public QObject
     Q_PROPERTY(bool random READ random WRITE setRandom NOTIFY randomChanged)
     Q_PROPERTY(bool single READ single WRITE setSingle NOTIFY singleChanged)
     Q_PROPERTY(bool consume READ consume WRITE setConsume NOTIFY consumeChanged)
+    Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(QStringList playlists READ playlists NOTIFY playlistsChanged)
     Q_PROPERTY(SortMode sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
 
@@ -185,8 +186,10 @@ public:
     [[nodiscard]] auto random() const -> bool;
     [[nodiscard]] auto single() const -> bool;
     [[nodiscard]] auto consume() const -> bool;
+    [[nodiscard]] auto volume() const -> int;
     [[nodiscard]] auto playlists() const -> QStringList;
     [[nodiscard]] auto sortMode() const -> SortMode;
+    [[nodiscard]] auto uri() const -> QString;
 
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
@@ -200,6 +203,7 @@ public Q_SLOTS:
     void setRandom(bool on);
     void setSingle(bool on);
     void setConsume(bool on);
+    void setVolume(int volume);
     void setSortMode(SortMode mode);
     void cleanup();
 
@@ -207,9 +211,11 @@ public Q_SLOTS:
     void play();
     void pause();
     void togglePlayPause();
+    void stop();
     void next();
     void previous();
     void seek(qint64 time);
+    void seekTo(qint64 time);
 
     // Library
     void refreshLibrary(); // Existing
@@ -247,6 +253,7 @@ Q_SIGNALS:
     void randomChanged();
     void singleChanged();
     void consumeChanged();
+    void volumeChanged();
     void playlistsChanged();
     void sortModeChanged();
 
@@ -304,6 +311,7 @@ private:
     bool m_random = false;
     bool m_single = false;
     bool m_consume = false;
+    int m_volume = 100;
     QStringList m_playlists;
     SortMode m_sortMode = SortMode::Artist;
 

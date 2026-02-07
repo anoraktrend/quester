@@ -21,6 +21,11 @@ public:
 
     // Internal use for Renderer
     QByteArray takePcmData();
+    QString takePresetRequest(bool &hardCut);
+
+    // Preset management
+    Q_INVOKABLE QStringList getPresetList(const QString &presetPath) const;
+    Q_INVOKABLE void selectPresetByName(const QString &presetName, bool hardCut = true);
 
 signals:
     void activeChanged();
@@ -35,6 +40,9 @@ private:
     
     mutable QMutex m_mutex;
     QByteArray m_pcmBuffer;
+    bool m_presetRequested;
+    QString m_requestedPreset;
+    bool m_hardCut;
     
     void startInput();
     void stopInput();

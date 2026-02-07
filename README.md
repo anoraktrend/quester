@@ -1,5 +1,7 @@
 # Quester [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
->## A modern, visually rich MPD client built with Qt 6 and QML.
+
+>## A modern, visually rich MPD client built with Qt 6 and QML
+
 ## Table of Contents
 
 - [About](#about)
@@ -15,11 +17,12 @@
 Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your well tagged music library.  
 
 **Frequently Asked Questions:**
+
 ___
-	**Q**: What if I don't have a well tagged music library?
-	**A**: You should really have a well tagged music library. Use [Picard](https://picard.musicbrainz.org/) and/or[Beets](https://beets.io/) to fix that. Beets is my favorite, it can be used to import and organize your music in your library.
-	**Q: ** What if my music isn't in MusicBrainz?
-	**A:**  In the unlikely event that you have music from an artist or album that isn't already in the MusicBrainz database, you can add it yourself! 
+**Q**: What if I don't have a well tagged music library?
+**A**: You should really have a well tagged music library. Use [Picard](https://picard.musicbrainz.org/) and/or[Beets](https://beets.io/) to fix that. Beets is my favorite, it can be used to import and organize your music in your library.
+**Q**: What if my music isn't in MusicBrainz?
+**A**: In the unlikely event that you have music from an artist or album that isn't already in the MusicBrainz database, you can add it yourself!
 
 ## Features
 
@@ -32,12 +35,11 @@ ___
 
 ## Gallery
 
+![Screenshot](img/quester-gallery-01.png)  ![Screenshot](img/quester-gallery-02.png)
 
-![Screenshot](img/quester-gallery-01.png)  ![Screenshot](img/quester-gallery-02.png) 
+![Screenshot](img/quester-gallery-03.png) ![Screenshot](img/quester-gallery-04.png)
 
-![Screenshot](img/quester-gallery-03.png) ![Screenshot](img/quester-gallery-04.png) 
-
-![Screenshot](img/quester-gallery-05.png)![Screenshot](img/quester-gallery-06.png)![Screenshot](img/quester-gallery-07.png) 
+![Screenshot](img/quester-gallery-05.png)![Screenshot](img/quester-gallery-06.png)![Screenshot](img/quester-gallery-07.png)
 
 ## Prerequisites
 
@@ -53,38 +55,28 @@ To build Quester, you need the following dependencies installed on your system:
 
 ### Ubuntu/Debian
 
-```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev libpipewire-0.3-dev libhwy-dev
-```
+    sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev libmpdclient-dev libfftw3-dev libpulse-dev libpipewire-0.3-dev libhwy-dev
 
 ## Installation
 
 1. Clone the repository:
 
-   ```bash
-   git clone https://github.com/your_username/Quester.git
-   cd Quester
-   ```
+    git clone `https://github.com/your_username/Quester.git`
+    cd Quester
 
 2. Create a build directory and configure with CMake:
 
-   ```bash
-   mkdir build
-   cd build
-   cmake ..
-   ```
+    mkdir build
+    cd build
+    cmake ..
 
 3. Build the application:
 
-   ```bash
-   make
-   ```
+    make
 
 4. (Optional) Install system-wide:
 
-   ```bash
-   sudo make install
-   ```
+    sudo make install
 
 ## Usage
 
@@ -92,9 +84,7 @@ Ensure your MPD server is running. By default, Quester attempts to connect to `l
 
 Run the application from the build directory:
 
-```bash
-./quester
-```
+    ./quester
 
 ## Visualizer Presets
 
@@ -109,24 +99,20 @@ The JSON file should contain a single root object where keys are preset names an
 
 A simple array of hex color strings creates a horizontal gradient.
 
-```json
-{
-"Rainbow": ["#E50000", "#FF8D00", "#FFEE00", "#028121", "#004CFF", "#770088"] 
-} 
-```
+    {
+    "Rainbow": ["#E50000", "#FF8D00", "#FFEE00", "#028121", "#004CFF", "#770088"]
+    }
 
 ### Weighted Gradients
 
 Use an object with colors and weights to control the size of color sections.
 
-```json
-{
-   "Uneven": {
-      "colors": ["#FF0000", "#00FF00", "#0000FF"],
-      "weights": [1, 4, 1]
-   } 
-} 
-```
+    {
+       "Uneven": {
+          "colors": ["#FF0000", "#00FF00", "#0000FF"],
+          "weights": [1, 4, 1]
+       }
+    }
 
 ## Contributing
 

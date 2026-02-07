@@ -21,6 +21,7 @@ ToolBar {
     signal toggleProjectM()
     signal setViewMode(string mode)
     signal requestBrowser()
+    signal requestPlaylists()
 
     background: Rectangle {
         gradient: Gradient {
@@ -69,50 +70,6 @@ ToolBar {
         }
 
         ToolButton {
-            id: presetMenuButton
-            text: qsTr("Colors")
-            visible: root.viewState !== "libraryView"
-            Layout.preferredWidth: visible ? implicitWidth : 0
-            onClicked: root.openVisualizerSettings()
-        }
-
-        ToolButton {
-            id: sortmenuButton
-            icon.source: "image://theme/sort-presence"
-            icon.color: palette.windowText
-            icon.width: 24 * root.fontScale; icon.height: 24 * root.fontScale
-            visible: root.viewState === "libraryView"
-            Layout.preferredWidth: visible ? implicitWidth : 0
-
-            onClicked: sortby.open()
-    
-            Menu {
-                id: sortby
-                y: parent.height
-                title: qsTr("Sort By")
-
-                 MenuItem {
-                    text: qsTr("Artist")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.AlbumArtist
-                    onTriggered: mpdClient.sortMode = MpdClient.AlbumArtist
-                }
-                MenuItem {
-                    text: qsTr("Album")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.Album
-                    onTriggered: mpdClient.sortMode = MpdClient.Album
-                    }
-                MenuItem {
-                    text: qsTr("Artist & Year")
-                    checkable: true
-                    checked: mpdClient.sortMode === MpdClient.ArtistYear
-                    onTriggered: mpdClient.sortMode = MpdClient.ArtistYear
-                }
-            }
-        }
-
-        ToolButton {
             id: menuButton
             icon.source: "image://theme/application-menu"
             icon.color: palette.windowText
@@ -128,12 +85,14 @@ ToolBar {
                     text: qsTr("Visualizer")
                     visible: root.viewState !== "visualizerView" 
                     onClicked: root.requestVisualizer()
+                    height: visible ? implicitHeight : 0
                 }
                 
                 MenuItem {
                     text: qsTr("Toggle ProjectM")
                     checkable: true
                     visible: root.viewState === "visualizerView"
+                    height: visible ? implicitHeight : 0
                     checked: root.useProjectM
                     onTriggered: root.toggleProjectM()
                 }
@@ -141,12 +100,21 @@ ToolBar {
                 MenuItem {
                     text: qsTr("Queue")
                     visible: root.viewState !== "queueView"
+                    height: visible ? implicitHeight : 0
                     onClicked: root.requestQueue()
+                }
+
+                MenuItem {
+                    text: qsTr("Playlists")
+                    visible: root.viewState !== "playlistsView"
+                    height: visible ? implicitHeight : 0
+                    onClicked: root.requestPlaylists()
                 }
 
                 MenuItem {
                     text: qsTr("Return to Library")
                     visible: root.viewState !== "libraryView"
+                    height: visible ? implicitHeight : 0
                     onClicked: root.requestLibrary()
                 }
 
@@ -155,10 +123,14 @@ ToolBar {
                     onTriggered: root.requestRefresh()
                 }
 
-                MenuSeparator {}
+                MenuSeparator {
+                    visible: root.viewState === "visualizerView"
+                    height: visible ? implicitHeight : 0
+                }
 
                 RadioButton {
                     text: qsTr("Cover Flow")
+                    height: visible ? implicitHeight : 0
                     visible: root.viewState === "libraryView"
                     checked: root.viewMode === "flow"
                     onClicked: {
@@ -168,6 +140,7 @@ ToolBar {
                 }
                 RadioButton {
                     text: qsTr("Grid View")
+                    height: visible ? implicitHeight : 0
                     visible: root.viewState === "libraryView"
                     checked: root.viewMode === "grid"
                     onClicked: {
@@ -177,6 +150,7 @@ ToolBar {
                 }
                 RadioButton {
                     text: qsTr("Browser")
+                    height: visible ? implicitHeight : 0
                     visible: root.viewState === "libraryView"
                     checked: root.viewMode === "browser"
                     onClicked: {

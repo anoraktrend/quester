@@ -370,6 +370,12 @@ void MpdClient::updateStatus()
             emit consumeChanged();
         }
 
+        int volume = mpd_status_get_volume(status);
+        if (m_volume != volume) {
+            m_volume = volume;
+            emit volumeChanged();
+        }
+
         qint64 elapsed = mpd_status_get_elapsed_time(status);
         qint64 total = mpd_status_get_total_time(status);
 
@@ -502,8 +508,10 @@ auto MpdClient::repeat() const -> bool { return m_repeat; }
 auto MpdClient::random() const -> bool { return m_random; }
 auto MpdClient::single() const -> bool { return m_single; }
 auto MpdClient::consume() const -> bool { return m_consume; }
+auto MpdClient::volume() const -> int { return m_volume; }
 auto MpdClient::playlists() const -> QStringList { return m_playlists; }
 auto MpdClient::sortMode() const -> SortMode { return m_sortMode; }
+auto MpdClient::uri() const -> QString { return m_currentUri; }
 
 void MpdClient::setArtist(const QString &artist) {
     if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
@@ -529,6 +537,9 @@ void MpdClient::setSingle(bool on) {
 void MpdClient::setConsume(bool on) {
     if (m_connection) { leaveIdle(); mpd_run_consume(m_connection, on); sendIdle(); }
 }
+void MpdClient::setVolume(int volume) {
+    if (m_connection) { leaveIdle(); mpd_run_set_volume(m_connection, volume); sendIdle(); }
+}
 void MpdClient::setSortMode(SortMode mode) {
     if (m_sortMode == mode) return;
     m_sortMode = mode;
@@ -553,6 +564,16 @@ void MpdClient::seek(qint64 time)
     if (m_connection) {
         leaveIdle();
         mpd_run_seek_current(m_connection, static_cast<float>(time), false);
+        sendIdle();
+        updateStatus();
+    }
+}
+
+void MpdClient::seekTo(qint64 time)
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_seek_current(m_connection, static_cast<float>(time), true);
         sendIdle();
         updateStatus();
     }
@@ -1317,6 +1338,15 @@ void MpdClient::togglePlayPause()
         pause();
     } else {
         play();
+    }
+}
+
+void MpdClient::stop()
+{
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_stop(m_connection);
+        sendIdle();
     }
 }
 

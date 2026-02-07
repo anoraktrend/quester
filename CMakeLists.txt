@@ -45,6 +45,7 @@ find_package(Qt6 COMPONENTS
     Network
     Multimedia
     DBus
+    Widgets
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
@@ -72,8 +73,8 @@ qt_add_executable(quester
     audiovisualizer.h
     projectmvisualizer.cpp
     projectmvisualizer.h
-    mprisclient.cpp
-    mprisclient.h
+    dbus.cpp
+    dbus.h
     ${quester_resources}
 )
 
@@ -109,6 +110,7 @@ target_link_libraries(quester
     Qt6::Network
     Qt6::Multimedia
     Qt6::DBus
+    Qt6::Widgets
     PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3

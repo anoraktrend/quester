@@ -1,9 +1,9 @@
 #include "audiovisualizer.h"
 #include "projectmvisualizer.h"
 #include "quester.h"
-#include "mprisclient.h"
+#include "dbus.h"
 #include <QFileInfo>
-#include <QGuiApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QTranslator>
@@ -68,7 +68,7 @@ public:
 
 auto main(int argc, char *argv[]) -> int
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("Quester"));
     app.setOrganizationDomain(QStringLiteral("helltop.net"));
     app.setApplicationName(QStringLiteral("Quester"));
@@ -94,27 +94,24 @@ auto main(int argc, char *argv[]) -> int
     }
 
     MpdClient mpdClient;
-MprisClient mprisClient(&mpdClient);
+    DBusService dbusService(&mpdClient);
     AudioVisualizer audioVisualizer;
     bool startVisualizer = app.arguments().contains(QStringLiteral("--visualizer"));
 
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
-qmlRegisterUncreatableType<MprisClient>("Quester", 1, 0, "MprisClient", "Enums");
+    qmlRegisterUncreatableType<DBusService>("Quester", 1, 0, "DBusService", "Enums");
     qmlRegisterType<ProjectMVisualizer>("Quester", 1, 0, "ProjectMVisualizer");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
     engine.addImageProvider(QStringLiteral("blur"), new BlurImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
     engine.rootContext()->setContextProperty(QStringLiteral("mpdClient"), &mpdClient);
-engine.rootContext()->setContextProperty(QStringLiteral("mprisClient"), &mprisClient);
+    engine.rootContext()->setContextProperty(QStringLiteral("dbusService"), &dbusService);
     engine.rootContext()->setContextProperty(QStringLiteral("AudioVisualizer"), &audioVisualizer);
     engine.rootContext()->setContextProperty(QStringLiteral("startInVisualizer"), startVisualizer);
 
 const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
 
-    // The QT_QML_SOURCE_DIR macro is set by CMake to the project's source directory.
-    // This allows the application to run directly from the build directory for development.
-    engine.loadFromModule("net.helltop.quester", "main");
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreated,
