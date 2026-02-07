@@ -121,7 +121,7 @@ ApplicationWindow {
                 MenuItem {
                     text: qsTr("Toggle ProjectM")
                     checkable: true
-                    visible: coverFlow.state !== "visualizerView"
+                    visible: coverFlow.state === "visualizerView"
                     checked: window.useProjectM
                     onTriggered: window.useProjectM = !window.useProjectM
                 }
