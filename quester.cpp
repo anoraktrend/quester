@@ -52,9 +52,11 @@ auto AlbumModel::data(const QModelIndex &index, int role) const -> QVariant
     if (role == static_cast<int>(AlbumRoles::ArtRole))
         return item.artUrl;
     if (role == static_cast<int>(AlbumRoles::ArtistRole))
-        return item.artist; // Return artist for ArtistRole
+        return item.artist;
     if (role == static_cast<int>(AlbumRoles::YearRole))
         return item.year;
+    if (role == static_cast<int>(AlbumRoles::MbidRole))
+        return item.mbid;
     return {};
 }
 
@@ -63,8 +65,9 @@ auto AlbumModel::roleNames() const -> QHash<int, QByteArray>
     QHash<int, QByteArray> roles;
     roles[static_cast<int>(AlbumRoles::NameRole)] = "name";
     roles[static_cast<int>(AlbumRoles::ArtRole)] = "art";
-    roles[static_cast<int>(AlbumRoles::ArtistRole)] = "artist"; // Map ArtistRole to "artist"
+    roles[static_cast<int>(AlbumRoles::ArtistRole)] = "artist";
     roles[static_cast<int>(AlbumRoles::YearRole)] = "year";
+    roles[static_cast<int>(AlbumRoles::MbidRole)] = "mbid";
     return roles;
 }
 
@@ -215,8 +218,6 @@ void QueueModel::setCurrentSongId(int id)
     if (m_currentSongId == id)
         return;
     m_currentSongId = id;
-    // Refresh all data to update IsCurrentRole. 
-    // For a large queue, we might want to be more specific, but this is safe.
     emit dataChanged(index(0), index(static_cast<int>(m_queue.count()) - 1), {static_cast<int>(QueueRoles::IsCurrentRole)});
 }
 
@@ -228,8 +229,8 @@ MpdClient::MpdClient(QObject *parent)
     , m_trackModel(new TrackModel(this))
     , m_browserModel(new BrowserModel(this))
     , m_queueModel(new QueueModel(this))
-    , m_timer(new QTimer(this)), 
-     m_notifier(nullptr)
+    , m_timer(new QTimer(this))
+    , m_notifier(nullptr)
 {
     QSettings settings("Quester", "Quester");
     m_sortMode = static_cast<SortMode>(settings.value("sortMode", static_cast<int>(SortMode::Artist)).toInt());
@@ -260,16 +261,15 @@ void MpdClient::connect()
     } else {
         qInfo() << "Successfully connected to MPD.";
 
-        // Setup socket notifier for idle events
         int fd = mpd_connection_get_fd(m_connection);
         if (m_notifier)
             delete m_notifier;
-        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this); // NOLINT(cppcoreguidelines-owning-memory)
+        m_notifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
         QObject::connect(m_notifier, &QSocketNotifier::activated, this, &MpdClient::handleMpdEvent);
 
-        updateStatus(); // Initial status fetch
-        refreshQueue(); // Initial queue fetch
-        sendIdle();     // Enter idle loop
+        updateStatus();
+        refreshQueue();
+        sendIdle();
     }
 }
 
@@ -299,7 +299,6 @@ void MpdClient::handleMpdEvent()
         return;
     m_isIdle = false;
 
-    // Read the idle response
     enum mpd_idle events = mpd_recv_idle(m_connection, true);
 
     if (events & (MPD_IDLE_PLAYER | MPD_IDLE_MIXER | MPD_IDLE_OPTIONS)) {
@@ -312,7 +311,6 @@ void MpdClient::handleMpdEvent()
         refreshQueue();
     }
 
-    // Re-enter idle mode
     sendIdle();
 }
 
@@ -329,7 +327,6 @@ void MpdClient::updateStatus()
 
     struct mpd_status *status = mpd_run_status(m_connection);
     if (status) {
-        // Update player state
         mpd_state player_state = mpd_status_get_state(status);
         switch (player_state) {
         case MPD_STATE_PLAY:
@@ -383,7 +380,6 @@ void MpdClient::updateStatus()
         int song_id = mpd_status_get_song_id(status);
         mpd_status_free(status);
 
-        // Use mpd_run_current_song for simpler synchronous fetching
         struct mpd_song *song = mpd_run_current_song(m_connection);
         if (song) {
             const char *artist_tag = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
@@ -445,15 +441,13 @@ void MpdClient::fetchAlbumArt(const QString &album)
     if (album.isEmpty() || album == "Unknown Album")
         return;
 
-    // Generate a deterministic color based on the album name hash
     unsigned int hash = 0;
     for (QChar c : album) {
-        hash = c.unicode() + (hash << 6) + (hash << 16) - hash; // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+        hash = c.unicode() + (hash << 6) + (hash << 16) - hash;
     }
-    QString color = QString("#%1").arg(hash & 0xFFFFFF, 6, 16, QLatin1Char('0')); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+    QString color = QString("#%1").arg(hash & 0xFFFFFF, 6, 16, QLatin1Char('0'));
     QString letter = album.left(1).toUpper();
 
-    // Create a simple SVG placeholder
     QString svg = QString(
                       "<svg width='200' height='200' xmlns='http://www.w3.org/2000/svg'>"
                       "<rect width='100%' height='100%' fill='%1'/>"
@@ -465,17 +459,14 @@ void MpdClient::fetchAlbumArt(const QString &album)
     m_albumArt = "data:image/svg+xml;base64," + svg.toUtf8().toBase64();
     emit albumArtChanged();
 
-    // Check Cache
-    QString cachePath = getCachePath(m_artist, album);
+    QString cachePath = getCachePath(m_artist, album, m_currentMbid);
 
-    // If cache exists, use it and return
     if (QFile::exists(cachePath)) {
         m_albumArt = "file://" + cachePath;
         emit albumArtChanged();
         return;
     }
 
-    // --- MPD Native Art Fetch ---
     QByteArray mpdData = getMpdPicture(m_currentUri);
     if (!mpdData.isEmpty()) {
         QFile file(cachePath);
@@ -491,145 +482,54 @@ void MpdClient::fetchAlbumArt(const QString &album)
     fetchAlbumArtFromAPIs({m_artist, album, m_currentMbid, cachePath, true, -1});
 }
 
-// --- Properties ---
-auto MpdClient::artist() const -> QString
-{
-    return m_artist;
-}
-auto MpdClient::title() const -> QString
-{
-    return m_title;
-}
-auto MpdClient::album() const -> QString
-{
-    return m_album;
-}
-auto MpdClient::state() const -> QString
-{
-    return m_state;
-}
-auto MpdClient::albumArt() const -> QString
-{
-    return m_albumArt;
-}
-auto MpdClient::duration() const -> qint64
-{
-    return m_duration;
-}
-auto MpdClient::elapsed() const -> qint64
-{
-    return m_elapsed;
-}
-auto MpdClient::currentAlbumIndex() const -> int
-{
-    return m_currentAlbumIndex;
-}
-auto MpdClient::browserModel() const -> BrowserModel *
-{
-    return m_browserModel;
-}
-auto MpdClient::queueModel() const -> QueueModel *
-{
-    return m_queueModel;
-}
-auto MpdClient::currentPath() const -> QString
-{
-    return m_currentPath;
-}
-auto MpdClient::repeat() const -> bool
-{
-    return m_repeat;
-}
-auto MpdClient::random() const -> bool
-{
-    return m_random;
-}
-auto MpdClient::single() const -> bool
-{
-    return m_single;
-}
-auto MpdClient::consume() const -> bool
-{
-    return m_consume;
-}
-auto MpdClient::playlists() const -> QStringList
-{
-    return m_playlists;
-}
-auto MpdClient::sortMode() const -> SortMode
-{
-    return m_sortMode;
-}
+auto MpdClient::artist() const -> QString { return m_artist; }
+auto MpdClient::title() const -> QString { return m_title; }
+auto MpdClient::album() const -> QString { return m_album; }
+auto MpdClient::state() const -> QString { return m_state; }
+auto MpdClient::albumArt() const -> QString { return m_albumArt; }
+auto MpdClient::duration() const -> qint64 { return m_duration; }
+auto MpdClient::elapsed() const -> qint64 { return m_elapsed; }
+auto MpdClient::currentAlbumIndex() const -> int { return m_currentAlbumIndex; }
+auto MpdClient::browserModel() const -> BrowserModel * { return m_browserModel; }
+auto MpdClient::queueModel() const -> QueueModel * { return m_queueModel; }
+auto MpdClient::currentPath() const -> QString { return m_currentPath; }
+auto MpdClient::repeat() const -> bool { return m_repeat; }
+auto MpdClient::random() const -> bool { return m_random; }
+auto MpdClient::single() const -> bool { return m_single; }
+auto MpdClient::consume() const -> bool { return m_consume; }
+auto MpdClient::playlists() const -> QStringList { return m_playlists; }
+auto MpdClient::sortMode() const -> SortMode { return m_sortMode; }
 
-void MpdClient::setArtist(const QString &artist)
-{
-    if (m_artist != artist) {
-        m_artist = artist;
-        emit artistChanged();
-    }
+void MpdClient::setArtist(const QString &artist) {
+    if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
 }
-void MpdClient::setTitle(const QString &title)
-{
-    if (m_title != title) {
-        m_title = title;
-        emit titleChanged();
-    }
+void MpdClient::setTitle(const QString &title) {
+    if (m_title != title) { m_title = title; emit titleChanged(); }
 }
-void MpdClient::setAlbum(const QString &album)
-{
-    if (m_album != album) {
-        m_album = album;
-        emit albumChanged();
-    }
+void MpdClient::setAlbum(const QString &album) {
+    if (m_album != album) { m_album = album; emit albumChanged(); }
 }
-void MpdClient::setState(const QString &state)
-{
-    if (m_state != state) {
-        m_state = state;
-        emit stateChanged();
-    }
+void MpdClient::setState(const QString &state) {
+    if (m_state != state) { m_state = state; emit stateChanged(); }
 }
-void MpdClient::setRepeat(bool on)
-{
-    if (m_connection) {
-        leaveIdle();
-        mpd_run_repeat(m_connection, on);
-        sendIdle();
-    }
+void MpdClient::setRepeat(bool on) {
+    if (m_connection) { leaveIdle(); mpd_run_repeat(m_connection, on); sendIdle(); }
 }
-void MpdClient::setRandom(bool on)
-{
-    if (m_connection) {
-        leaveIdle();
-        mpd_run_random(m_connection, on);
-        sendIdle();
-    }
+void MpdClient::setRandom(bool on) {
+    if (m_connection) { leaveIdle(); mpd_run_random(m_connection, on); sendIdle(); }
 }
-void MpdClient::setSingle(bool on)
-{
-    if (m_connection) {
-        leaveIdle();
-        mpd_run_single(m_connection, on);
-        sendIdle();
-    }
+void MpdClient::setSingle(bool on) {
+    if (m_connection) { leaveIdle(); mpd_run_single(m_connection, on); sendIdle(); }
 }
-void MpdClient::setConsume(bool on)
-{
-    if (m_connection) {
-        leaveIdle();
-        mpd_run_consume(m_connection, on);
-        sendIdle();
-    }
+void MpdClient::setConsume(bool on) {
+    if (m_connection) { leaveIdle(); mpd_run_consume(m_connection, on); sendIdle(); }
 }
-void MpdClient::setSortMode(SortMode mode)
-{
-    if (m_sortMode == mode)
-        return;
+void MpdClient::setSortMode(SortMode mode) {
+    if (m_sortMode == mode) return;
     m_sortMode = mode;
     QSettings settings("Quester", "Quester");
     settings.setValue("sortMode", static_cast<int>(m_sortMode));
     emit sortModeChanged();
-
     if (m_albumModel) {
         QList<AlbumItem> albums = m_albumModel->m_albums;
         sortAlbums(albums);
@@ -637,19 +537,10 @@ void MpdClient::setSortMode(SortMode mode)
     }
 }
 
-void MpdClient::setWindow(QQuickWindow *window)
-{
-    m_window = window;
-}
+void MpdClient::setWindow(QQuickWindow *window) { m_window = window; }
 
-// --- Playback Controls ---
-void MpdClient::play()
-{
-    if (m_connection) {
-        leaveIdle();
-        mpd_run_play(m_connection);
-        sendIdle();
-    }
+void MpdClient::play() {
+    if (m_connection) { leaveIdle(); mpd_run_play(m_connection); sendIdle(); }
 }
 
 void MpdClient::refreshLibrary()
@@ -665,12 +556,13 @@ void MpdClient::refreshLibrary()
     }
 
     QList<AlbumItem> albums;
-    QSet<QString> addedAlbums;
+    QSet<QString> addedMbids;
+    QSet<QString> addedArtistAlbums;
 
-    // Optimize: Fetch Album and Artist in one go using "list album group artist"
-    if (mpd_send_command(m_connection, "list", "album", "group", "artist", "group", "date", nullptr)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
+    if (mpd_send_command(m_connection, "list", "album", "group", "artist", "group", "date", "group", "musicbrainz_albumid", nullptr)) {
         struct mpd_pair *pair = nullptr;
         QString currentArtist = tr("Unknown Artist");
+        QString currentMbid;
         int currentYear = 0;
 
         while ((pair = mpd_recv_pair(m_connection)) != nullptr) {
@@ -681,39 +573,53 @@ void MpdClient::refreshLibrary()
                 currentArtist = tagValue;
             } else if (tagName == "Date") {
                 currentYear = tagValue.left(4).toInt();
+            } else if (tagName == "MusicBrainzAlbumId" || tagName == "MUSICBRAINZ_ALBUMID") {
+                currentMbid = tagValue;
             } else if (tagName == "Album") {
                 QString albumName = tagValue;
-                if (!albumName.isEmpty() && !addedAlbums.contains(albumName)) {
-                    // Check cache immediately for initial display
-                    QString cachePath = getCachePath(currentArtist, albumName);
-                    QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
-
-                    albums.append({currentArtist, albumName, art, "", false, currentYear});
-                    addedAlbums.insert(albumName);
+                if (!albumName.isEmpty()) {
+                    bool shouldAdd = false;
+                    QString groupKey;
+                    
+                    if (!currentMbid.isEmpty()) {
+                        groupKey = currentMbid;
+                        if (!addedMbids.contains(groupKey)) {
+                            shouldAdd = true;
+                            addedMbids.insert(groupKey);
+                        }
+                    } else {
+                        groupKey = currentArtist + "|" + albumName;
+                        if (!addedArtistAlbums.contains(groupKey)) {
+                            shouldAdd = true;
+                            addedArtistAlbums.insert(groupKey);
+                        }
+                    }
+                    
+                    if (shouldAdd) {
+                        QString cachePath = getCachePath(currentArtist, albumName, currentMbid);
+                        QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
+                        albums.append(AlbumItem{currentArtist, albumName, art, currentMbid, "", false, currentYear});
+                    }
                 }
             }
             mpd_return_pair(m_connection, pair);
         }
 
         if (mpd_connection_get_error(m_connection) != MPD_ERROR_SUCCESS) {
-            qWarning() << "Error reading library response:"
-                       << mpd_connection_get_error_message(m_connection);
+            qWarning() << "Error reading library response:" << mpd_connection_get_error_message(m_connection);
             mpd_connection_clear_error(m_connection);
         }
 
         mpd_response_finish(m_connection);
     } else {
-        qWarning() << "Failed to send list command:"
-                   << mpd_connection_get_error_message(m_connection);
+        qWarning() << "Failed to send list command:" << mpd_connection_get_error_message(m_connection);
         mpd_connection_clear_error(m_connection);
     }
 
     sortAlbums(albums);
-
     m_albumModel->setAlbums(albums);
     saveLibraryToCache(albums);
 
-    // Trigger fetches for missing art
     for (int i = 0; i < albums.count(); ++i) {
         if (albums[i].artUrl.isEmpty()) {
             fetchCoverForModel(i, albums[i].name);
@@ -735,9 +641,10 @@ void MpdClient::loadAlbumTracks(int index)
 
     QString albumName = m_albumModel->m_albums[index].name;
     QString artistName = m_albumModel->m_albums[index].artist;
+    QString mbid = m_albumModel->m_albums[index].mbid;
     leaveIdle();
 
-    QList<SortableSong> sortedTracks = getSongsForAlbum(artistName, albumName);
+    QList<SortableSong> sortedTracks = getSongsForAlbum(artistName, albumName, mbid);
     QList<TrackItem> tracks;
 
     for (const auto &t : sortedTracks) {
@@ -821,18 +728,14 @@ void MpdClient::playTrack(const QString &uri)
     sendIdle();
 }
 
-void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
+void MpdClient::playAlbum(const QString &artistName, const QString &albumName, const QString &mbid)
 {
     if (!m_connection || albumName.isEmpty())
         return;
 
     m_timer->stop();
-    // It's good practice to force an update after a manual action.
-    // We'll do it after the timer is restarted.
+    leaveIdle();
 
-    leaveIdle(); // Exit idle mode before sending commands
-
-    // 1. Clear the current playlist.
     if (!mpd_run_clear(m_connection)) {
         mpd_connection_clear_error(m_connection);
         m_timer->start(TIMER_INTERVAL);
@@ -840,7 +743,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
         return;
     }
 
-    QList<SortableSong> songList = getSongsForAlbum(artistName, albumName);
+    QList<SortableSong> songList = getSongsForAlbum(artistName, albumName, mbid);
 
     if (!songList.isEmpty()) {
         mpd_command_list_begin(m_connection, false);
@@ -853,19 +756,17 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName)
         }
     }
 
-    // 3. Start playing from the beginning of the (now populated) playlist.
     if (!mpd_run_play(m_connection)) {
-        qWarning() << "Failed to start playing album:"
-                   << mpd_connection_get_error_message(m_connection);
+        qWarning() << "Failed to start playing album:" << mpd_connection_get_error_message(m_connection);
         mpd_connection_clear_error(m_connection);
     }
 
-    sendIdle(); // Re-enter idle mode
+    sendIdle();
     m_timer->start(TIMER_INTERVAL);
-    updateStatus(); // Force an immediate status update
+    updateStatus();
 }
 
-void MpdClient::addAlbum(const QString &artistName, const QString &albumName)
+void MpdClient::addAlbum(const QString &artistName, const QString &albumName, const QString &mbid)
 {
     if (!m_connection || albumName.isEmpty())
         return;
@@ -873,7 +774,7 @@ void MpdClient::addAlbum(const QString &artistName, const QString &albumName)
     m_timer->stop();
     leaveIdle();
 
-    QList<SortableSong> songList = getSongsForAlbum(artistName, albumName);
+    QList<SortableSong> songList = getSongsForAlbum(artistName, albumName, mbid);
 
     if (!songList.isEmpty()) {
         mpd_command_list_begin(m_connection, false);
@@ -904,27 +805,15 @@ void MpdClient::addTrack(const QString &uri)
 
 void MpdClient::addPath(const QString &path)
 {
-    addTrack(path); // mpd_run_add handles both files and directories
+    addTrack(path);
 }
 
-auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &albumName) -> QList<MpdClient::SortableSong>
+auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &albumName, const QString &mbid) -> QList<MpdClient::SortableSong>
 {
     QList<SortableSong> songs;
     if (!m_connection) return songs;
 
-    auto fetch = [&](mpd_tag_type artistTag) -> bool {
-        if (!mpd_search_db_songs(m_connection, true)) return false;
-        
-        if (!artistName.isEmpty() && artistName != tr("Unknown Artist")) {
-            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, artistTag, artistName.toUtf8().constData());
-        }
-        mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
-        
-        if (!mpd_search_commit(m_connection)) {
-            mpd_connection_clear_error(m_connection);
-            return false;
-        }
-
+    auto fetchSongs = [&]() -> bool {
         struct mpd_song *song = nullptr;
         bool any = false;
         while ((song = mpd_recv_song(m_connection)) != nullptr) {
@@ -938,7 +827,7 @@ auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &album
             SortableSong s;
             s.uri = uri ? QString::fromUtf8(uri) : "";
             s.title = title ? QString::fromUtf8(title) : tr("Unknown Title");
-            s.duration = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0')); // NOLINT(cppcoreguidelines-avoid-magic-numbers)
+            s.duration = QString("%1:%2").arg(duration / 60).arg(duration % 60, 2, 10, QChar('0'));
             s.track = trackStr ? std::atoi(trackStr) : 0;
             s.disc = discStr ? std::atoi(discStr) : 0;
             
@@ -951,10 +840,48 @@ auto MpdClient::getSongsForAlbum(const QString &artistName, const QString &album
         return any;
     };
 
-    // Try AlbumArtist first
-    if (!fetch(MPD_TAG_ALBUM_ARTIST)) {
+    auto searchByArtist = [&](mpd_tag_type artistTag) -> bool {
+        if (!mpd_search_db_songs(m_connection, true)) return false;
+        
+        if (!artistName.isEmpty() && artistName != tr("Unknown Artist")) {
+            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, artistTag, artistName.toUtf8().constData());
+        }
+        mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
+        
+        if (!mpd_search_commit(m_connection)) {
+            mpd_connection_clear_error(m_connection);
+            return false;
+        }
+        return fetchSongs();
+    };
+
+    if (!mbid.isEmpty()) {
+        if (!mpd_search_db_songs(m_connection, true)) {
+            mpd_connection_clear_error(m_connection);
+        } else {
+            mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_MUSICBRAINZ_ALBUMID, mbid.toUtf8().constData());
+            
+            if (!mpd_search_commit(m_connection)) {
+                mpd_connection_clear_error(m_connection);
+            } else {
+                if (fetchSongs() && !songs.isEmpty()) {
+                    QCollator collator;
+                    collator.setNumericMode(true);
+                    std::sort(songs.begin(), songs.end(), [&](const SortableSong &a, const SortableSong &b) -> bool {
+                        if (a.disc != b.disc) return a.disc < b.disc;
+                        if (a.track != b.track) return a.track < b.track;
+                        return collator.compare(a.uri, b.uri) < 0;
+                    });
+                    return songs;
+                }
+            }
+        }
         songs.clear();
-        fetch(MPD_TAG_ARTIST);
+    }
+
+    if (!searchByArtist(MPD_TAG_ALBUM_ARTIST)) {
+        songs.clear();
+        searchByArtist(MPD_TAG_ARTIST);
     }
 
     QCollator collator;
@@ -1047,58 +974,57 @@ void MpdClient::toggleFullscreen()
 
 void MpdClient::fetchCoverForModel(int index, const QString &albumName)
 {
-    // Try to find URI if missing
-    QString mbid;
-    if (index >= 0 && index < m_albumModel->m_albums.count()) {
-        QString artist = m_albumModel->m_albums[index].artist;
+    if (index < 0 || index >= m_albumModel->m_albums.count()) return;
+    
+    QString mbid = m_albumModel->m_albums[index].mbid;
+    QString artist = m_albumModel->m_albums[index].artist;
 
-        if (m_albumModel->m_albums[index].uri.isEmpty()) {
-            // Find a song in this album to get a representative URI
-            if (mpd_search_db_songs(m_connection, true)) {
-                mpd_search_add_tag_constraint(
-                    m_connection,
-                    MPD_OPERATOR_DEFAULT,
-                    MPD_TAG_ALBUM,
-                    albumName.toUtf8().constData());
-                if (mpd_search_commit(m_connection)) {
-                    struct mpd_song *song = mpd_recv_song(m_connection);
-                    if (song) {
-                        const char *u = mpd_song_get_uri(song);
-                        const char *m = mpd_song_get_tag(song, MPD_TAG_MUSICBRAINZ_ALBUMID, 0);
-                        if (u)
-                            m_albumModel->m_albums[index].uri = QString::fromUtf8(u);
-                        if (m)
-                            mbid = QString::fromUtf8(m);
-                        mpd_song_free(song);
-                    }
-                    mpd_response_finish(m_connection);
-                } else {
-                    mpd_connection_clear_error(m_connection);
-                }
+    if (m_albumModel->m_albums[index].uri.isEmpty()) {
+        if (mpd_search_db_songs(m_connection, true)) {
+            if (!mbid.isEmpty()) {
+                mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_MUSICBRAINZ_ALBUMID, mbid.toUtf8().constData());
+            } else {
+                mpd_search_add_tag_constraint(m_connection, MPD_OPERATOR_DEFAULT, MPD_TAG_ALBUM, albumName.toUtf8().constData());
             }
-        }
-
-        // Try MPD fetch
-        QString uri = m_albumModel->m_albums[index].uri;
-        if (!uri.isEmpty()) {
-            QByteArray mpdData = getMpdPicture(uri);
-            if (!mpdData.isEmpty()) {
-                QString cachePath = getCachePath(artist, albumName);
-                QFile file(cachePath);
-                if (file.open(QIODevice::WriteOnly)) {
-                    file.write(mpdData);
-                    file.close();
-                    m_albumModel->updateArt(index, "file://" + cachePath);
-                    return;
+            if (mpd_search_commit(m_connection)) {
+                struct mpd_song *song = mpd_recv_song(m_connection);
+                if (song) {
+                    const char *u = mpd_song_get_uri(song);
+                    if (u)
+                        m_albumModel->m_albums[index].uri = QString::fromUtf8(u);
+                    // If mbid not already stored, try to fetch it from the song
+                    if (mbid.isEmpty()) {
+                        const char *m = mpd_song_get_tag(song, MPD_TAG_MUSICBRAINZ_ALBUMID, 0);
+                        if (m) {
+                            mbid = QString::fromUtf8(m);
+                            m_albumModel->m_albums[index].mbid = mbid;
+                        }
+                    }
+                    mpd_song_free(song);
                 }
+                mpd_response_finish(m_connection);
+            } else {
+                mpd_connection_clear_error(m_connection);
             }
         }
     }
 
-    if (index < 0 || index >= m_albumModel->m_albums.count()) return;
-    QString artist = m_albumModel->m_albums[index].artist;
+    QString uri = m_albumModel->m_albums[index].uri;
+    if (!uri.isEmpty()) {
+        QByteArray mpdData = getMpdPicture(uri);
+        if (!mpdData.isEmpty()) {
+            QString cachePath = getCachePath(artist, albumName, mbid);
+            QFile file(cachePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(mpdData);
+                file.close();
+                m_albumModel->updateArt(index, "file://" + cachePath);
+                return;
+            }
+        }
+    }
 
-    fetchAlbumArtFromAPIs({artist, albumName, mbid, getCachePath(artist, albumName), false, index});
+    fetchAlbumArtFromAPIs({artist, albumName, mbid, getCachePath(artist, albumName, mbid), false, index});
 }
 
 void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
@@ -1176,12 +1102,15 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
     }
 }
 
-auto MpdClient::getCachePath(const QString &artist, const QString &album) -> QString
+auto MpdClient::getCachePath(const QString &artist, const QString &album, const QString &mbid) -> QString
 {
     QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
     QDir dir(cacheDir);
     if (!dir.exists()) {
         dir.mkpath(".");
+    }
+    if (!mbid.isEmpty()) {
+        return cacheDir + mbid + ".jpg";
     }
     QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
     return cacheDir + hashName + ".jpg";
@@ -1220,7 +1149,6 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
     if (!m_connection || uri.isEmpty())
         return {};
 
-    // Try readpicture (embedded) then albumart (external file)
     const std::array<const char*, 2> cmds = {"readpicture", "albumart"};
 
     for (const char *cmd : cmds) {
@@ -1229,12 +1157,8 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
         long long totalSize = 0;
 
         while (true) {
-            if (!mpd_send_command( // NOLINT(cppcoreguidelines-pro-type-vararg)
-                    m_connection,
-                    cmd,
-                    uri.toUtf8().constData(),
-                    QByteArray::number(offset).constData(),
-                    nullptr)) {
+            if (!mpd_send_command(m_connection, cmd, uri.toUtf8().constData(),
+                    QByteArray::number(offset).constData(), nullptr)) {
                 mpd_connection_clear_error(m_connection);
                 break;
             }
@@ -1304,6 +1228,7 @@ void MpdClient::saveLibraryToCache(const QList<AlbumItem> &albums)
     QJsonArray jsonArray;
     for (const AlbumItem &album : albums) {
         QJsonObject albumObject;
+        albumObject["musicbrainz_albumid"] = album.mbid;
         albumObject["artist"] = album.artist;
         albumObject["name"] = album.name;
         albumObject["artUrl"] = album.artUrl;
@@ -1323,7 +1248,7 @@ void MpdClient::loadLibraryFromCache()
                         + "/library.cache";
     QFile file(cachePath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        return; // Not an error if cache doesn't exist yet
+        return;
     }
 
     QByteArray data = file.readAll();
@@ -1347,6 +1272,7 @@ void MpdClient::loadLibraryFromCache()
             {obj.value("artist").toString(),
              obj.value("name").toString(),
              obj.value("artUrl").toString(),
+             obj.value("musicbrainz_albumid").toString(),
              obj.value("uri").toString(),
              false,
              obj.value("year").toInt()});
@@ -1358,14 +1284,8 @@ void MpdClient::loadLibraryFromCache()
     }
 }
 
-auto MpdClient::albumModel() const -> AlbumModel *
-{
-    return m_albumModel;
-}
-auto MpdClient::trackModel() const -> TrackModel *
-{
-    return m_trackModel;
-}
+auto MpdClient::albumModel() const -> AlbumModel * { return m_albumModel; }
+auto MpdClient::trackModel() const -> TrackModel * { return m_trackModel; }
 
 void MpdClient::pause()
 {
@@ -1478,4 +1398,12 @@ void MpdClient::removeId(int id)
     leaveIdle();
     mpd_run_delete_id(m_connection, id);
     sendIdle();
+}
+
+void MpdClient::cleanup()
+{
+    m_timer->stop();
+    if (m_notifier) {
+        m_notifier->setEnabled(false);
+    }
 }

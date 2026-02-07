@@ -1,4 +1,5 @@
 #include "audiovisualizer.h"
+#include "projectmvisualizer.h"
 #include "quester.h"
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -92,6 +93,7 @@ auto main(int argc, char *argv[]) -> int
     bool startVisualizer = app.arguments().contains(QStringLiteral("--visualizer"));
 
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
+    qmlRegisterType<ProjectMVisualizer>("Quester", 1, 0, "ProjectMVisualizer");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
@@ -120,6 +122,10 @@ const QUrl url(u"qrc:/qt/qml/net/helltop/quester/main.qml"_s);
             }
         },
         Qt::QueuedConnection);
+
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &mpdClient, &MpdClient::cleanup);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &audioVisualizer, &AudioVisualizer::stop);
+
     engine.load(url);
 
     return app.exec();

@@ -12,7 +12,14 @@
 
 ## About
 
-Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your music library.
+Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your well tagged music library.  
+
+**Frequently Asked Questions:**
+___
+	**Q**: What if I don't have a well tagged music library?
+	**A**: You should really have a well tagged music library. Use [Picard](https://picard.musicbrainz.org/) and/or[Beets](https://beets.io/) to fix that. Beets is my favorite, it can be used to import and organize your music in your library.
+	**Q: ** What if my music isn't in MusicBrainz?
+	**A:**  In the unlikely event that you have music from an artist or album that isn't already in the MusicBrainz database, you can add it yourself! 
 
 ## Features
 
@@ -42,6 +49,7 @@ To build Quester, you need the following dependencies installed on your system:
 - **libmpdclient**
 - **FFTW3**
 - **PulseAudio** (libpulse specifically, it uses the pulse api for the visualizer)
+- **libprojectm** (for advanced visualizations)
 
 ### Ubuntu/Debian
 

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
 
 
 
@@ -17,6 +18,7 @@ ApplicationWindow {
     color: palette.window
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
+    property bool useProjectM: false
     SystemPalette { id: palette }
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
@@ -77,8 +79,8 @@ ApplicationWindow {
                  MenuItem {
                     text: qsTr("Artist")
                     checkable: true
-                    checked: mpdClient.sortMode === MpdClient.Artist
-                    onTriggered: mpdClient.sortMode = MpdClient.Artist
+                    checked: mpdClient.sortMode === MpdClient.AlbumArtist
+                    onTriggered: mpdClient.sortMode = MpdClient.AlbumArtist
                 }
                 MenuItem {
                     text: qsTr("Album")
@@ -116,6 +118,14 @@ ApplicationWindow {
                     onClicked: goToVisualizer()
                 }
                 
+                MenuItem {
+                    text: qsTr("Toggle ProjectM")
+                    checkable: true
+                    visible: coverFlow.state !== "visualizerView"
+                    checked: window.useProjectM
+                    onTriggered: window.useProjectM = !window.useProjectM
+                }
+
                 MenuItem {
                     text: qsTr("Queue")
                     visible: coverFlow.state !== "queueView"
@@ -218,7 +228,7 @@ ApplicationWindow {
             anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 250
+            height: 320
             z: 2
             model: mpdClient.albumModel
             pathItemCount: {
@@ -247,57 +257,96 @@ ApplicationWindow {
                 yScale: 1.0
             }
 
-            delegate: Rectangle {
+            delegate: Item {
                 width: 200
                 height: 200
-                color: palette.base
                 visible: coverFlow.viewMode === "flow"
                 scale: PathView.iconScale !== undefined ? PathView.iconScale : 1.0
                 opacity: PathView.iconOpacity !== undefined ? PathView.iconOpacity : 1.0
                 z: PathView.z !== undefined ? PathView.z : 0
-                radius: 5
-                border.width: model.art ? 2 : 0 // Hide border when there's no art
-                border.color: palette.accent
-                antialiasing: true
-                
-                Image {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    source: model.art
-                    fillMode: Image.PreserveAspectCrop
-                }
-                
-                Text {
-                    anchors.centerIn: parent
-                    width: parent.width - 10
-                    text: model.name
-                    color: palette.text
-                    wrapMode: Text.Wrap
-                    horizontalAlignment: Text.AlignHCenter
-                    visible: !model.art
+
+                // Reflection
+                MultiEffect {
+                    id: reflection
+                    source: mainContent
+                    anchors.top: mainContent.bottom
+                    anchors.topMargin: 2
+                    width: mainContent.width; height: mainContent.height
+                    visible: model.art ? true : false
+                    
+                    // Flip the reflection
+                    transform: Rotation { origin.y: height / 2; angle: 180; axis { x: 1; y: 0; z: 0 } }
+                    
+                    // Apply iPod-style blur and fade
+                    blurEnabled: true
+                    blur: 0.5
+                    maskEnabled: true
+                    maskSource: reflectionMask
+                    opacity: 0.4
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: (mouse) => {
-                        if (mouse.button === Qt.RightButton) {
-                            contextMenu.popup()
-                        } else {
-                            mpdClient.playAlbum(model.artist, model.name)
-                            pathView.currentIndex = index
+                Item {
+                    id: reflectionMask
+                    width: reflection.width; height: reflection.height
+                    visible: false
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "white" }
+                            GradientStop { position: 0.5; color: "transparent" }
                         }
                     }
+                }
 
-                    Menu {
-                        id: contextMenu
-                        MenuItem {
-                            text: qsTr("Play Album")
-                            onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                Rectangle {
+                    id: mainContent
+                    anchors.fill: parent
+                    color: palette.base
+                    radius: 5
+                    border.width: model.art ? 2 : 0 // Hide border when there's no art
+                    border.color: palette.accent
+                    antialiasing: true
+                    clip: true
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        source: model.art
+                        fillMode: Image.PreserveAspectCrop
+                    }
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width - 10
+                        text: model.name
+                        color: palette.text
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: !model.art
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                contextMenu.popup()
+                            } else {
+                                mpdClient.playAlbum(model.artist, model.name, model.mbid)
+                                pathView.currentIndex = index
+                            }
                         }
-                        MenuItem {
-                            text: qsTr("Add to Queue")
-                            onTriggered: mpdClient.addAlbum(model.artist, model.name)
+
+                        Menu {
+                            id: contextMenu
+                            MenuItem {
+                                text: qsTr("Play Album")
+                                onTriggered: mpdClient.playAlbum(model.artist, model.name, model.mbid)
+                            }
+                            MenuItem {
+                                text: qsTr("Add to Queue")
+                                onTriggered: mpdClient.addAlbum(model.artist, model.name, model.mbid)
+                            }
                         }
                     }
                 }
@@ -383,15 +432,15 @@ ApplicationWindow {
                                 }
                             }
 
-                            Menu {
+                                Menu {
                                 id: gridContextMenu
                                 MenuItem {
                                     text: qsTr("Play Album")
-                                    onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                                    onTriggered: mpdClient.playAlbum(model.artist, model.name, model.mbid)
                                 }
                                 MenuItem {
                                     text: qsTr("Add to Queue")
-                                    onTriggered: mpdClient.addAlbum(model.artist, model.name)
+                                    onTriggered: mpdClient.addAlbum(model.artist, model.name, model.mbid)
                                 }
                             }
                         }
@@ -473,44 +522,99 @@ ApplicationWindow {
             ScrollBar.vertical: ScrollBar { }
         }
 
-        VisualizerView {
+        Item {
             id: visualizerView
             anchors.fill: parent
-            magnitudes: AudioVisualizer.magnitudes
-            albumArt: mpdClient.albumArt
-            contentBottomMargin: 0
-            active: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
-            barOpacity: coverFlow.state === "queueView" ? 0.2 : 0.9
             z: 10
-            onClicked: coverFlow.state = "libraryView"
+            visible: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
+            opacity: visible ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 500 } }
 
-            onWidthChanged: {
-                if (width > 0) {
-                    AudioVisualizer.width = width;
-                }
-            }
-            
-            onHeightChanged: {
-                if (height > 0) {
-                    AudioVisualizer.height = height;
-                }
-            }
-            
+            property var magnitudes: AudioVisualizer.magnitudes
+            property var barColors: AudioVisualizer.barColors
+
+            onWidthChanged: if (width > 0) AudioVisualizer.width = width
+            onHeightChanged: if (height > 0) AudioVisualizer.height = height
             Component.onCompleted: {
-                if (width > 0) {
-                    AudioVisualizer.width = width;
-                }
-                if (height > 0) {
-                    AudioVisualizer.height = height;
+                if (width > 0) AudioVisualizer.width = width
+                if (height > 0) AudioVisualizer.height = height
+            }
+
+            onVisibleChanged: {
+                if (visible) AudioVisualizer.start()
+                else AudioVisualizer.stop()
+            }
+
+            ProjectMVisualizer {
+                id: projectM
+                anchors.fill: parent
+                visible: window.useProjectM && visualizerView.visible
+                active: visible
+                z: 5
+            }
+
+            Image {
+                id: bg
+                anchors.fill: parent
+                source: mpdClient.albumArt
+                visible: true
+                z: -1
+                fillMode: Image.PreserveAspectFit
+            }
+            Image {
+                id: vizBgSource
+                anchors.fill: parent
+                source: mpdClient.albumArt
+                visible: false
+                fillMode: Image.PreserveAspectCrop
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: vizBgSource
+                blurEnabled: true
+                blurMax: 64
+                blur: 1.0
+                saturation: 0.8
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: vizBgSource
+                blurEnabled: true
+                blurMax: 64
+                blur: 1.0
+                saturation: 0.8
+                brightness: -0.5
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: bg
+                brightness: -0.3
+            }
+
+            Row {
+                anchors.bottom: parent.bottom
+                spacing: 2
+                Repeater {
+                    model: visualizerView.magnitudes
+                    visible: !window.useProjectM
+                    Rectangle {
+                        width: 2
+                        height: visualizerView.height * modelData * 0.6
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 100
+                        color: visualizerView.barColors && visualizerView.barColors.length > index ? visualizerView.barColors[index] : palette.text
+                        opacity: coverFlow.state === "queueView" ? 0.2 : 1
+                        radius: 1
+                    }
                 }
             }
 
-            onActiveChanged: {
-                if (active) {
-                    AudioVisualizer.start();
-                } else {
-                    AudioVisualizer.stop();
-                }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: coverFlow.state = "libraryView"
             }
         }
 
@@ -573,7 +677,7 @@ ApplicationWindow {
                 MouseArea {
                     anchors.fill: parent
                     acceptedButtons: Qt.RightButton
-                    onClicked: (mouse) => mpdClient.removeId(model.id)
+                    onClicked: mpdClient.removeId(model.id)
                 }
             }
             ScrollBar.vertical: ScrollBar { }

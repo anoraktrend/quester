@@ -1,63 +1,54 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
 
-Pane {
+Item {
     id: root
     property var magnitudes: []
+    property var barColors: AudioVisualizer.barColors
     property string albumArt: ""
     property real contentBottomMargin: 0
     property bool active: false
     property real barOpacity: 0.9
     signal clicked()
-    padding: 0
-    clip: true
-
-    background: Item {
-        Image {
-            anchors.fill: parent
-            source: "image://blur/" + root.albumArt
-            fillMode: Image.PreserveAspectCrop
-            opacity: 0.5
-        }
-        Image {
-            anchors.fill: parent
-            source: root.albumArt
-            fillMode: Image.PreserveAspectFit
-        }
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: "#88000000" }
-                GradientStop { position: 1.0; color: "black" }
-            }
-        }
+    Image {
+        id: bg
+        anchors.fill: parent
+        source: root.albumArt
+        visible: true
+        z: 1
+        fillMode: Image.PreserveAspectStretch
+    }
+    Image {
+        id: bgSource
+        anchors.fill: parent
+        source: root.albumArt
+        visible: false
+        fillMode: Image.PreserveAspectCrop
     }
 
-    RowLayout {
-        id: visualizerRow
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: 20
-        anchors.rightMargin: 20
-        anchors.bottomMargin: 20 + contentBottomMargin
-        spacing: 1
+    MultiEffect {
+        anchors.fill: parent
+        source: bgSource
+        z: -1
+        blurEnabled: true
+        blurMax: 64
+        blur: 1.0
+        saturation: 0.8
+    }
 
+    Row {
+        spacing: 2
         Repeater {
-            model: magnitudes.length
+            model: root.magnitudes
             Rectangle {
-
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(4, visualizerRow.height * (root.magnitudes[index] || 0))
-                color: AudioVisualizer.barColors[index] || "white"
+                width: 4
+                height: root.height * (modelData || 0) * 0.6
+                color: root.barColors && root.barColors.length > index ? root.barColors[index] : "white"
                 opacity: root.barOpacity
-                radius: 4
-                
-                Behavior on Layout.preferredHeight {
-                    NumberAnimation { duration: 80; easing.type: Easing.OutQuad }
-                }
+                radius: 2
+                anchors.bottom: parent.bottom
             }
         }
     }
