@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Effects
 
 
 
@@ -218,7 +219,7 @@ ApplicationWindow {
             anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 250
+            height: 320
             z: 2
             model: mpdClient.albumModel
             pathItemCount: {
@@ -247,57 +248,96 @@ ApplicationWindow {
                 yScale: 1.0
             }
 
-            delegate: Rectangle {
+            delegate: Item {
                 width: 200
                 height: 200
-                color: palette.base
                 visible: coverFlow.viewMode === "flow"
                 scale: PathView.iconScale !== undefined ? PathView.iconScale : 1.0
                 opacity: PathView.iconOpacity !== undefined ? PathView.iconOpacity : 1.0
                 z: PathView.z !== undefined ? PathView.z : 0
-                radius: 5
-                border.width: model.art ? 2 : 0 // Hide border when there's no art
-                border.color: palette.accent
-                antialiasing: true
-                
-                Image {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    source: model.art
-                    fillMode: Image.PreserveAspectCrop
-                }
-                
-                Text {
-                    anchors.centerIn: parent
-                    width: parent.width - 10
-                    text: model.name
-                    color: palette.text
-                    wrapMode: Text.Wrap
-                    horizontalAlignment: Text.AlignHCenter
-                    visible: !model.art
+
+                // Reflection
+                MultiEffect {
+                    id: reflection
+                    source: mainContent
+                    anchors.top: mainContent.bottom
+                    anchors.topMargin: 2
+                    width: mainContent.width; height: mainContent.height
+                    visible: model.art ? true : false
+                    
+                    // Flip the reflection
+                    transform: Rotation { origin.y: height / 2; angle: 180; axis { x: 1; y: 0; z: 0 } }
+                    
+                    // Apply iPod-style blur and fade
+                    blurEnabled: true
+                    blur: 0.5
+                    maskEnabled: true
+                    maskSource: reflectionMask
+                    opacity: 0.4
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: (mouse) => {
-                        if (mouse.button === Qt.RightButton) {
-                            contextMenu.popup()
-                        } else {
-                            mpdClient.playAlbum(model.artist, model.name)
-                            pathView.currentIndex = index
+                Item {
+                    id: reflectionMask
+                    width: reflection.width; height: reflection.height
+                    visible: false
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "white" }
+                            GradientStop { position: 0.5; color: "transparent" }
                         }
                     }
+                }
 
-                    Menu {
-                        id: contextMenu
-                        MenuItem {
-                            text: qsTr("Play Album")
-                            onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                Rectangle {
+                    id: mainContent
+                    anchors.fill: parent
+                    color: palette.base
+                    radius: 5
+                    border.width: model.art ? 2 : 0 // Hide border when there's no art
+                    border.color: palette.accent
+                    antialiasing: true
+                    clip: true
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        source: model.art
+                        fillMode: Image.PreserveAspectCrop
+                    }
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width - 10
+                        text: model.name
+                        color: palette.text
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: !model.art
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                contextMenu.popup()
+                            } else {
+                                mpdClient.playAlbum(model.albumArtist, model.album)
+                                pathView.currentIndex = index
+                            }
                         }
-                        MenuItem {
-                            text: qsTr("Add to Queue")
-                            onTriggered: mpdClient.addAlbum(model.artist, model.name)
+
+                        Menu {
+                            id: contextMenu
+                            MenuItem {
+                                text: qsTr("Play Album")
+                                onTriggered: mpdClient.playAlbum(model.albumArtist, model.album)
+                            }
+                            MenuItem {
+                                text: qsTr("Add to Queue")
+                                onTriggered: mpdClient.addAlbum(model.albumArtist, model.album)
+                            }
                         }
                     }
                 }
@@ -387,11 +427,11 @@ ApplicationWindow {
                                 id: gridContextMenu
                                 MenuItem {
                                     text: qsTr("Play Album")
-                                    onTriggered: mpdClient.playAlbum(model.artist, model.name)
+                                    onTriggered: mpdClient.playAlbum(model.albumArtist, model.album)
                                 }
                                 MenuItem {
                                     text: qsTr("Add to Queue")
-                                    onTriggered: mpdClient.addAlbum(model.artist, model.name)
+                                    onTriggered: mpdClient.addAlbum(model.albumArtist, model.album)
                                 }
                             }
                         }
