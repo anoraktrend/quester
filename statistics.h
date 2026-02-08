@@ -20,10 +20,15 @@ public:
     Q_INVOKABLE QVariantMap getAllTimeStats();
     Q_INVOKABLE QString generateWrappedImage(const QString &period);
 
+signals:
+    void wrappedGenerated(const QString &path);
+
 private:
     void initDb();
+    void checkAutomaticWrapped();
     QVariantMap getStatsForPeriod(qint64 startTime);
     QString getCachePath(const QString &artist, const QString &album);
+    QList<int> getActivityGraphData(const QString &period, int &outMax);
     QMutex m_mutex;
 };
 

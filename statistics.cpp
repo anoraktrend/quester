@@ -8,10 +8,13 @@
 #include <QImage>
 #include <QCryptographicHash>
 #include <QDebug>
+#include <QSettings>
+#include <QTimer>
 
 StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent)
 {
     initDb();
+    QTimer::singleShot(5000, this, &StatisticsManager::checkAutomaticWrapped);
 }
 
 StatisticsManager::~StatisticsManager()
@@ -254,7 +257,7 @@ QString StatisticsManager::generateWrappedImage(const QString &period)
     p.setFont(QFont("Sans Serif", 70, QFont::Bold));
     p.drawText(QRect(50, y + 60, w-100, 100), Qt::AlignCenter, QString::number(hours, 'f', 1) + " Hours");
     p.setPen(dimColor);
-    p.setFont(QFont("Sans Serif", 30, QFont::Italic));
+    p.setFont(QFont("Sans Serif", 30, -1, true));
     p.drawText(QRect(50, y + 170, w-100, 50), Qt::AlignCenter, timePhrase);
 
     y += 350;
@@ -292,10 +295,119 @@ QString StatisticsManager::generateWrappedImage(const QString &period)
         }
     }
 
+    // Activity Graph
+    int maxVal = 0;
+    QList<int> graphData = getActivityGraphData(period, maxVal);
+    
+    if (maxVal > 0 && !graphData.isEmpty()) {
+        int graphH = 200;
+        int graphW = w - 140;
+        int graphX = 70;
+        int graphY = h - graphH - 150;
+        
+        p.setPen(Qt::NoPen);
+        p.setBrush(accentColor);
+        
+        int step = graphW / graphData.size();
+        int barWidth = step - 4;
+        if (barWidth < 2) barWidth = 2;
+        
+        for (int i = 0; i < graphData.size(); ++i) {
+            int val = graphData[i];
+            if (val == 0) continue;
+            int barH = (int)((double)val / maxVal * graphH);
+            if (barH < 5) barH = 5;
+            
+            p.drawRoundedRect(graphX + i * step, graphY + (graphH - barH), barWidth, barH, 4, 4);
+        }
+        
+        p.setPen(dimColor);
+        p.setFont(QFont("Sans Serif", 24));
+        p.drawText(QRect(graphX, graphY - 50, graphW, 40), Qt::AlignCenter, "Listening Activity");
+    }
+
     QString fileName = QString("QuesterWrapped_%1_%2.png").arg(period, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
     QString path = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + "/" + fileName;
     img.save(path);
+    emit wrappedGenerated(path);
     return path;
+}
+
+void StatisticsManager::checkAutomaticWrapped()
+{
+    QSettings settings("Quester", "Quester");
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+
+    auto check = [&](const QString &period, const QString &key, qint64 interval, std::function<QVariantMap()> getStats) {
+        qint64 last = settings.value(key, 0).toLongLong();
+        if (now - last > interval) {
+            if (getStats()["totalMs"].toLongLong() > 0) {
+                generateWrappedImage(period);
+                settings.setValue(key, now);
+            }
+        }
+    };
+
+    check("weekly", "lastWeeklyWrapped", 7 * 24 * 3600, [this](){ return getWeeklyStats(); });
+    check("monthly", "lastMonthlyWrapped", 30 * 24 * 3600, [this](){ return getMonthlyStats(); });
+    check("yearly", "lastYearlyWrapped", 365 * 24 * 3600, [this](){ return getYearlyStats(); });
+}
+
+QList<int> StatisticsManager::getActivityGraphData(const QString &period, int &outMax)
+{
+    QList<int> data;
+    outMax = 0;
+    QSqlDatabase db = QSqlDatabase::database("QuesterStats");
+    if (!db.isOpen()) return data;
+
+    QSqlQuery query(db);
+    QString dateFormat;
+    int numPoints = 0;
+    qint64 startTime = 0;
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+
+    if (period == "weekly") {
+        dateFormat = "%w"; // 0-6 (Sun-Sat)
+        numPoints = 7;
+        startTime = now - (7 * 24 * 3600);
+    } else if (period == "monthly") {
+        dateFormat = "%d"; // 01-31
+        numPoints = 31;
+        startTime = now - (30 * 24 * 3600);
+    } else if (period == "yearly") {
+        dateFormat = "%m"; // 01-12
+        numPoints = 12;
+        startTime = now - (365 * 24 * 3600);
+    } else {
+        return data;
+    }
+
+    for(int i=0; i<numPoints; ++i) data.append(0);
+
+    QString sql = QString("SELECT strftime('%1', datetime(timestamp, 'unixepoch', 'localtime')), COUNT(*) "
+                          "FROM play_history WHERE timestamp > :start "
+                          "GROUP BY strftime('%1', datetime(timestamp, 'unixepoch', 'localtime'))")
+                          .arg(dateFormat);
+    
+    query.prepare(sql);
+    query.bindValue(":start", startTime);
+    
+    if (query.exec()) {
+        while(query.next()) {
+            int key = query.value(0).toInt();
+            int count = query.value(1).toInt();
+            int index = -1;
+
+            if (period == "weekly") index = key; // 0-6
+            else if (period == "monthly" || period == "yearly") index = key - 1;
+
+            if (index >= 0 && index < data.size()) {
+                data[index] = count;
+                if (count > outMax) outMax = count;
+            }
+        }
+    }
+    return data;
 }
 
 QString StatisticsManager::getCachePath(const QString &artist, const QString &album)

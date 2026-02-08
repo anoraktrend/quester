@@ -251,6 +251,7 @@ public Q_SLOTS:
     Q_INVOKABLE void removePlaylist(const QString &name);
     Q_INVOKABLE void clearQueue();
     Q_INVOKABLE void removeId(int id);
+    Q_INVOKABLE void openFileLocation(const QString &path);
 
     // Application/Window controls
     Q_INVOKABLE void quitApplication();

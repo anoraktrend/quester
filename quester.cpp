@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <QPainter>
 #include <QImage>
+#include <QDesktopServices>
 
 constexpr int TIMER_INTERVAL = 100;
 constexpr int MPD_PORT = 6600;
@@ -1486,6 +1487,13 @@ void MpdClient::removeId(int id)
     leaveIdle();
     mpd_run_delete_id(m_connection, id);
     sendIdle();
+}
+
+void MpdClient::openFileLocation(const QString &path)
+{
+    if (path.isEmpty()) return;
+    QFileInfo info(path);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(info.absolutePath()));
 }
 
 void MpdClient::cleanup()
