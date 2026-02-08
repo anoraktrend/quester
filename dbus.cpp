@@ -94,6 +94,11 @@ DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
         connect(mpdClient, &MpdClient::randomChanged, this, &DBusService::broadcastProperties);
         connect(mpdClient, &MpdClient::singleChanged, this, &DBusService::broadcastProperties);
         mpdClient->refreshPlaylists();
+
+        // Populate initial tracklist
+        for (const auto &item : mpdClient->queueModel()->m_queue) {
+            createTrackId(item.uri);
+        }
     }
 }
 
@@ -121,25 +126,24 @@ bool DBusService::canPause() const
     return mpdClient() && mpdClient()->state() == "play";
 }
 
-QVariantMap DBusService::metadata() const
+QVariantMap DBusService::getMetadataForTrack(const QueueItem &item) const
 {
     QVariantMap metadata;
-    if (!mpdClient())
-        return metadata;
 
-    QString uri = mpdClient()->uri();
-    QString title = mpdClient()->title();
-    QString artist = mpdClient()->artist();
-    QString album = mpdClient()->album();
-    qint64 duration = mpdClient()->duration();
+    QString uri = item.uri;
+    QString title = item.title;
+    QString artist = item.artist;
+    QString album = item.album;
+    qint64 duration = item.duration;
+    QString albumArtPath = item.albumArt;
 
-    // Only include metadata if we have a valid track playing
+    // Only include metadata if we have a valid track
     if (uri.isEmpty() && title.isEmpty() && artist.isEmpty()) {
         return metadata;
     }
 
     // Create a proper track ID for MPRIS
-    QString trackId = "/org/mpris/MediaPlayer2/Track/" + QString::number(qHash(uri));
+    QString trackId = createTrackId(uri);
     metadata["mpris:trackid"] = QDBusObjectPath(trackId);
     
     // Basic track information
@@ -157,7 +161,6 @@ QVariantMap DBusService::metadata() const
     }
 
     // Add album art if available
-    QString albumArtPath = mpdClient()->albumArt();
     if (!albumArtPath.isEmpty()) {
         metadata["mpris:artUrl"] = albumArtPath;
     }
@@ -167,32 +170,20 @@ QVariantMap DBusService::metadata() const
         metadata["xesam:url"] = uri;
     }
 
-    // Add additional metadata fields according to MPRIS specification
-    // Note: These would need to be implemented in the MpdClient class
-    // if the MPD server provides this information
-    
-    // Track number (if available)
-    // metadata["xesam:trackNumber"] = trackNumber;
-    
-    // Album artist (if different from artist)
-    // metadata["xesam:albumArtist"] = albumArtist;
-    
-    // Genre
-    // metadata["xesam:genre"] = genreList;
-    
-    // Disc number
-    // metadata["xesam:discNumber"] = discNumber;
-    
-    // Date
-    // metadata["xesam:date"] = date;
-    
-    // Comment
-    // metadata["xesam:comment"] = comment;
-    
-    // User rating
-    // metadata["xesam:userRating"] = userRating;
-
     return metadata;
+}
+
+QVariantMap DBusService::metadata() const
+{
+    if (!mpdClient() || mpdClient()->queueModel()->m_queue.isEmpty())
+        return {};
+
+    int currentSong = mpdClient()->currentSong();
+    if (currentSong < 0 || currentSong >= mpdClient()->queueModel()->m_queue.size())
+        return {};
+
+    const auto &item = mpdClient()->queueModel()->m_queue.at(currentSong);
+    return getMetadataForTrack(item);
 }
 
 double DBusService::volume() const
@@ -359,6 +350,24 @@ QList<QDBusObjectPath> DBusService::tracks() const
     return trackList;
 }
 
+QList<QVariantMap> DBusService::getTracksMetadata(const QList<QDBusObjectPath> &trackIds) const
+{
+    QList<QVariantMap> result;
+    if (!mpdClient())
+        return result;
+
+    for (const auto &trackId : trackIds) {
+        int position = trackIdToPosition(trackId.path());
+        if (position != -1) {
+            const auto &item = mpdClient()->queueModel()->m_queue.at(position);
+            result.append(getMetadataForTrack(item));
+        } else {
+            result.append(QVariantMap());
+        }
+    }
+    return result;
+}
+
 void DBusService::addTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent)
 {
     if (!mpdClient())
@@ -402,6 +411,8 @@ void DBusService::removeTrack(const QDBusObjectPath &trackId)
             if (item.uri == uri) {
                 mpdClient()->removeId(item.id);
                 emit TrackRemoved(trackId);
+                m_trackIdToUri.remove(trackId.path());
+                m_uriToTrackId.remove(uri);
                 mpdClient()->refreshQueue();
                 break;
             }
@@ -421,30 +432,55 @@ void DBusService::goPrevious()
 
 QString DBusService::createTrackId(const QString &uri) const
 {
+    if (m_uriToTrackId.contains(uri))
+        return m_uriToTrackId.value(uri);
+
     // Create a unique track ID based on the URI
     QString hash = QString::number(qHash(uri));
-    return "/org/mpris/MediaPlayer2/Track/" + hash;
+    QString trackId = "/org/mpris/MediaPlayer2/Track/" + hash;
+
+    m_trackIdToUri.insert(trackId, uri);
+    m_uriToTrackId.insert(uri, trackId);
+
+    return trackId;
 }
 
 QString DBusService::uriFromTrackId(const QString &trackId) const
 {
-    // Extract URI from track ID - this is a simplified implementation
-    // In a real implementation, you'd need to maintain a mapping
-    Q_UNUSED(trackId);
-    return QString();
+    if (!m_trackIdToUri.contains(trackId))
+        return QString();
+
+    return m_trackIdToUri.value(trackId);
 }
 
 int DBusService::trackIdToPosition(const QString &trackId) const
 {
-    // Convert track ID to position in queue
-    Q_UNUSED(trackId);
+    QString uri = uriFromTrackId(trackId);
+    if (uri.isEmpty())
+        return -1;
+
+    QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+    for (int i = 0; i < queue.size(); ++i) {
+        if (queue[i].uri == uri) {
+            return i;
+        }
+    }
     return -1;
 }
 
 QString DBusService::positionToTrackId(int position) const
 {
-    // Convert position to track ID
-    Q_UNUSED(position);
+    if (!mpdClient() || position < 0)
+        return QString();
+    
+    QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+    if (position >= queue.size())
+        return QString();
+
+    QString uri = queue[position].uri;
+    if (m_uriToTrackId.contains(uri))
+        return m_uriToTrackId.value(uri);
+
     return QString();
 }
 
@@ -590,9 +626,7 @@ QList<QDBusObjectPath> MprisTrackListAdaptor::tracks() const {
 bool MprisTrackListAdaptor::canEditTracks() const { return m_service->canEditTracks(); }
 
 QList<QVariantMap> MprisTrackListAdaptor::GetTracksMetadata(const QList<QDBusObjectPath> &trackIds) {
-    Q_UNUSED(trackIds);
-    // Simplified implementation returning empty list
-    return QList<QVariantMap>();
+    return m_service->getTracksMetadata(trackIds);
 }
 
 void MprisTrackListAdaptor::AddTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent) { 

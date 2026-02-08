@@ -86,6 +86,7 @@ public:
     // Track List interface methods
     QList<QDBusObjectPath> tracks() const;
     bool canEditTracks() const { return true; }
+    QList<QVariantMap> getTracksMetadata(const QList<QDBusObjectPath> &trackIds) const;
     void addTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent);
     void removeTrack(const QDBusObjectPath &trackId);
     void goNext();
@@ -109,12 +110,18 @@ private:
     MpdClient *m_mpdClient;
     QDBusConnection m_connection;
 
-    MpdClient *mpdClient() const { return m_mpdClient; }
     void broadcastProperties();
     QString createTrackId(const QString &uri) const;
     QString uriFromTrackId(const QString &trackId) const;
     int trackIdToPosition(const QString &trackId) const;
     QString positionToTrackId(int position) const;
+
+private:
+    QVariantMap getMetadataForTrack(const QueueItem &item) const;
+    MpdClient *m_mpdClient;
+    QDBusConnection m_connection;
+    mutable QHash<QString, QString> m_trackIdToUri;
+    mutable QHash<QString, QString> m_uriToTrackId;
 };
 
 class MprisRootAdaptor : public QDBusAbstractAdaptor
