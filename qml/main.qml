@@ -14,9 +14,10 @@ ApplicationWindow {
     id: window
     width: 800
     height: 600
-    visible: true
+    visible: !startMinimized
     title: qsTr("Quester")
     color: palette.window
+    visibility: startFullscreen ? ApplicationWindow.FullScreen : (startMinimized ? ApplicationWindow.Minimized : ApplicationWindow.Windowed)
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
     property bool useProjectM: false
@@ -78,8 +79,14 @@ ApplicationWindow {
     Item {
         id: coverFlow
         anchors.fill: parent
-        property string viewMode: "flow"
-        state: startInVisualizer ? "visualizerView" : "libraryView"
+        property string viewMode: startViewMode
+        state: {
+            if (startView === "visualizer") return "visualizerView"
+            if (startView === "queue") return "queueView"
+            if (startView === "playlists") return "playlistsView"
+            if (startView === "wrapped") return "wrappedView"
+            return "libraryView" // Default
+        }
         
         PathView {
             id: pathView

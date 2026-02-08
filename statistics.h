@@ -18,10 +18,12 @@ public:
     Q_INVOKABLE QVariantMap getMonthlyStats();
     Q_INVOKABLE QVariantMap getYearlyStats();
     Q_INVOKABLE QVariantMap getAllTimeStats();
+    Q_INVOKABLE QString generateWrappedImage(const QString &period);
 
 private:
     void initDb();
     QVariantMap getStatsForPeriod(qint64 startTime);
+    QString getCachePath(const QString &artist, const QString &album);
     QMutex m_mutex;
 };
 

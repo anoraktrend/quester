@@ -16,11 +16,7 @@ class ProjectMRenderer : public QQuickFramebufferObject::Renderer
 public:
     ProjectMRenderer() {
         QSettings settings("Quester", "Quester");
-        QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/Quester/projectm";
-        QDir dir(configDir);
-        if (!dir.exists()) dir.mkpath(".");
-        QString configFilePath = configDir + "/config.inp";
-
+        
         QString presetPath = settings.value("projectMPresetPath").toString();
         if (presetPath.isEmpty()) {
             const QStringList candidates = {
@@ -39,31 +35,30 @@ public:
             }
         }
         
-        QFile configFile(configFilePath);
-        if (configFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            QTextStream out(&configFile);
-            out << "Texture Size = " << settings.value("projectMTextureSize", 2048).toString() << "\n";
-            out << "Mesh X = " << settings.value("projectMMeshX", 64).toString() << "\n";
-            out << "Mesh Y = " << settings.value("projectMMeshY", 48).toString() << "\n";
-            out << "FPS = " << settings.value("projectMFPS", 60).toString() << "\n";
-            out << "Preset Path = " << presetPath << "\n";
-            out << "Title Font = Sans\n";
-            out << "Menu Font = Sans\n";
-            out << "Smooth Preset Duration = " << settings.value("projectMSmoothPresetDuration", 5).toString() << "\n";
-            out << "Preset Duration = " << settings.value("projectMPresetDuration", 15).toString() << "\n";
-            out << "Beat Sensitivity = " << settings.value("projectMBeatSensitivity", 10.0).toString() << "\n";
-            out << "Aspect Correction = 1\n";
-            out << "Shuffle Enabled = " << (settings.value("projectMShuffleEnabled", true).toBool() ? "1" : "0") << "\n";
-            out << "Soft Cut Ratings Enabled = 0\n";
-            configFile.close();
-        }
+        // Configure projectM directly using its C++ API
+        projectM::Settings pmSettings;
+        pmSettings.textureSize = settings.value("projectMTextureSize", 2048).toInt();
+        pmSettings.meshX = settings.value("projectMMeshX", 64).toInt();
+        pmSettings.meshY = settings.value("projectMMeshY", 48).toInt();
+        pmSettings.fps = settings.value("projectMFPS", 60).toInt();
+        pmSettings.presetURL = presetPath.toStdString();
+        pmSettings.titleFontURL = "Sans";
+        pmSettings.menuFontURL = "Sans";
+        pmSettings.smoothPresetDuration = settings.value("projectMSmoothPresetDuration", 5).toInt();
+        pmSettings.presetDuration = settings.value("projectMPresetDuration", 15).toInt();
+        pmSettings.beatSensitivity = settings.value("projectMBeatSensitivity", 10.0).toFloat();
+        pmSettings.aspectCorrection = true;
+        pmSettings.shuffleEnabled = settings.value("projectMShuffleEnabled", true).toBool();
+        pmSettings.softCutRatingsEnabled = settings.value("projectMSoftCutRatingsEnabled", false).toBool();
+        pmSettings.hardcutEnabled = settings.value("projectMHardCutEnabled", false).toBool();
+        pmSettings.hardcutSensitivity = settings.value("projectMHardCutSensitivity", 2.0).toFloat();
+        pmSettings.hardcutDuration = settings.value("projectMHardCutDuration", 60).toInt();
+        pmSettings.windowWidth = 800;  // Default width
+        pmSettings.windowHeight = 600; // Default height
 
-        std::string configPath = configFilePath.toStdString();
-
-        // Attempt to initialize projectM. 
-        // Note: Constructor signature might vary slightly between v3 and v4.
+        // Attempt to initialize projectM using direct API
         try {
-            m_projectM = new projectM(configPath);
+            m_projectM = new projectM(pmSettings);
             qInfo() << "ProjectM initialized successfully";
         } catch (const std::exception &e) {
             qWarning() << "Failed to initialize projectM:" << e.what();
@@ -177,6 +172,8 @@ ProjectMVisualizer::ProjectMVisualizer(QQuickItem *parent)
     , m_shuffleEnabled(true)
     , m_shuffleUpdateRequested(false)
 {
+    QSettings settings("Quester", "Quester");
+    m_audioSource = settings.value("audioSource", "pulseaudio").toString();
     setMirrorVertically(true); // FBOs are often flipped
 }
 
@@ -224,17 +221,35 @@ void ProjectMVisualizer::setShuffleEnabled(bool enabled)
     update();
 }
 
+QString ProjectMVisualizer::audioSource() const
+{
+    return m_audioSource;
+}
+
+void ProjectMVisualizer::setAudioSource(const QString &source)
+{
+    if (m_audioSource == source) return;
+    m_audioSource = source;
+    if (m_active) {
+        stopInput();
+        startInput();
+    }
+    emit audioSourceChanged();
+}
+
 void ProjectMVisualizer::startInput()
 {
     if (m_input) return;
 
     QSettings settings("Quester", "Quester");
-    QString source = settings.value("audioSource", "pulseaudio").toString();
-
-    if (source == "pipewire") m_input = new PipeWireInput(this);
-    else if (source == "fifo") m_input = new FifoInput(settings.value("fifoPath", "/tmp/mpd.fifo").toString(), this);
-    else m_input = new PulseAudioInput(this);
-
+    if (m_audioSource == "pipewire") {
+        m_input = new PipeWireInput(this);
+    } else if (m_audioSource == "fifo") {
+        QString path = settings.value("fifoPath", "/tmp/mpd.fifo").toString();
+        m_input = new FifoInput(path, this);
+    } else {
+        m_input = new PulseAudioInput(this);
+    }
     connect(m_input, &AudioInput::dataReady, this, &ProjectMVisualizer::onDataReady, Qt::QueuedConnection);
     connect(m_input, &AudioInput::error, this, &ProjectMVisualizer::onError);
     m_input->start();

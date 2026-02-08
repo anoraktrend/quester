@@ -27,17 +27,14 @@
 #include <QStandardPaths>
 #include <QUrlQuery>
 #include <algorithm>
+#include <QPainter>
+#include <QImage>
 
 constexpr int TIMER_INTERVAL = 100;
 constexpr int MPD_PORT = 6600;
 constexpr int MPD_TIMEOUT_MS = 30000;
 constexpr int SECONDS_PER_MINUTE = 60;
 constexpr int DECIMAL_BASE = 10;
-constexpr int HASH_SHIFT_LOW = 6;
-constexpr int HASH_SHIFT_HIGH = 16;
-constexpr int COLOR_MASK = 0xFFFFFF;
-constexpr int HEX_COLOR_WIDTH = 6;
-constexpr int HEX_BASE = 16;
 
 // --- AlbumModel Implementation ---
 auto AlbumModel::rowCount(const QModelIndex &parent) const -> int
@@ -240,6 +237,7 @@ MpdClient::MpdClient(QObject *parent)
 {
     QSettings settings("Quester", "Quester");
     m_sortMode = static_cast<SortMode>(settings.value("sortMode", static_cast<int>(SortMode::Artist)).toInt());
+    m_audioSource = settings.value("audioSource", "pulseaudio").toString();
 
     QObject::connect(m_timer, &QTimer::timeout, this, &MpdClient::updateStatus);
     m_timer->start(TIMER_INTERVAL);
@@ -322,6 +320,9 @@ void MpdClient::handleMpdEvent()
 
 void MpdClient::updateStatus()
 {
+    // KISS: We use a simple timer to poll for status updates (like elapsed time)
+    // rather than implementing complex local clock synchronization and drift correction.
+    // The overhead of querying MPD status every 100ms is negligible for a local/LAN connection.
     if (!m_connection) {
         return;
     }
@@ -477,22 +478,8 @@ void MpdClient::fetchAlbumArt(const QString &album)
     if (album.isEmpty() || album == "Unknown Album")
         return;
 
-    unsigned int hash = 0;
-    for (QChar c : album) {
-        hash = c.unicode() + (hash << HASH_SHIFT_LOW) + (hash << HASH_SHIFT_HIGH) - hash;
-    }
-    QString color = QString("#%1").arg(hash & COLOR_MASK, HEX_COLOR_WIDTH, HEX_BASE, QLatin1Char('0'));
-    QString letter = album.left(1).toUpper();
-
-    QString svg = QString(
-                      "<svg width='200' height='200' xmlns='http://www.w3.org/2000/svg'>"
-                      "<rect width='100%' height='100%' fill='%1'/>"
-                      "<text x='50%' y='50%' font-size='80' fill='white' text-anchor='middle' "
-                      "dy='.3em'>%2</text>"
-                      "</svg>")
-                      .arg(color, letter);
-
-    m_albumArt = "data:image/svg+xml;base64," + svg.toUtf8().toBase64();
+    // Reset album art to empty while fetching from APIs/Cache
+    m_albumArt.clear();
     emit albumArtChanged();
 
     QString cachePath = getCachePath(m_artist, album, m_currentMbid);
@@ -541,6 +528,7 @@ auto MpdClient::weeklyStats() const -> QVariantMap { return m_stats->getWeeklySt
 auto MpdClient::monthlyStats() const -> QVariantMap { return m_stats->getMonthlyStats(); }
 auto MpdClient::yearlyStats() const -> QVariantMap { return m_stats->getYearlyStats(); }
 auto MpdClient::allTimeStats() const -> QVariantMap { return m_stats->getAllTimeStats(); }
+auto MpdClient::audioSource() const -> QString { return m_audioSource; }
 
 void MpdClient::setArtist(const QString &artist) {
     if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
@@ -581,7 +569,17 @@ void MpdClient::setSortMode(SortMode mode) {
         m_albumModel->setAlbums(albums);
     }
 }
+void MpdClient::setAudioSource(const QString &source) {
+    if (m_audioSource == source) return;
+    m_audioSource = source;
+    QSettings settings("Quester", "Quester");
+    settings.setValue("audioSource", m_audioSource);
+    emit audioSourceChanged();
+}
 
+// KISS: The MpdClient acts as the main controller. While separating window management
+// might be architecturally "purer", keeping it here simplifies the QML interface
+// and reduces the number of context properties / singletons required.
 void MpdClient::setWindow(QQuickWindow *window) { m_window = window; }
 
 void MpdClient::play() {
@@ -1107,6 +1105,9 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
 
 void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
 {
+    // KISS: Sequential fallback logic implemented via nested callbacks.
+    // While coroutines would be cleaner, avoiding extra dependencies or complex state machines
+    // keeps the implementation portable and standard-compliant with Qt 6.
     auto onArtFound = [this, params](const QByteArray &data) -> void {
         QFile file(params.cachePath);
         if (file.open(QIODevice::WriteOnly)) {

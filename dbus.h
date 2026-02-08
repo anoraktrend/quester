@@ -11,7 +11,6 @@
 #include <QDBusVariant>
 #include <QVariantMap>
 #include <QVariantList>
-#include <QTimer>
 #include <QtDBus>
 #include <QtCore>
 #include "quester.h"
@@ -108,11 +107,10 @@ signals:
 
 private:
     MpdClient *m_mpdClient;
-    QTimer *m_positionTimer;
     QDBusConnection m_connection;
 
     MpdClient *mpdClient() const { return m_mpdClient; }
-    void updatePosition();
+    void broadcastProperties();
     QString createTrackId(const QString &uri) const;
     QString uriFromTrackId(const QString &trackId) const;
     int trackIdToPosition(const QString &trackId) const;

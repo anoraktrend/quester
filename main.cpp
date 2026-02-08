@@ -68,9 +68,8 @@ public:
 
         if (img.isNull()) return {};
 
-        // "Highway" Blur: Fast path using downscaling
+        // Fast Blur: Fast path using downscaling
         // Scaling down averages pixels (box blur), scaling up interpolates (smooths).
-        // This is extremely efficient and provides a high-quality background blur.
         if (img.width() > BLUR_THUMB_SIZE) {
             img = img.scaledToWidth(BLUR_THUMB_SIZE, Qt::SmoothTransformation);
         }
@@ -85,6 +84,8 @@ static bool g_isDetached = false;
 
 void crashHandler(int sig)
 {
+    // KISS: A minimal crash handler using standard POSIX calls.
+    // It avoids allocating memory (which is unsafe in signal handlers) and writes directly to the file descriptor.
     if (g_logFile) {
         int fd = g_logFile->handle();
         if (fd != -1) {
@@ -129,18 +130,69 @@ void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const Q
 
 auto main(int argc, char *argv[]) -> int
 {
-    // Check for --no-detach argument
+    // Command-line argument parsing
     bool shouldDetach = true;
+    bool showHelp = false;
+    bool startMinimized = false;
+    bool startFullscreen = false;
+    QString presetPath;
+    QString audioSource;
+    QString startView = "library";  // Possible values: library, visualizer, queue, playlists, wrapped
+    QString startViewMode = "flow"; // Possible values: flow, grid, browser
+
     int newArgc = 0;
     for (int i = 0; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--no-detach") == 0) {
+        const char *arg = argv[i];
+        
+        if (std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0) {
+            showHelp = true;
+        } else if (std::strcmp(arg, "--no-detach") == 0) {
             shouldDetach = false;
+        } else if (std::strcmp(arg, "--visualizer") == 0 || std::strcmp(arg, "-v") == 0) {
+            startView = "visualizer";
+        } else if (std::strcmp(arg, "--minimized") == 0 || std::strcmp(arg, "-m") == 0) {
+            startMinimized = true;
+        } else if (std::strcmp(arg, "--fullscreen") == 0 || std::strcmp(arg, "-f") == 0) {
+            startFullscreen = true;
+        } else if (std::strcmp(arg, "--preset-path") == 0 && (i + 1 < argc)) {
+            presetPath = QString::fromUtf8(argv[++i]);
+        } else if (std::strcmp(arg, "--audio-source") == 0 && (i + 1 < argc)) {
+            audioSource = QString::fromUtf8(argv[++i]);
+        } else if (std::strcmp(arg, "--view") == 0 && (i + 1 < argc)) {
+            startView = QString::fromUtf8(argv[++i]).toLower();
+        } else if (std::strcmp(arg, "--view-mode") == 0 && (i + 1 < argc)) {
+            startViewMode = QString::fromUtf8(argv[++i]).toLower();
         } else {
             argv[newArgc++] = argv[i];
         }
     }
     argc = newArgc;
     argv[argc] = nullptr;
+
+    // Show help
+    if (showHelp) {
+        printf("Quester - Music Player with Visualization\n\n");
+        printf("Usage: quester [OPTIONS]\n\n");
+        printf("Options:\n");
+        printf("  --help, -h                Show this help message\n");
+        printf("  --no-detach               Run in foreground (do not detach from terminal)\n");
+        printf("  --visualizer, -v          Start directly in visualizer mode\n");
+        printf("  --view <view>             Start in specific view (library, visualizer, queue, playlists, wrapped)\n");
+        printf("  --view-mode <mode>        Start with specific coverflow mode (flow, grid, browser)\n");
+        printf("  --minimized, -m           Start minimized to system tray\n");
+        printf("  --fullscreen, -f          Start in fullscreen mode\n");
+        printf("  --preset-path <path>      Set custom projectM preset path\n");
+        printf("  --audio-source <source>   Set audio input source (pulseaudio, pipewire, fifo)\n");
+        printf("\n");
+        printf("Examples:\n");
+        printf("  quester                   Start normally in library flow view\n");
+        printf("  quester --no-detach       Run in terminal\n");
+        printf("  quester --visualizer      Start in visualizer mode\n");
+        printf("  quester --view queue      Start in queue view\n");
+        printf("  quester --view library --view-mode grid  Start in library grid view\n");
+        printf("  quester --preset-path ~/my-presets --audio-source pipewire\n");
+        return 0;
+    }
 
     if (shouldDetach) {
         pid_t pid = fork();
@@ -186,6 +238,8 @@ auto main(int argc, char *argv[]) -> int
         QFile::rename(logPath, crashName);
     }
 
+    // KISS: Simple file-based log rotation. No need for a complex logging framework
+    // when we just want to keep the last few runs for debugging.
     // 2. Rotate logs (Keep last 5)
     dir.setNameFilters(QStringList() << "quest-*.log");
     dir.setSorting(QDir::Time); // Newest first
@@ -303,10 +357,20 @@ auto main(int argc, char *argv[]) -> int
     qRegisterMetaType<MprisActivePlaylist>("MprisActivePlaylist");
     qDBusRegisterMetaType<MprisActivePlaylist>();
 
-    bool startVisualizer = app.arguments().contains(QStringLiteral("--visualizer"));
+    // Apply command-line settings to QSettings for persistence
+    QSettings settings("Quester", "Quester");
+    if (!presetPath.isEmpty()) {
+        settings.setValue("projectMPresetPath", presetPath);
+    }
+    if (!audioSource.isEmpty()) {
+        settings.setValue("audioSource", audioSource);
+        mpdClient.setAudioSource(audioSource);
+        audioVisualizer.setAudioSource(audioSource);
+    }
 
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
     qmlRegisterUncreatableType<DBusService>("Quester", 1, 0, "DBusService", "Enums");
+    qmlRegisterUncreatableType<StatisticsManager>("Quester", 1, 0, "StatisticsManager", "Managed by MpdClient");
     qmlRegisterType<ProjectMVisualizer>("Quester", 1, 0, "ProjectMVisualizer");
 
     QQmlApplicationEngine engine;
@@ -315,7 +379,10 @@ auto main(int argc, char *argv[]) -> int
     engine.rootContext()->setContextProperty(QStringLiteral("mpdClient"), &mpdClient);
     engine.rootContext()->setContextProperty(QStringLiteral("dbusService"), &dbusService);
     engine.rootContext()->setContextProperty(QStringLiteral("AudioVisualizer"), &audioVisualizer);
-    engine.rootContext()->setContextProperty(QStringLiteral("startInVisualizer"), startVisualizer);
+    engine.rootContext()->setContextProperty(QStringLiteral("startView"), startView);
+    engine.rootContext()->setContextProperty(QStringLiteral("startViewMode"), startViewMode);
+    engine.rootContext()->setContextProperty(QStringLiteral("startMinimized"), startMinimized);
+    engine.rootContext()->setContextProperty(QStringLiteral("startFullscreen"), startFullscreen);
 
 const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
 
@@ -336,6 +403,10 @@ const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
             }
         },
         Qt::QueuedConnection);
+
+    QObject::connect(&mpdClient, &MpdClient::audioSourceChanged, &audioVisualizer, [&mpdClient, &audioVisualizer]() {
+        audioVisualizer.setAudioSource(mpdClient.audioSource());
+    });
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &mpdClient, &MpdClient::cleanup);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &audioVisualizer, &AudioVisualizer::stop);

@@ -15,7 +15,6 @@
 #include <QMenu>
 #include <QAction>
 #include <mpd/client.h>
-#include <hwy/highway.h> // Highway SIMD library
 #include <QElapsedTimer>
 #include "statistics.h"
 
@@ -162,6 +161,8 @@ class MpdClient : public QObject
     Q_PROPERTY(QVariantMap monthlyStats READ monthlyStats NOTIFY monthlyStatsChanged)
     Q_PROPERTY(QVariantMap yearlyStats READ yearlyStats NOTIFY yearlyStatsChanged)
     Q_PROPERTY(QVariantMap allTimeStats READ allTimeStats NOTIFY allTimeStatsChanged)
+    Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
+    Q_PROPERTY(StatisticsManager* statistics READ statistics CONSTANT)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -203,6 +204,8 @@ public:
     [[nodiscard]] auto monthlyStats() const -> QVariantMap;
     [[nodiscard]] auto yearlyStats() const -> QVariantMap;
     [[nodiscard]] auto allTimeStats() const -> QVariantMap;
+    [[nodiscard]] auto audioSource() const -> QString;
+    [[nodiscard]] auto statistics() const -> StatisticsManager* { return m_stats; }
 
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
@@ -218,6 +221,7 @@ public Q_SLOTS:
     void setConsume(bool on);
     void setVolume(int volume);
     void setSortMode(SortMode mode);
+    void setAudioSource(const QString &source);
     void cleanup();
 
     // Playback controls
@@ -274,6 +278,7 @@ Q_SIGNALS:
     void monthlyStatsChanged();
     void yearlyStatsChanged();
     void allTimeStatsChanged();
+    void audioSourceChanged();
 
 private Q_SLOTS:
     void updateStatus();
@@ -332,6 +337,7 @@ private:
     int m_volume = 100;
     QStringList m_playlists;
     SortMode m_sortMode = SortMode::Artist;
+    QString m_audioSource;
 
     QQuickWindow *m_window = nullptr;
 

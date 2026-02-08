@@ -51,6 +51,8 @@ struct MonstercatParams {
     int height;
 };
 
+// KISS: A standalone, stateless function for the specific "Monstercat" smoothing algorithm.
+// Keeps the visualizer logic decoupled from the math.
 static void monstercat_filter(
     QList<double> &bars, const MonstercatParams &params)
 {
@@ -491,6 +493,7 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
     m_topDown = settings.value(QStringLiteral("visualizerTopDown"), false).toBool();
+    m_audioSource = settings.value(QStringLiteral("audioSource"), QStringLiteral("pulseaudio")).toString();
     QString saved = settings.value(QStringLiteral("visualizerPreset"), QStringLiteral("System")).toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;
@@ -554,6 +557,22 @@ void AudioVisualizer::setTopDownMode(bool topDownMode)
     Q_EMIT topDownModeChanged();
 }
 
+auto AudioVisualizer::audioSource() const -> QString
+{
+    return m_audioSource;
+}
+
+void AudioVisualizer::setAudioSource(const QString &source)
+{
+    if (m_audioSource == source) return;
+    m_audioSource = source;
+    if (m_active) {
+        stop();
+        start();
+    }
+    Q_EMIT audioSourceChanged();
+}
+
 void AudioVisualizer::start()
 {
     if (m_active)
@@ -581,11 +600,10 @@ void AudioVisualizer::start()
     m_smoothBuffer.fill(0.0, m_numBars);
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
-    QString source = settings.value(QStringLiteral("audioSource"), QStringLiteral("pulseaudio")).toString();
 
-    if (source == QStringLiteral("pipewire")) {
+    if (m_audioSource == QStringLiteral("pipewire")) {
         m_input = new PipeWireInput(this); // NOLINT(cppcoreguidelines-owning-memory)
-    } else if (source == QStringLiteral("fifo")) {
+    } else if (m_audioSource == QStringLiteral("fifo")) {
         QString path = settings.value("fifoPath", QStringLiteral("/tmp/mpd.fifo")).toString();
         m_input = new FifoInput(path, this); // NOLINT(cppcoreguidelines-owning-memory)
     } else {
@@ -636,6 +654,9 @@ void AudioVisualizer::stop()
 
 void AudioVisualizer::onDataReady(const QByteArray &data)
 {
+    // KISS: We use Qt's signal/slot mechanism with QueuedConnection to handle audio data.
+    // This ensures onDataReady runs on the main thread, avoiding the need for complex
+    // locking around the FFT plan and output vectors, at the cost of some main thread CPU usage.
     if (!m_active || !m_fftw_plan) {
         return;
     }
@@ -675,6 +696,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
         for (int i = 0; i < m_fft_size; ++i) {
             double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+            // KISS: Hann windowing to reduce spectral leakage
             double window = HANN_MULTIPLIER * (1.0 - std::cos(CIRCLE_RAD * M_PI * i / (m_fft_size - 1)));
             m_fftw_in[i] = sample * window; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
         }

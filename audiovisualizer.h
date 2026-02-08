@@ -125,6 +125,7 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QString currentPreset READ currentPreset WRITE setCurrentPreset NOTIFY currentPresetChanged)
     Q_PROPERTY(QVariantList barColors READ barColors NOTIFY barColorsChanged)
     Q_PROPERTY(bool topDownMode READ topDownMode WRITE setTopDownMode NOTIFY topDownModeChanged)
+    Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
@@ -147,6 +148,8 @@ public:
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
     [[nodiscard]] auto topDownMode() const -> bool;
     void setTopDownMode(bool topDownMode);
+    [[nodiscard]] auto audioSource() const -> QString;
+    void setAudioSource(const QString &source);
 
 public slots:
     void start();
@@ -166,6 +169,7 @@ signals:
     void currentPresetChanged();
     void barColorsChanged();
     void topDownModeChanged();
+    void audioSourceChanged();
 
 private:
     fftw_plan m_fftw_plan;
@@ -189,6 +193,7 @@ private:
     int m_numBars = DefaultNumBars;
     double m_maxPeak = 100.0;
     bool m_topDown = false;
+    QString m_audioSource;
 
     struct Preset {
         QList<QColor> colors;

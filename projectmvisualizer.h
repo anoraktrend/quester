@@ -10,6 +10,7 @@ class ProjectMVisualizer : public QQuickFramebufferObject
     Q_OBJECT
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
     Q_PROPERTY(bool shuffleEnabled READ shuffleEnabled WRITE setShuffleEnabled NOTIFY shuffleEnabledChanged)
+    Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
 
 public:
     explicit ProjectMVisualizer(QQuickItem *parent = nullptr);
@@ -23,6 +24,9 @@ public:
     bool shuffleEnabled() const;
     void setShuffleEnabled(bool enabled);
 
+    QString audioSource() const;
+    void setAudioSource(const QString &source);
+
     // Internal use for Renderer
     QByteArray takePcmData();
     QString takePresetRequest(bool &hardCut);
@@ -35,6 +39,7 @@ public:
 signals:
     void activeChanged();
     void shuffleEnabledChanged();
+    void audioSourceChanged();
 
 private slots:
     void onDataReady(const QByteArray &data);
@@ -51,6 +56,7 @@ private:
     bool m_hardCut;
     bool m_shuffleEnabled;
     bool m_shuffleUpdateRequested;
+    QString m_audioSource;
     
     void startInput();
     void stopInput();

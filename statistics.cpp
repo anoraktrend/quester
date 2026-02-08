@@ -4,6 +4,9 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QDateTime>
+#include <QPainter>
+#include <QImage>
+#include <QCryptographicHash>
 #include <QDebug>
 
 StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent)
@@ -18,6 +21,8 @@ StatisticsManager::~StatisticsManager()
 
 void StatisticsManager::initDb()
 {
+    // KISS: Direct SQLite usage allows for a self-contained, zero-configuration
+    // statistics engine without needing an ORM or external database server.
     QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir dir(dataDir);
     if (!dir.exists()) dir.mkpath(".");
@@ -127,19 +132,20 @@ QVariantMap StatisticsManager::getStatsForPeriod(qint64 startTime)
     // Top Albums
     QVariantList topAlbums;
     if (startTime > 0) {
-        query.prepare("SELECT album, SUM(duration_ms) as total FROM play_history "
-                      "WHERE timestamp > :time GROUP BY album ORDER BY total DESC LIMIT 5");
+        query.prepare("SELECT album, artist, SUM(duration_ms) as total FROM play_history "
+                      "WHERE timestamp > :time GROUP BY album, artist ORDER BY total DESC LIMIT 5");
         query.bindValue(":time", startTime);
     } else {
-        query.prepare("SELECT album, SUM(duration_ms) as total FROM play_history "
-                      "GROUP BY album ORDER BY total DESC LIMIT 5");
+        query.prepare("SELECT album, artist, SUM(duration_ms) as total FROM play_history "
+                      "GROUP BY album, artist ORDER BY total DESC LIMIT 5");
     }
 
     if (query.exec()) {
         while (query.next()) {
             QVariantMap album;
             album["name"] = query.value(0).toString();
-            album["ms"] = query.value(1).toLongLong();
+            album["artist"] = query.value(1).toString();
+            album["ms"] = query.value(2).toLongLong();
             topAlbums.append(album);
         }
     }
@@ -185,4 +191,116 @@ QVariantMap StatisticsManager::getAllTimeStats()
 {
     QMutexLocker locker(&m_mutex);
     return getStatsForPeriod(0);
+}
+
+QString StatisticsManager::generateWrappedImage(const QString &period)
+{
+    QVariantMap stats;
+    QString titleText;
+    QString subTitle;
+
+    if (period == "weekly") {
+        stats = getWeeklyStats();
+        titleText = "This Week";
+        subTitle = "Vibe Check";
+    } else if (period == "monthly") {
+        stats = getMonthlyStats();
+        titleText = "This Month";
+        subTitle = "The Soundtrack";
+    } else if (period == "yearly") {
+        stats = getYearlyStats();
+        titleText = "The Year";
+        subTitle = "What a ride.";
+    } else {
+        stats = getAllTimeStats();
+        titleText = "All Time";
+        subTitle = "Legendary Status";
+    }
+
+    // Canvas setup (Story format 9:16)
+    int w = 1080;
+    int h = 1920;
+    QImage img(w, h, QImage::Format_ARGB32);
+    img.fill(QColor("#121212")); // Dark background
+
+    QPainter p(&img);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::TextAntialiasing);
+
+    QColor accentColor("#BB86FC");
+    QColor textColor("#FFFFFF");
+    QColor dimColor("#B0B0B0");
+
+    // Header
+    p.setPen(textColor);
+    p.setFont(QFont("Sans Serif", 80, QFont::Bold));
+    p.drawText(QRect(50, 100, w-100, 150), Qt::AlignCenter, titleText);
+
+    p.setPen(accentColor);
+    p.setFont(QFont("Sans Serif", 40, QFont::Medium));
+    p.drawText(QRect(50, 250, w-100, 80), Qt::AlignCenter, subTitle);
+
+    int y = 450;
+
+    // Total Time
+    long long totalMs = stats["totalMs"].toLongLong();
+    double hours = totalMs / 1000.0 / 3600.0;
+    QString timePhrase = hours > 100 ? "Do you ever sleep?" : (hours > 10 ? "Music is life." : "Warming up.");
+
+    p.setPen(textColor);
+    p.setFont(QFont("Sans Serif", 30));
+    p.drawText(QRect(50, y, w-100, 50), Qt::AlignCenter, "You listened for");
+    p.setPen(accentColor);
+    p.setFont(QFont("Sans Serif", 70, QFont::Bold));
+    p.drawText(QRect(50, y + 60, w-100, 100), Qt::AlignCenter, QString::number(hours, 'f', 1) + " Hours");
+    p.setPen(dimColor);
+    p.setFont(QFont("Sans Serif", 30, QFont::Italic));
+    p.drawText(QRect(50, y + 170, w-100, 50), Qt::AlignCenter, timePhrase);
+
+    y += 350;
+
+    // Top Artist
+    QVariantList artists = stats["topArtists"].toList();
+    if (!artists.isEmpty()) {
+        QString artistName = artists.first().toMap()["name"].toString();
+        p.setPen(textColor);
+        p.setFont(QFont("Sans Serif", 30));
+        p.drawText(QRect(50, y, w-100, 50), Qt::AlignCenter, "Top Artist");
+        p.setPen(accentColor);
+        p.setFont(QFont("Sans Serif", 50, QFont::Bold));
+        p.drawText(QRect(50, y + 60, w-100, 80), Qt::AlignCenter, artistName);
+        p.setPen(dimColor);
+        p.setFont(QFont("Sans Serif", 25));
+        p.drawText(QRect(50, y + 140, w-100, 40), Qt::AlignCenter, "We get it, you're a fan.");
+    }
+
+    y += 250;
+
+    // Top Album Art
+    QVariantList albums = stats["topAlbums"].toList();
+    if (!albums.isEmpty()) {
+        QVariantMap albumMap = albums.first().toMap();
+        QString albumName = albumMap["name"].toString();
+        QString artistName = albumMap["artist"].toString();
+
+        if (!artistName.isEmpty()) {
+            QImage art(getCachePath(artistName, albumName));
+            if (!art.isNull()) {
+                int artSize = 500;
+                p.drawImage(QRect((w - artSize) / 2, y, artSize, artSize), art);
+            }
+        }
+    }
+
+    QString fileName = QString("QuesterWrapped_%1_%2.png").arg(period, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    QString path = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + "/" + fileName;
+    img.save(path);
+    return path;
+}
+
+QString StatisticsManager::getCachePath(const QString &artist, const QString &album)
+{
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
+    QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
+    return cacheDir + hashName + ".jpg";
 }

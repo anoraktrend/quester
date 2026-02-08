@@ -3,7 +3,6 @@
 #include <QDBusMessage>
 #include <QDBusVariant>
 #include <QDBusObjectPath>
-#include <QTimer>
 
 QDBusArgument &operator<<(QDBusArgument &argument, const MprisPlaylist &playlist) {
     argument.beginStructure();
@@ -49,7 +48,6 @@ static QString decodePlaylistId(const QDBusObjectPath &path) {
 DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
     : QObject(parent)
     , m_mpdClient(mpdClient)
-    , m_positionTimer(new QTimer(this))
     , m_connection(QDBusConnection::sessionBus())
 {
     // Check if D-Bus connection is valid
@@ -85,28 +83,21 @@ DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
 
     // Connect to MPD client signals
     if (mpdClient) {
-        connect(mpdClient, &MpdClient::stateChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::volumeChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::artistChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::titleChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::albumChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::durationChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::elapsedChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::repeatChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::randomChanged, this, &DBusService::updatePosition);
-        connect(mpdClient, &MpdClient::singleChanged, this, &DBusService::updatePosition);
+        connect(mpdClient, &MpdClient::stateChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::volumeChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::artistChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::titleChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::albumChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::durationChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::repeatChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::randomChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::singleChanged, this, &DBusService::broadcastProperties);
         mpdClient->refreshPlaylists();
     }
-
-    // Update position periodically
-    m_positionTimer->setInterval(500); // Update more frequently for better responsiveness
-    connect(m_positionTimer, &QTimer::timeout, this, &DBusService::updatePosition);
-    m_positionTimer->start();
 }
 
 DBusService::~DBusService()
 {
-    m_positionTimer->stop();
 }
 
 bool DBusService::canGoNext() const
@@ -508,16 +499,17 @@ QList<MprisPlaylist> DBusService::getPlaylists(quint32 index, quint32 maxCount, 
     return result;
 }
 
-void DBusService::updatePosition()
+void DBusService::broadcastProperties()
 {
     if (!mpdClient()) {
         return;
     }
 
+    // KISS: Only broadcast properties that actually change infrequently.
+    // Per MPRIS spec, Position should NOT be broadcasted as it changes continuously.
     QVariantMap changedProperties;
     changedProperties["Metadata"] = metadata();
     changedProperties["PlaybackStatus"] = playbackStatus();
-    changedProperties["Position"] = position();
     changedProperties["Volume"] = volume();
     changedProperties["LoopStatus"] = loopStatus();
     changedProperties["Shuffle"] = shuffle();
