@@ -64,6 +64,7 @@ public:
         // Note: Constructor signature might vary slightly between v3 and v4.
         try {
             m_projectM = new projectM(configPath);
+            qInfo() << "ProjectM initialized successfully";
         } catch (const std::exception &e) {
             qWarning() << "Failed to initialize projectM:" << e.what();
             m_projectM = nullptr;
@@ -107,6 +108,12 @@ public:
 
         if (m_width <= 0 || m_height <= 0) return;
 
+        // Handle Shuffle Update
+        bool shuffle = false;
+        if (viz->takeShuffleRequest(shuffle)) {
+            m_projectM->setShuffleEnabled(shuffle);
+        }
+
         // Handle Preset Selection
         bool hardCut = false;
         QString requestedPreset = viz->takePresetRequest(hardCut);
@@ -117,6 +124,7 @@ public:
                     QString name = QString::fromStdString(m_projectM->getPresetName(i));
                     if (QFileInfo(name).completeBaseName() == requestedPreset) {
                         m_projectM->selectPreset(i, hardCut);
+                        qInfo() << "ProjectM preset selected:" << requestedPreset;
                         break;
                     }
                 }
@@ -166,6 +174,8 @@ ProjectMVisualizer::ProjectMVisualizer(QQuickItem *parent)
     , m_input(nullptr)
     , m_presetRequested(false)
     , m_hardCut(false)
+    , m_shuffleEnabled(true)
+    , m_shuffleUpdateRequested(false)
 {
     setMirrorVertically(true); // FBOs are often flipped
 }
@@ -194,6 +204,23 @@ void ProjectMVisualizer::setActive(bool active)
     else stopInput();
     
     emit activeChanged();
+    update();
+}
+
+bool ProjectMVisualizer::shuffleEnabled() const
+{
+    return m_shuffleEnabled;
+}
+
+void ProjectMVisualizer::setShuffleEnabled(bool enabled)
+{
+    if (m_shuffleEnabled == enabled) return;
+    m_shuffleEnabled = enabled;
+    {
+        QMutexLocker locker(&m_mutex);
+        m_shuffleUpdateRequested = true;
+    }
+    emit shuffleEnabledChanged();
     update();
 }
 
@@ -250,6 +277,15 @@ QString ProjectMVisualizer::takePresetRequest(bool &hardCut)
     m_presetRequested = false;
     hardCut = m_hardCut;
     return m_requestedPreset;
+}
+
+bool ProjectMVisualizer::takeShuffleRequest(bool &enabled)
+{
+    QMutexLocker locker(&m_mutex);
+    if (!m_shuffleUpdateRequested) return false;
+    m_shuffleUpdateRequested = false;
+    enabled = m_shuffleEnabled;
+    return true;
 }
 
 QStringList ProjectMVisualizer::getPresetList(const QString &presetPath) const

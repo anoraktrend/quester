@@ -1489,6 +1489,9 @@ void MpdClient::removeId(int id)
 
 void MpdClient::cleanup()
 {
+    if (m_state == "play") {
+        pause();
+    }
     m_timer->stop();
     if (m_notifier) {
         m_notifier->setEnabled(false);

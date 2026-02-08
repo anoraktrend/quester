@@ -20,6 +20,15 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstring>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QDir>
+#include <QMutex>
+#include <csignal>
+#include <execinfo.h>
 
 
 using namespace Qt::StringLiterals;
@@ -70,20 +79,80 @@ public:
     }
 };
 
-auto main(int argc, char *argv[]) -> int
+static QFile *g_logFile = nullptr;
+static QMutex g_logMutex;
+static bool g_isDetached = false;
+
+void crashHandler(int sig)
 {
-    // Check for --detach argument
-    bool shouldDetach = false;
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--detach") == 0) {
-            shouldDetach = true;
-            break;
+    if (g_logFile) {
+        int fd = g_logFile->handle();
+        if (fd != -1) {
+            const char msg[] = "\nFATAL: Application crashed. Stack trace:\n";
+            if (write(fd, msg, sizeof(msg) - 1) == -1) {}
+            
+            void *array[64];
+            int size = backtrace(array, 64);
+            backtrace_symbols_fd(array, size, fd);
+            fsync(fd);
         }
     }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    Q_UNUSED(context);
+    QMutexLocker locker(&g_logMutex);
+    
+    QString txt;
+    switch (type) {
+    case QtDebugMsg:    txt = QStringLiteral("DEBUG: %1").arg(msg); break;
+    case QtInfoMsg:     txt = QStringLiteral("INFO: %1").arg(msg); break;
+    case QtWarningMsg:  txt = QStringLiteral("WARNING: %1").arg(msg); break;
+    case QtCriticalMsg: txt = QStringLiteral("CRITICAL: %1").arg(msg); break;
+    case QtFatalMsg:    txt = QStringLiteral("FATAL: %1").arg(msg); break;
+    }
+
+    if (g_logFile && g_logFile->isOpen()) {
+        QTextStream out(g_logFile);
+        out << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz ")) << txt << Qt::endl;
+    }
+    
+    // Also write to stderr for console output
+    if (!g_isDetached) {
+        fprintf(stderr, "%s\n", txt.toLocal8Bit().constData());
+        fflush(stderr);
+    }
+}
+
+auto main(int argc, char *argv[]) -> int
+{
+    // Check for --no-detach argument
+    bool shouldDetach = true;
+    int newArgc = 0;
+    for (int i = 0; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--no-detach") == 0) {
+            shouldDetach = false;
+        } else {
+            argv[newArgc++] = argv[i];
+        }
+    }
+    argc = newArgc;
+    argv[argc] = nullptr;
 
     if (shouldDetach) {
-        if (fork() > 0) return 0; // Parent exits
+        pid_t pid = fork();
+        if (pid < 0) return 1;
+        if (pid > 0) return 0; // Parent exits
+
         setsid(); // Create new session
+
+        // Second fork to prevent acquiring controlling terminal
+        pid = fork();
+        if (pid < 0) return 1;
+        if (pid > 0) return 0; // First child exits
 
         // Redirect standard streams to /dev/null
         int devNull = open("/dev/null", O_RDWR);
@@ -95,10 +164,91 @@ auto main(int argc, char *argv[]) -> int
         }
     }
 
+    g_isDetached = shouldDetach;
+
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("Quester"));
     app.setOrganizationDomain(QStringLiteral("helltop.net"));
     app.setApplicationName(QStringLiteral("Quester"));
+
+    // Setup Logging
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QDir dir(cacheDir);
+    if (!dir.exists()) dir.mkpath(QStringLiteral("."));
+    
+    QString logPath = cacheDir + "/quest.log";
+
+    // 1. Detect unrenamed file (crash/unclean exit)
+    if (QFile::exists(logPath)) {
+        QFileInfo info(logPath);
+        QString dateStr = info.lastModified().toString(QStringLiteral("yyyy-MM-dd-HH-mm-ss"));
+        QString crashName = dir.filePath(QStringLiteral("quest-%1-crash.log").arg(dateStr));
+        QFile::rename(logPath, crashName);
+    }
+
+    // 2. Rotate logs (Keep last 5)
+    dir.setNameFilters(QStringList() << "quest-*.log");
+    dir.setSorting(QDir::Time); // Newest first
+    QFileInfoList logs = dir.entryInfoList();
+    while (logs.size() >= 5) {
+        QFile::remove(logs.last().absoluteFilePath());
+        logs.removeLast();
+    }
+
+    g_logFile = new QFile(logPath);
+    if (g_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        // Redirect stdout/stderr to log file if detached to capture library output
+        if (g_isDetached) {
+            int fd = g_logFile->handle();
+            if (fd != -1) {
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+            }
+        }
+        qInstallMessageHandler(myMessageHandler);
+        
+        // Install Signal Handlers
+        signal(SIGSEGV, crashHandler);
+        signal(SIGABRT, crashHandler);
+        signal(SIGFPE, crashHandler);
+        signal(SIGILL, crashHandler);
+        signal(SIGBUS, crashHandler);
+    }
+
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+        QMutexLocker locker(&g_logMutex);
+        if (g_logFile) {
+            QString oldName = g_logFile->fileName();
+            g_logFile->close();
+            delete g_logFile;
+            g_logFile = nullptr;
+            
+            QString dateStr = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd-HH-mm-ss"));
+            QString newName = QFileInfo(oldName).dir().filePath(QStringLiteral("quest-%1.log").arg(dateStr));
+            
+            if (QFile::exists(newName)) QFile::remove(newName);
+            QFile::rename(oldName, newName);
+        }
+    });
+
+    // Single Instance Check
+    QString serverName = QStringLiteral("QuesterSingleInstance");
+    QString user = qgetenv("USER");
+    if (user.isEmpty()) {
+        serverName += QStringLiteral("-") + QString::number(getuid());
+    } else {
+        serverName += QStringLiteral("-") + user;
+    }
+
+    QLocalSocket socket;
+    socket.connectToServer(serverName);
+    if (socket.waitForConnected(500)) {
+        // Another instance is running
+        socket.write("ACTIVATE");
+        socket.waitForBytesWritten(1000);
+        socket.disconnectFromServer();
+        return 0;
+    }
 
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
         QQuickStyle::setStyle("Fusion");
@@ -123,6 +273,26 @@ auto main(int argc, char *argv[]) -> int
     MpdClient mpdClient;
     DBusService dbusService(&mpdClient);
     AudioVisualizer audioVisualizer;
+
+    // Start Single Instance Server
+    QLocalServer singleInstanceServer;
+    QLocalServer::removeServer(serverName); // Clean up stale socket
+    if (singleInstanceServer.listen(serverName)) {
+        QObject::connect(&singleInstanceServer, &QLocalServer::newConnection, &mpdClient, [&singleInstanceServer, &mpdClient]() {
+            QLocalSocket *clientConnection = singleInstanceServer.nextPendingConnection();
+            QObject::connect(clientConnection, &QLocalSocket::readyRead, [clientConnection, &mpdClient]() {
+                QByteArray data = clientConnection->readAll();
+                if (data.startsWith("ACTIVATE")) {
+                    if (auto *win = mpdClient.window()) {
+                        win->show();
+                        win->raise();
+                        win->requestActivate();
+                    }
+                }
+            });
+            QObject::connect(clientConnection, &QLocalSocket::disconnected, clientConnection, &QLocalSocket::deleteLater);
+        });
+    }
 
     qDBusRegisterMetaType<QList<QDBusObjectPath>>();
     qDBusRegisterMetaType<QList<QVariantMap>>();

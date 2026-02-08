@@ -75,6 +75,7 @@ Item {
         visible: root.useProjectM && root.visible
         active: visible
         z: 5
+        shuffleEnabled: visualizerSettings.projectMShuffleEnabled
     }
 
     Image {

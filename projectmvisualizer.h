@@ -9,6 +9,7 @@ class ProjectMVisualizer : public QQuickFramebufferObject
 {
     Q_OBJECT
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
+    Q_PROPERTY(bool shuffleEnabled READ shuffleEnabled WRITE setShuffleEnabled NOTIFY shuffleEnabledChanged)
 
 public:
     explicit ProjectMVisualizer(QQuickItem *parent = nullptr);
@@ -19,9 +20,13 @@ public:
     bool active() const;
     void setActive(bool active);
 
+    bool shuffleEnabled() const;
+    void setShuffleEnabled(bool enabled);
+
     // Internal use for Renderer
     QByteArray takePcmData();
     QString takePresetRequest(bool &hardCut);
+    bool takeShuffleRequest(bool &enabled);
 
     // Preset management
     Q_INVOKABLE QStringList getPresetList(const QString &presetPath) const;
@@ -29,6 +34,7 @@ public:
 
 signals:
     void activeChanged();
+    void shuffleEnabledChanged();
 
 private slots:
     void onDataReady(const QByteArray &data);
@@ -43,6 +49,8 @@ private:
     bool m_presetRequested;
     QString m_requestedPreset;
     bool m_hardCut;
+    bool m_shuffleEnabled;
+    bool m_shuffleUpdateRequested;
     
     void startInput();
     void stopInput();
