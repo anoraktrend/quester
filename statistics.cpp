@@ -10,15 +10,27 @@
 #include <QDebug>
 #include <QSettings>
 #include <QTimer>
+#include <QtConcurrent>
+#include <QThread>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
-StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent)
+StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent), m_nam(new QNetworkAccessManager(this))
 {
     initDb();
     QTimer::singleShot(5000, this, &StatisticsManager::checkAutomaticWrapped);
+    
+    // Validate existing credentials at startup if both token and username exist
+    QTimer::singleShot(1000, this, &StatisticsManager::validateListenBrainzCredentials);
 }
 
 StatisticsManager::~StatisticsManager()
 {
+    m_workerFuture.waitForFinished();
     QSqlDatabase::removeDatabase("QuesterStats");
 }
 
@@ -38,6 +50,10 @@ void StatisticsManager::initDb()
         return;
     }
 
+    QSqlQuery pragma(db);
+    pragma.exec("PRAGMA journal_mode=WAL;");
+    pragma.exec("PRAGMA synchronous=NORMAL;");
+
     QSqlQuery query(db);
     if (!query.exec("CREATE TABLE IF NOT EXISTS play_history ("
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -48,26 +64,69 @@ void StatisticsManager::initDb()
                     "duration_ms INTEGER)")) {
         qWarning() << "Failed to create stats table:" << query.lastError().text();
     }
+    
+    // Migration: Add uri column if it doesn't exist
+    bool hasUri = false;
+    QSqlQuery check(db);
+    check.exec("PRAGMA table_info(play_history)");
+    while (check.next()) {
+        if (check.value(1).toString() == "uri") hasUri = true;
+    }
+    if (!hasUri) {
+        QSqlQuery alter(db);
+        alter.exec("ALTER TABLE play_history ADD COLUMN uri TEXT");
+    }
+
+    query.exec("CREATE INDEX IF NOT EXISTS idx_ph_timestamp ON play_history(timestamp)");
 }
 
-void StatisticsManager::logPlay(const QString &artist, const QString &title, const QString &album, qint64 durationMs)
+void StatisticsManager::logPlay(const QString &artist, const QString &title, const QString &album, const QString &uri, qint64 durationMs)
 {
-    QMutexLocker locker(&m_mutex);
-    QSqlDatabase db = QSqlDatabase::database("QuesterStats");
-    if (!db.isOpen()) return;
-
-    QSqlQuery query(db);
-    query.prepare("INSERT INTO play_history (artist, title, album, timestamp, duration_ms) "
-                  "VALUES (:artist, :title, :album, :timestamp, :duration)");
-    query.bindValue(":artist", artist);
-    query.bindValue(":title", title);
-    query.bindValue(":album", album);
-    query.bindValue(":timestamp", QDateTime::currentSecsSinceEpoch());
-    query.bindValue(":duration", durationMs);
-
-    if (!query.exec()) {
-        qWarning() << "Failed to log play:" << query.lastError().text();
+    // Submit to ListenBrainz (Main Thread)
+    if (!m_lbToken.isEmpty()) {
+        QVariantMap payload;
+        QVariantMap metadata;
+        metadata["artist_name"] = artist;
+        metadata["track_name"] = title;
+        metadata["release_name"] = album;
+        QVariantMap additional;
+        additional["duration_ms"] = durationMs;
+        metadata["additional_info"] = additional;
+        
+        payload["track_metadata"] = metadata;
+        payload["listened_at"] = QDateTime::currentSecsSinceEpoch();
+        
+        sendListenBrainzRequest("single", payload);
     }
+
+    // Log to Local DB (Worker Thread)
+    m_workerFuture = QtConcurrent::run([this, artist, title, album, uri, durationMs]() {
+        const QString connectionName = QStringLiteral("QuesterStatsWorker-%1").arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+            db.setDatabaseName(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/stats.db"));
+
+            if (db.open()) {
+                QSqlQuery query(db);
+                query.prepare(QStringLiteral("INSERT INTO play_history (artist, title, album, uri, timestamp, duration_ms) "
+                              "VALUES (:artist, :title, :album, :uri, :timestamp, :duration)"));
+                query.bindValue(QStringLiteral(":artist"), artist);
+                query.bindValue(QStringLiteral(":title"), title);
+                query.bindValue(QStringLiteral(":album"), album);
+                query.bindValue(QStringLiteral(":uri"), uri);
+                query.bindValue(QStringLiteral(":timestamp"), QDateTime::currentSecsSinceEpoch());
+                query.bindValue(QStringLiteral(":duration"), durationMs);
+
+                if (!query.exec()) {
+                    qWarning() << "Failed to log play:" << query.lastError().text();
+                }
+            } else {
+                qWarning() << "Failed to open stats db in worker:" << db.lastError().text();
+            }
+        }
+        QSqlDatabase::removeDatabase(connectionName);
+        emit playLogged();
+    });
 }
 
 QVariantMap StatisticsManager::getStatsForPeriod(qint64 startTime)
@@ -76,17 +135,18 @@ QVariantMap StatisticsManager::getStatsForPeriod(qint64 startTime)
     QSqlDatabase db = QSqlDatabase::database("QuesterStats");
     if (!db.isOpen()) return stats;
 
-    // Total Time
+    // Total Time and Plays
     QSqlQuery query(db);
     if (startTime > 0) {
-        query.prepare("SELECT SUM(duration_ms) FROM play_history WHERE timestamp > :time");
+        query.prepare("SELECT SUM(duration_ms), COUNT(*) FROM play_history WHERE timestamp > :time");
         query.bindValue(":time", startTime);
     } else {
-        query.prepare("SELECT SUM(duration_ms) FROM play_history");
+        query.prepare("SELECT SUM(duration_ms), COUNT(*) FROM play_history");
     }
 
     if (query.exec() && query.next()) {
         stats["totalMs"] = query.value(0).toLongLong();
+        stats["totalPlays"] = query.value(1).toInt();
     }
 
     // Top Artists
@@ -153,18 +213,6 @@ QVariantMap StatisticsManager::getStatsForPeriod(qint64 startTime)
         }
     }
     stats["topAlbums"] = topAlbums;
-
-    // Total Plays
-    if (startTime > 0) {
-        query.prepare("SELECT COUNT(*) FROM play_history WHERE timestamp > :time");
-        query.bindValue(":time", startTime);
-    } else {
-        query.prepare("SELECT COUNT(*) FROM play_history");
-    }
-
-    if (query.exec() && query.next()) {
-        stats["totalPlays"] = query.value(0).toInt();
-    }
 
     return stats;
 }
@@ -415,4 +463,233 @@ QString StatisticsManager::getCachePath(const QString &artist, const QString &al
     QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
     QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
     return cacheDir + hashName + ".jpg";
+}
+
+void StatisticsManager::setListenBrainzCredentials(const QString &token, const QString &username)
+{
+    m_lbToken = token;
+    m_lbUsername = username;
+}
+
+void StatisticsManager::submitPlayingNow(const QString &artist, const QString &title, const QString &album, qint64 durationMs)
+{
+    if (m_lbToken.isEmpty()) return;
+
+    QVariantMap payload;
+    QVariantMap metadata;
+    metadata["artist_name"] = artist;
+    metadata["track_name"] = title;
+    metadata["release_name"] = album;
+    QVariantMap additional;
+    additional["duration_ms"] = durationMs;
+    metadata["additional_info"] = additional;
+    
+    payload["track_metadata"] = metadata;
+    
+    sendListenBrainzRequest("playing_now", payload);
+}
+
+void StatisticsManager::validateListenBrainzCredentials()
+{
+    if (m_lbToken.isEmpty()) {
+        qWarning() << "[ListenBrainz] Cannot validate: token is empty";
+        setCredentialsValid(false);
+        return;
+    }
+    
+    // Validate token using the official ListenBrainz API endpoint
+    QUrl url("https://api.listenbrainz.org/1/validate-token");
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    
+    QNetworkReply *reply = m_nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[ListenBrainz] Token validation response:" << QString::fromLatin1(response);
+            // Parse response to check if token is valid
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject obj = doc.object();
+                bool valid = obj["valid"].toBool();
+                if (valid) {
+                    setCredentialsValid(true);
+                    qDebug() << "[ListenBrainz] Token is valid";
+                } else {
+                    setCredentialsValid(false);
+                    qWarning() << "[ListenBrainz] Token validation failed";
+                }
+            } else {
+                setCredentialsValid(false);
+            }
+        } else {
+            qWarning().noquote() << "[ListenBrainz] Token validation error:" << reply->errorString();
+            setCredentialsValid(false);
+        }
+    });
+}
+
+void StatisticsManager::sendListenBrainzRequest(const QString &listenType, const QVariantMap &payload)
+{
+    QUrl url("https://api.listenbrainz.org/1/submit-listens");
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QJsonObject root;
+    root["listen_type"] = listenType;
+    QJsonArray payloadArray;
+    payloadArray.append(QJsonObject::fromVariantMap(payload));
+    root["payload"] = payloadArray;
+
+    QByteArray requestBody = QJsonDocument(root).toJson();
+    
+    qDebug().noquote() << "[ListenBrainz] API Call:" << listenType << "|" << QString::fromLatin1(requestBody);
+    
+    QNetworkReply *reply = m_nam->post(request, requestBody);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[ListenBrainz] API Response:" << QString::fromLatin1(response);
+            // Valid credentials if we got a successful response
+            setCredentialsValid(true);
+        } else {
+            qWarning().noquote() << "[ListenBrainz] API Error:" << reply->errorString() << "|" << QString::fromLatin1(response);
+            // Invalid credentials if we got an error
+            setCredentialsValid(false);
+        }
+    });
+}
+
+QList<QString> StatisticsManager::getMostPlayedUris(int limit)
+{
+    QList<QString> uris;
+    QSqlDatabase db = QSqlDatabase::database("QuesterStats");
+    if (!db.isOpen()) return uris;
+
+    QSqlQuery query(db);
+    query.prepare("SELECT uri, COUNT(*) as cnt FROM play_history WHERE uri IS NOT NULL AND uri != '' GROUP BY uri ORDER BY cnt DESC LIMIT :limit");
+    query.bindValue(":limit", limit);
+
+    if (query.exec()) {
+        while (query.next()) {
+            uris.append(query.value(0).toString());
+        }
+    }
+    return uris;
+}
+
+void StatisticsManager::sendQueueAsPlaylist(const QString &playlistName, const QVariantList &tracks)
+{
+    if (m_lbToken.isEmpty()) {
+        emit playlistSaved(false, "Please configure your ListenBrainz token first");
+        return;
+    }
+
+    if (tracks.isEmpty()) {
+        emit playlistSaved(false, "Queue is empty");
+        return;
+    }
+
+    QUrl url("https://api.listenbrainz.org/1/playlist/create");
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    QJsonObject root;
+    root["name"] = playlistName;
+    root["source"] = "quester";
+
+    QJsonArray itemsArray;
+    for (const QVariant &track : tracks) {
+        QVariantMap trackMap = track.toMap();
+        QJsonObject item;
+        item["artist_name"] = trackMap.value("artist", "").toString();
+        item["track_name"] = trackMap.value("title", "").toString();
+        item["release_name"] = trackMap.value("album", "").toString();
+        itemsArray.append(item);
+    }
+    root["items"] = itemsArray;
+
+    QByteArray requestBody = QJsonDocument(root).toJson();
+    
+    qDebug().noquote() << "[ListenBrainz] Creating playlist:" << QString::fromLatin1(requestBody);
+    
+    QNetworkReply *reply = m_nam->post(request, requestBody);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[ListenBrainz] Playlist created:" << QString::fromLatin1(response);
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject obj = doc.object();
+                QString playlistId = obj["playlist_id"].toString();
+                if (!playlistId.isEmpty()) {
+                    setPlaylistSaved(true);
+                    emit playlistSaved(true, "Playlist created successfully!");
+                    return;
+                }
+            }
+            setPlaylistSaved(true);
+            emit playlistSaved(true, "Playlist created successfully!");
+        } else {
+            qWarning().noquote() << "[ListenBrainz] Playlist error:" << reply->errorString() << "|" << QString::fromLatin1(response);
+            emit playlistSaved(false, QString("Failed to create playlist: %1").arg(reply->errorString()));
+        }
+    });
+}
+
+void StatisticsManager::savePlaylistToListenBrainz(const QString &playlistName, const QVariantList &tracks)
+{
+    // Same as sendQueueAsPlaylist - the API creates a new playlist
+    sendQueueAsPlaylist(playlistName, tracks);
+}
+
+void StatisticsManager::fetchUserPlaylists()
+{
+    if (m_lbToken.isEmpty() || m_lbUsername.isEmpty()) {
+        emit playlistsLoaded(QVariantList());
+        return;
+    }
+
+    QUrl url(QString("https://api.listenbrainz.org/1/user/%1/playlists").arg(m_lbUsername));
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    
+    QNetworkReply *reply = m_nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[ListenBrainz] Playlists loaded:" << QString::fromLatin1(response);
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            QVariantList playlists;
+            
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject obj = doc.object();
+                QJsonArray playlistArray = obj["playlists"].toArray();
+                for (const QJsonValue &value : playlistArray) {
+                    QJsonObject playlistObj = value.toObject();
+                    QJsonObject playlist = playlistObj["playlist"].toObject();
+                    QVariantMap playlistMap;
+                    playlistMap["name"] = playlist["title"].toString();
+                    playlistMap["creator"] = playlist["creator"].toString();
+                    playlistMap["url"] = playlist["identifier"].toString();
+                    playlistMap["date"] = playlist["date"].toString();
+                    playlistMap["track_count"] = playlist["track"].toArray().count();
+                    playlists.append(playlistMap);
+                }
+            }
+            emit playlistsLoaded(playlists);
+        } else {
+            qWarning().noquote() << "[ListenBrainz] Failed to fetch playlists:" << reply->errorString();
+            emit playlistsLoaded(QVariantList());
+        }
+    });
 }

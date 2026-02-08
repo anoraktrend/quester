@@ -766,7 +766,25 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Button {
                 text: qsTr("Save Queue")
-                onClicked: savePlaylistDialog.open()
+                onClicked: {
+                    // Save locally first
+                    savePlaylistDialog.open()
+                }
+            }
+            Button {
+                text: qsTr("Save to ListenBrainz")
+                enabled: mpdClient.statistics.credentialsValid && mpdClient.queueModel.count > 0
+                onClicked: {
+                    lbPlaylistNameField.text = "Quester Playlist " + new Date().toLocaleDateString()
+                    lbPlaylistDialog.open()
+                }
+            }
+            Button {
+                text: qsTr("Fetch ListenBrainz")
+                enabled: mpdClient.statistics.credentialsValid
+                onClicked: {
+                    mpdClient.statistics.fetchUserPlaylists()
+                }
             }
         }
 
@@ -927,6 +945,61 @@ ApplicationWindow {
                         Button {
                             text: qsTr("Refresh Library")
                             onClicked: mpdClient.refreshLibrary()
+                        }
+
+                        Label { text: qsTr("ListenBrainz Settings"); font.bold: true; color: palette.text }
+                        RowLayout {
+                            id: listenBrainzRow
+                            Layout.fillWidth: true
+                            TextField {
+                                id: listenbrainzUsernameField
+                                placeholderText: qsTr("ListenBrainz Username")
+                                text: mpdClient.listenBrainzUsername
+                                onTextChanged: {
+                                    mpdClient.listenBrainzUsername = text
+                                }
+                                Layout.fillWidth: true
+                            }
+                            Rectangle {
+                                id: lbStatusIndicator
+                                width: 12
+                                height: 12
+                                radius: 6
+                            }
+                            Connections {
+                                target: mpdClient.statistics
+                                function onCredentialsValidChanged(valid: bool) {
+                                    lbStatusIndicator.color = valid ? "#4CAF50" : "#F44336"
+                                }
+                            }
+                            Binding {
+                                target: lbStatusIndicator
+                                property: "color"
+                                value: mpdClient.statistics.credentialsValid ? "#4CAF50" : "#F44336"
+                            }
+                        }
+                        TextField {
+                            id: listenbrainzTokenField
+                            placeholderText: qsTr("ListenBrainz Token")
+                            text: mpdClient.listenBrainzToken
+                            onTextChanged: {
+                                mpdClient.listenBrainzToken = text
+                                // Reset validation state when token changes
+                            }
+                            echoMode: TextInput.Password
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: qsTr("Connect ListenBrainz Account")
+                            onClicked: {
+                                // Save credentials first, then validate
+                                if (listenbrainzUsernameField.text && listenbrainzTokenField.text) {
+                                    mpdClient.listenBrainzUsername = listenbrainzUsernameField.text
+                                    mpdClient.listenBrainzToken = listenbrainzTokenField.text
+                                    mpdClient.statistics.validateListenBrainzCredentials()
+                                }
+                            }
+                            Layout.fillWidth: true
                         }
                     }
                 }
@@ -1166,6 +1239,113 @@ ApplicationWindow {
         onAccepted: mpdClient.savePlaylist(playlistNameField.text)
     }
 
+    Dialog {
+        id: lbPlaylistDialog
+        title: qsTr("Save Queue to ListenBrainz")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        modal: true
+        
+        ColumnLayout {
+            Label { text: qsTr("Playlist Name:") }
+            TextField { id: lbPlaylistNameField }
+        }
+
+        onAccepted: {
+            var tracks = []
+            for (var i = 0; i < mpdClient.queueModel.count; i++) {
+                var item = mpdClient.queueModel.get(i)
+                tracks.push({
+                    title: item.title,
+                    artist: item.artist,
+                    album: item.album
+                })
+            }
+            mpdClient.statistics.savePlaylistToListenBrainz(lbPlaylistNameField.text, tracks)
+        }
+    }
+
+    // ListenBrainz playlists model
+    ListModel {
+        id: lbPlaylistsModel
+    }
+
+    // Connection to handle ListenBrainz playlists loaded
+    Connections {
+        target: mpdClient.statistics
+        function onPlaylistsLoaded(playlists) {
+            lbPlaylistsModel.clear()
+            for (var i = 0; i < playlists.length; i++) {
+                lbPlaylistsModel.append(playlists[i])
+            }
+        }
+    }
+
+    // Connection to handle playlist save result
+    Connections {
+        target: mpdClient.statistics
+        function onPlaylistSaved(success, message) {
+            if (success) {
+                console.log("Playlist saved successfully")
+            } else {
+                console.log("Playlist save failed:", message)
+            }
+        }
+    }
+
+    // Dialog for viewing ListenBrainz playlists
+    Dialog {
+        id: lbPlaylistsViewDialog
+        title: qsTr("ListenBrainz Playlists")
+        anchors.centerIn: parent
+        width: Math.min(500, parent.width - 40)
+        height: Math.min(400, parent.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+
+        ListView {
+            id: lbPlaylistsListView
+            anchors.fill: parent
+            model: lbPlaylistsModel
+            delegate: Rectangle {
+                width: ListView.view.width
+                height: 60
+                color: index % 2 === 0 ? palette.base : palette.alternateBase
+
+                readonly property bool highlighted: ListView.isCurrentItem
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: highlighted ? palette.highlight : "transparent"
+                    opacity: highlighted ? 0.3 : 0
+                }
+
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 15
+                    Text {
+                        text: model.name
+                        font.bold: true
+                        color: highlighted ? palette.highlightedText : palette.text
+                    }
+                    Text {
+                        text: model.creator + " - " + model.track_count + " tracks"
+                        font.pixelSize: 12
+                        color: highlighted ? palette.highlightedText : palette.windowText
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        lbPlaylistsListView.currentIndex = index
+                        Qt.openUrlExternally(model.url)
+                    }
+                }
+            }
+        }
+    }
+
     Platform.FolderDialog {
         id: folderDialog
         title: qsTr("Select ProjectM Presets Folder")
@@ -1175,6 +1355,101 @@ ApplicationWindow {
                 path = path.substring(7)
             }
             visualizerView.settings.projectMPresetPath = path
+        }
+    }
+
+    // Dialog for viewing JSPF playlist details with save button
+    Dialog {
+        id: jspfPlaylistDialog
+        property string currentIdentifier: ""
+        title: qsTr("JSPF Playlist")
+        anchors.centerIn: parent
+        width: Math.min(600, parent.width - 40)
+        height: Math.min(500, parent.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            // Playlist info header
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    id: jspfPlaylistTitle
+                    text: qsTr("Playlist")
+                    font.bold: true
+                    font.pixelSize: 16
+                    color: palette.text
+                    Layout.fillWidth: true
+                }
+                Button {
+                    text: qsTr("Save to Cache")
+                    onClicked: {
+                        if (jspfPlaylistDialog.currentIdentifier.length > 0) {
+                            mpdClient.saveJspfPlaylistToCache(jspfPlaylistDialog.currentIdentifier)
+                        }
+                    }
+                }
+            }
+
+            Label {
+                id: jspfPlaylistCreator
+                text: qsTr("by Unknown")
+                color: palette.windowText
+                font.pixelSize: 12
+            }
+
+            // Tracks list
+            ListView {
+                id: jspfTrackListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: mpdClient.playlistTrackModel
+
+                delegate: Rectangle {
+                    width: ListView.view.width
+                    height: 40
+                    color: index % 2 === 0 ? palette.base : palette.alternateBase
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 10
+
+                        Text {
+                            text: model.title
+                            color: palette.text
+                            font.pixelSize: 14
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            text: model.creator
+                            color: palette.windowText
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 100
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            text: model.duration
+                            color: palette.windowText
+                            font.pixelSize: 12
+                        }
+                    }
+                }
+                ScrollBar.vertical: ScrollBar { }
+            }
+        }
+    }
+
+    // Connection to handle playlist saved notification
+    Connections {
+        target: mpdClient
+        function onPlaylistSaved(title, path) {
+            console.log("Playlist saved:", title, "to", path)
+            // Could show a toast notification here
         }
     }
 }

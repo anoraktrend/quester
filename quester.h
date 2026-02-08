@@ -34,6 +34,22 @@ struct TrackItem {
     QString uri;
 };
 
+struct PlaylistItem {
+    QString title;
+    QString creator;
+    QString identifier;
+    QString date;
+    int trackCount = 0;
+};
+
+struct PlaylistTrackItem {
+    QString title;
+    QString creator;
+    QString album;
+    QString duration;
+    QString identifier; // JSPF identifier (URL)
+};
+
 struct BrowserItem {
     QString name;
     QString path;
@@ -134,6 +150,48 @@ public:
     int m_currentSongId = -1;
 };
 
+class PlaylistModel : public QAbstractListModel
+{
+    Q_OBJECT
+public:
+    enum class PlaylistRoles : std::uint16_t {
+        TitleRole = Qt::UserRole + 1,
+        CreatorRole,
+        IdentifierRole,
+        DateRole,
+        TrackCountRole
+    };
+    Q_ENUM(PlaylistRoles)
+
+    explicit PlaylistModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
+    void setPlaylists(const QList<PlaylistItem> &playlists);
+    QList<PlaylistItem> m_playlists;
+};
+
+class PlaylistTrackModel : public QAbstractListModel
+{
+    Q_OBJECT
+public:
+    enum class PlaylistTrackRoles : std::uint16_t {
+        TitleRole = Qt::UserRole + 1,
+        CreatorRole,
+        AlbumRole,
+        DurationRole,
+        IdentifierRole
+    };
+    Q_ENUM(PlaylistTrackRoles)
+
+    explicit PlaylistTrackModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+    [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
+    [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
+    [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
+    void setTracks(const QList<PlaylistTrackItem> &tracks);
+    QList<PlaylistTrackItem> m_tracks;
+};
+
 class MpdClient : public QObject
 {
     Q_OBJECT
@@ -163,6 +221,8 @@ class MpdClient : public QObject
     Q_PROPERTY(QVariantMap allTimeStats READ allTimeStats NOTIFY allTimeStatsChanged)
     Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
     Q_PROPERTY(StatisticsManager* statistics READ statistics CONSTANT)
+    Q_PROPERTY(PlaylistModel* playlistModel READ playlistModel CONSTANT)
+    Q_PROPERTY(PlaylistTrackModel* playlistTrackModel READ playlistTrackModel CONSTANT)
 
 public:
     explicit MpdClient(QObject *parent = nullptr);
@@ -206,6 +266,19 @@ public:
     [[nodiscard]] auto allTimeStats() const -> QVariantMap;
     [[nodiscard]] auto audioSource() const -> QString;
     [[nodiscard]] auto statistics() const -> StatisticsManager* { return m_stats; }
+    [[nodiscard]] auto playlistModel() const -> PlaylistModel*;
+    [[nodiscard]] auto playlistTrackModel() const -> PlaylistTrackModel*;
+
+    // ListenBrainz JSPF playlist methods
+    Q_INVOKABLE void fetchJspfPlaylist(const QString &playlistIdentifier);
+    Q_INVOKABLE void saveJspfPlaylistToCache(const QString &identifier);
+
+    Q_PROPERTY(QString listenBrainzToken READ listenBrainzToken WRITE setListenBrainzToken NOTIFY listenBrainzTokenChanged)
+    Q_PROPERTY(QString listenBrainzUsername READ listenBrainzUsername WRITE setListenBrainzUsername NOTIFY listenBrainzUsernameChanged)
+    [[nodiscard]] auto listenBrainzToken() const -> QString;
+    [[nodiscard]] auto listenBrainzUsername() const -> QString;
+    void setListenBrainzToken(const QString &token);
+    void setListenBrainzUsername(const QString &username);
 
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
@@ -257,6 +330,7 @@ public Q_SLOTS:
     Q_INVOKABLE void quitApplication();
     Q_INVOKABLE void toggleFullscreen();
     Q_INVOKABLE void toggleWindow();
+    Q_INVOKABLE void loadMostPlayedPlaylist();
 
 Q_SIGNALS:
     void artistChanged();
@@ -280,6 +354,9 @@ Q_SIGNALS:
     void yearlyStatsChanged();
     void allTimeStatsChanged();
     void audioSourceChanged();
+    void listenBrainzTokenChanged();
+    void listenBrainzUsernameChanged();
+    void playlistSaved(const QString &title, const QString &path);
 
 private Q_SLOTS:
     void updateStatus();
@@ -300,7 +377,7 @@ private:
     auto getCachePath(const QString &artist, const QString &album, const QString &mbid = QString()) -> QString;
     void sortAlbums(QList<AlbumItem> &albums);
     auto getMpdPicture(const QString &uri) -> QByteArray;
-    void connect();
+    void connectToMpd();
     void sendIdle();
     void leaveIdle();
     void saveLibraryToCache(const QList<AlbumItem> &albums);
@@ -346,7 +423,11 @@ private:
     TrackModel *m_trackModel;
     BrowserModel *m_browserModel;
     QueueModel *m_queueModel;
+    PlaylistModel *m_playlistModel;
+    PlaylistTrackModel *m_playlistTrackModel;
     QString m_currentPath;
+    QMap<QString, QVariantMap> m_cachedJspfPlaylists; // identifier -> full playlist data
+    QString m_lbToken; // ListenBrainz token for API access
 
     // System tray
     QSystemTrayIcon *m_trayIcon = nullptr;

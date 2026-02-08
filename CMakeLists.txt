@@ -8,6 +8,10 @@ message("Project source dir: ${PROJECT_SOURCE_DIR}")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Remove Qt's -mno-direct-extern-access security flag if present
+string(REPLACE "-mno-direct-extern-access" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+string(REPLACE "-mno-direct-extern-access=1" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 
@@ -47,6 +51,7 @@ find_package(Qt6 COMPONENTS
     DBus
     Widgets
     Sql
+    Concurrent
     REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.2)
@@ -116,6 +121,7 @@ target_link_libraries(quester
     Qt6::DBus
     Qt6::Widgets
     Qt6::Sql
+    Qt6::Concurrent
     PkgConfig::LIBPULSE_SIMPLE
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3

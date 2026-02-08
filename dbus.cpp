@@ -67,15 +67,16 @@ DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
         qWarning() << "Failed to register MPRIS object on D-Bus:" << m_connection.lastError().message();
     }
 
-    // Try to register the service with a unique name to avoid conflicts
-    QString serviceName = QString("org.mpris.MediaPlayer2.quester.%1").arg(QCoreApplication::applicationPid());
+    // Register the MPRIS service - use a well-known name that follows MPRIS specification
+    // This follows the convention: org.mpris.MediaPlayer2.<application_name>
+    QString serviceName = "org.mpris.MediaPlayer2.quester";
     if (!m_connection.registerService(serviceName)) {
-        qWarning() << "Failed to register MPRIS service on D-Bus:" << m_connection.lastError().message();
-        // Try the standard name as fallback
-        if (!m_connection.registerService("org.mpris.MediaPlayer2.quester")) {
-            qWarning() << "Failed to register MPRIS service with standard name:" << m_connection.lastError().message();
+        // If the well-known name is taken, try with PID suffix as a unique name
+        serviceName = QString("org.mpris.MediaPlayer2.quester.%1").arg(QCoreApplication::applicationPid());
+        if (!m_connection.registerService(serviceName)) {
+            qWarning() << "Failed to register MPRIS service on D-Bus:" << m_connection.lastError().message();
         } else {
-            qDebug() << "Successfully registered MPRIS service org.mpris.MediaPlayer2.quester";
+            qDebug() << "Successfully registered MPRIS service" << serviceName;
         }
     } else {
         qDebug() << "Successfully registered MPRIS service" << serviceName;

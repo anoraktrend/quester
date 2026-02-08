@@ -201,8 +201,11 @@ void PulseAudioInput::sink_input_info_callback(
     }
 
     if (i) {
+        const char *app_name = pa_proplist_gets(i->proplist, "application.name");
         const char *media_name = pa_proplist_gets(i->proplist, "media.name");
-        if (media_name && strcmp(media_name, "mpd") == 0) {
+
+        if ((app_name && (strcmp(app_name, "Music Player Daemon") == 0 || strcmp(app_name, "mpd") == 0)) ||
+            (media_name && (strcmp(media_name, "Music Player Daemon") == 0 || strcmp(media_name, "mpd") == 0))) {
             if (!p->m_stream) { // Check if we already created a stream
                 pa_operation *o
                     = pa_context_get_sink_info_by_index(c, i->sink, sink_info_callback, p);
@@ -357,6 +360,7 @@ void PipeWireInput::start()
         pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", // NOLINT(cppcoreguidelines-pro-type-vararg)
                           PW_KEY_MEDIA_CATEGORY, "Capture",
                           PW_KEY_MEDIA_ROLE, "Music",
+                          "stream.capture.sink", "true",
                           NULL),
         &stream_events,
         this
@@ -493,7 +497,7 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
     m_topDown = settings.value(QStringLiteral("visualizerTopDown"), false).toBool();
-    m_audioSource = settings.value(QStringLiteral("audioSource"), QStringLiteral("pulseaudio")).toString();
+    m_audioSource = settings.value(QStringLiteral("audioSource"), QStringLiteral("pipewire")).toString();
     QString saved = settings.value(QStringLiteral("visualizerPreset"), QStringLiteral("System")).toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;

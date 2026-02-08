@@ -224,6 +224,94 @@ void QueueModel::setCurrentSongId(int id)
     emit dataChanged(index(0), index(static_cast<int>(m_queue.count()) - 1), {static_cast<int>(QueueRoles::IsCurrentRole)});
 }
 
+// --- PlaylistModel Implementation ---
+auto PlaylistModel::rowCount(const QModelIndex &parent) const -> int
+{
+    if (parent.isValid())
+        return 0;
+    return static_cast<int>(m_playlists.count());
+}
+
+auto PlaylistModel::data(const QModelIndex &index, int role) const -> QVariant
+{
+    if (!index.isValid() || index.row() >= m_playlists.count())
+        return {};
+    const PlaylistItem &item = m_playlists[index.row()];
+    if (role == static_cast<int>(PlaylistRoles::TitleRole))
+        return item.title;
+    if (role == static_cast<int>(PlaylistRoles::CreatorRole))
+        return item.creator;
+    if (role == static_cast<int>(PlaylistRoles::IdentifierRole))
+        return item.identifier;
+    if (role == static_cast<int>(PlaylistRoles::DateRole))
+        return item.date;
+    if (role == static_cast<int>(PlaylistRoles::TrackCountRole))
+        return item.trackCount;
+    return {};
+}
+
+auto PlaylistModel::roleNames() const -> QHash<int, QByteArray>
+{
+    QHash<int, QByteArray> roles;
+    roles[static_cast<int>(PlaylistRoles::TitleRole)] = "title";
+    roles[static_cast<int>(PlaylistRoles::CreatorRole)] = "creator";
+    roles[static_cast<int>(PlaylistRoles::IdentifierRole)] = "identifier";
+    roles[static_cast<int>(PlaylistRoles::DateRole)] = "date";
+    roles[static_cast<int>(PlaylistRoles::TrackCountRole)] = "trackCount";
+    return roles;
+}
+
+void PlaylistModel::setPlaylists(const QList<PlaylistItem> &playlists)
+{
+    beginResetModel();
+    m_playlists = playlists;
+    endResetModel();
+}
+
+// --- PlaylistTrackModel Implementation ---
+auto PlaylistTrackModel::rowCount(const QModelIndex &parent) const -> int
+{
+    if (parent.isValid())
+        return 0;
+    return static_cast<int>(m_tracks.count());
+}
+
+auto PlaylistTrackModel::data(const QModelIndex &index, int role) const -> QVariant
+{
+    if (!index.isValid() || index.row() >= m_tracks.count())
+        return {};
+    const PlaylistTrackItem &item = m_tracks[index.row()];
+    if (role == static_cast<int>(PlaylistTrackRoles::TitleRole))
+        return item.title;
+    if (role == static_cast<int>(PlaylistTrackRoles::CreatorRole))
+        return item.creator;
+    if (role == static_cast<int>(PlaylistTrackRoles::AlbumRole))
+        return item.album;
+    if (role == static_cast<int>(PlaylistTrackRoles::DurationRole))
+        return item.duration;
+    if (role == static_cast<int>(PlaylistTrackRoles::IdentifierRole))
+        return item.identifier;
+    return {};
+}
+
+auto PlaylistTrackModel::roleNames() const -> QHash<int, QByteArray>
+{
+    QHash<int, QByteArray> roles;
+    roles[static_cast<int>(PlaylistTrackRoles::TitleRole)] = "title";
+    roles[static_cast<int>(PlaylistTrackRoles::CreatorRole)] = "creator";
+    roles[static_cast<int>(PlaylistTrackRoles::AlbumRole)] = "album";
+    roles[static_cast<int>(PlaylistTrackRoles::DurationRole)] = "duration";
+    roles[static_cast<int>(PlaylistTrackRoles::IdentifierRole)] = "identifier";
+    return roles;
+}
+
+void PlaylistTrackModel::setTracks(const QList<PlaylistTrackItem> &tracks)
+{
+    beginResetModel();
+    m_tracks = tracks;
+    endResetModel();
+}
+
 MpdClient::MpdClient(QObject *parent)
     : QObject(parent)
     , m_connection(nullptr)
@@ -232,19 +320,31 @@ MpdClient::MpdClient(QObject *parent)
     , m_trackModel(new TrackModel(this))
     , m_browserModel(new BrowserModel(this))
     , m_queueModel(new QueueModel(this))
+    , m_playlistModel(new PlaylistModel(this))
+    , m_playlistTrackModel(new PlaylistTrackModel(this))
     , m_timer(new QTimer(this))
     , m_notifier(nullptr)
     , m_stats(new StatisticsManager(this))
 {
     QSettings settings("Quester", "Quester");
     m_sortMode = static_cast<SortMode>(settings.value("sortMode", static_cast<int>(SortMode::Artist)).toInt());
-    m_audioSource = settings.value("audioSource", "pulseaudio").toString();
+    m_audioSource = settings.value("audioSource", "pipewire").toString();
+
+    m_stats->setListenBrainzCredentials(settings.value("listenBrainzToken").toString(),
+                                        settings.value("listenBrainzUsername").toString());
+
+    connect(m_stats, &StatisticsManager::playLogged, this, [this]() {
+        emit weeklyStatsChanged();
+        emit monthlyStatsChanged();
+        emit yearlyStatsChanged();
+        emit allTimeStatsChanged();
+    });
 
     QObject::connect(m_timer, &QTimer::timeout, this, &MpdClient::updateStatus);
     m_timer->start(TIMER_INTERVAL);
     loadLibraryFromCache();
 
-    connect();
+    connectToMpd();
 }
 
 MpdClient::~MpdClient()
@@ -256,7 +356,7 @@ MpdClient::~MpdClient()
     }
 }
 
-void MpdClient::connect()
+void MpdClient::connectToMpd()
 {
     m_connection = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
     if (mpd_connection_get_error(m_connection) != MPD_ERROR_SUCCESS) {
@@ -438,16 +538,15 @@ void MpdClient::updateStatus()
             if (song_id != m_currentSongId) {
                 // Log previous song if played for more than 5 seconds
                 if (m_currentSongId != -1 && m_currentSongPlayTime > 5000) {
-                    m_stats->logPlay(m_lastArtist, m_lastTitle, m_lastAlbum, m_currentSongPlayTime);
-                    emit weeklyStatsChanged();
-                    emit monthlyStatsChanged();
-                    emit yearlyStatsChanged();
-                    emit allTimeStatsChanged();
+                    QString lastUri = property("lastUri").toString();
+                    m_stats->logPlay(m_lastArtist, m_lastTitle, m_lastAlbum, lastUri, m_currentSongPlayTime);
                 }
                 m_currentSongPlayTime = 0;
                 m_lastArtist = m_artist;
                 m_lastTitle = m_title;
                 m_lastAlbum = m_album;
+                setProperty("lastUri", m_currentUri);
+                m_stats->submitPlayingNow(m_artist, m_title, m_album, m_duration * 1000);
 
                 m_currentSongId = song_id;
                 if (m_queueModel) {
@@ -530,6 +629,32 @@ auto MpdClient::monthlyStats() const -> QVariantMap { return m_stats->getMonthly
 auto MpdClient::yearlyStats() const -> QVariantMap { return m_stats->getYearlyStats(); }
 auto MpdClient::allTimeStats() const -> QVariantMap { return m_stats->getAllTimeStats(); }
 auto MpdClient::audioSource() const -> QString { return m_audioSource; }
+auto MpdClient::listenBrainzToken() const -> QString {
+    QSettings settings("Quester", "Quester");
+    return settings.value("listenBrainzToken").toString();
+}
+auto MpdClient::listenBrainzUsername() const -> QString {
+    QSettings settings("Quester", "Quester");
+    return settings.value("listenBrainzUsername").toString();
+}
+
+void MpdClient::setListenBrainzToken(const QString &token) {
+    QSettings settings("Quester", "Quester");
+    if (settings.value("listenBrainzToken").toString() != token) {
+        settings.setValue("listenBrainzToken", token);
+        m_stats->setListenBrainzCredentials(token, listenBrainzUsername());
+        emit listenBrainzTokenChanged();
+    }
+}
+
+void MpdClient::setListenBrainzUsername(const QString &username) {
+    QSettings settings("Quester", "Quester");
+    if (settings.value("listenBrainzUsername").toString() != username) {
+        settings.setValue("listenBrainzUsername", username);
+        m_stats->setListenBrainzCredentials(listenBrainzToken(), username);
+        emit listenBrainzUsernameChanged();
+    }
+}
 
 void MpdClient::setArtist(const QString &artist) {
     if (m_artist != artist) { m_artist = artist; emit artistChanged(); }
@@ -1366,6 +1491,161 @@ void MpdClient::loadLibraryFromCache()
 
 auto MpdClient::albumModel() const -> AlbumModel * { return m_albumModel; }
 auto MpdClient::trackModel() const -> TrackModel * { return m_trackModel; }
+auto MpdClient::playlistModel() const -> PlaylistModel * { return m_playlistModel; }
+auto MpdClient::playlistTrackModel() const -> PlaylistTrackModel * { return m_playlistTrackModel; }
+
+void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
+{
+    if (playlistIdentifier.isEmpty())
+        return;
+
+    // Extract playlist ID from URL if needed
+    QString playlistId = playlistIdentifier;
+    if (playlistIdentifier.contains("/")) {
+        // Extract UUID from URL like https://listenbrainz.org/playlist/uuid
+        playlistId = playlistIdentifier.section('/', -1);
+    }
+
+    // Fetch the JSPF playlist from ListenBrainz API
+    QUrl url(QString("https://api.listenbrainz.org/1/playlist/%1").arg(playlistId));
+    QNetworkRequest request(url);
+    if (!m_lbToken.isEmpty()) {
+        request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    }
+
+    QNetworkReply *reply = m_networkManager->get(request);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, playlistId]() {
+        reply->deleteLater();
+        
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "Failed to fetch JSPF playlist:" << reply->errorString();
+            return;
+        }
+
+        QByteArray data = reply->readAll();
+        qDebug().noquote() << "JSPF Playlist response:" << QString::fromLatin1(data);
+        
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(data, &error);
+        if (error.error != QJsonParseError::NoError) {
+            qWarning() << "Failed to parse JSPF playlist:" << error.errorString();
+            return;
+        }
+
+        QJsonObject root = doc.object();
+        QJsonObject playlist = root["playlist"].toObject();
+        
+        // Extract playlist info
+        QString title = playlist["title"].toString();
+        QString creator = playlist["creator"].toString();
+        QString identifier = playlist["identifier"].toString();
+        QString date = playlist["date"].toString();
+        
+        // Store full playlist data
+        QVariantMap playlistData;
+        playlistData["title"] = title;
+        playlistData["creator"] = creator;
+        playlistData["identifier"] = identifier;
+        playlistData["date"] = date;
+        playlistData["annotation"] = playlist["annotation"].toString();
+        playlistData["original_data"] = QString::fromLatin1(data);
+        
+        // Parse tracks
+        QJsonArray trackArray = playlist["track"].toArray();
+        QList<PlaylistTrackItem> tracks;
+        
+        for (const QJsonValue &trackValue : trackArray) {
+            QJsonObject trackObj = trackValue.toObject();
+            QJsonObject track = trackObj["track"].toObject();
+            
+            // Get track metadata from extension
+            QJsonObject extension = track["extension"].toObject();
+            QJsonObject lbData = extension["https://musicbrainz.org/doc/jspf#track"].toObject();
+            
+            QString trackTitle = track["title"].toString();
+            QString trackCreator;
+            QString trackAlbum;
+            QString trackDuration;
+            QString trackIdentifier = track["identifier"].toString();
+            
+            // Extract track info
+            QJsonArray artistArray = track["artist"].toArray();
+            if (!artistArray.isEmpty()) {
+                trackCreator = artistArray.first().toObject()["name"].toString();
+            }
+            
+            QJsonArray releaseArray = track["release"].toArray();
+            if (!releaseArray.isEmpty()) {
+                trackAlbum = releaseArray.first().toObject()["title"].toString();
+            }
+            
+            int durationMs = track["duration"].toInt();
+            if (durationMs > 0) {
+                int minutes = durationMs / 60000;
+                int seconds = (durationMs % 60000) / 1000;
+                trackDuration = QString("%1:%2").arg(minutes).arg(seconds, 2, 10, QChar('0'));
+            }
+            
+            tracks.append({trackTitle, trackCreator, trackAlbum, trackDuration, trackIdentifier});
+        }
+        
+        // Update playlist track model
+        m_playlistTrackModel->setTracks(tracks);
+        
+        // Update playlist data
+        playlistData["trackCount"] = tracks.count();
+        m_cachedJspfPlaylists[identifier] = playlistData;
+        
+        qDebug() << "Loaded JSPF playlist:" << title << "by" << creator << "with" << tracks.count() << "tracks";
+    });
+}
+
+void MpdClient::saveJspfPlaylistToCache(const QString &identifier)
+{
+    if (!m_cachedJspfPlaylists.contains(identifier)) {
+        qWarning() << "Playlist not found in cache:" << identifier;
+        return;
+    }
+    
+    QVariantMap playlistData = m_cachedJspfPlaylists[identifier];
+    QString originalData = playlistData["original_data"].toString();
+    
+    if (originalData.isEmpty()) {
+        qWarning() << "No JSPF data to save for playlist:" << identifier;
+        return;
+    }
+    
+    // Save to cache directory
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/playlists/";
+    QDir dir(cacheDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    
+    // Extract filename from identifier
+    QString fileName = identifier.section('/', -1);
+    if (fileName.isEmpty()) {
+        fileName = "playlist_" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss") + ".jspf";
+    }
+    
+    QString cachePath = cacheDir + fileName;
+    QFile file(cachePath);
+    
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "Failed to open cache file for writing:" << file.errorString();
+        return;
+    }
+    
+    file.write(originalData.toUtf8());
+    file.close();
+    
+    qInfo() << "Saved JSPF playlist to cache:" << cachePath;
+    
+    // Also load it into MPD if it contains MPD-compatible URIs
+    // For now, just notify the user
+    QVariantMap data = m_cachedJspfPlaylists[identifier];
+    emit playlistSaved(data["title"].toString(), cachePath);
+}
 
 void MpdClient::pause()
 {
@@ -1589,4 +1869,18 @@ void MpdClient::updateTrayTooltip()
     }
     
     m_trayIcon->setToolTip(tooltip);
+}
+
+void MpdClient::loadMostPlayedPlaylist()
+{
+    if (!m_connection) return;
+    
+    QStringList uris = m_stats->getMostPlayedUris(50);
+    if (uris.isEmpty()) return;
+
+    clearQueue();
+    for (const auto &uri : uris) {
+        addTrack(uri);
+    }
+    play();
 }
