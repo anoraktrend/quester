@@ -16,6 +16,7 @@
 #include <QAction>
 #include <mpd/client.h>
 #include <QElapsedTimer>
+#include <QMutex>
 #include "statistics.h"
 
 struct AlbumItem {
@@ -68,6 +69,7 @@ struct QueueItem {
 class AlbumModel : public QAbstractListModel
 {
     Q_OBJECT
+    friend class MpdClient;
 public:
     enum class AlbumRoles : std::uint16_t {
         NameRole = Qt::UserRole + 1,
@@ -84,7 +86,14 @@ public:
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
     void setAlbums(const QList<AlbumItem> &albums);
     void updateArt(int index, const QString &url);
+    
+    // Thread-safe access for internal use
+    [[nodiscard]] auto albums() const -> QList<AlbumItem>;
+    void setAlbumsInternal(const QList<AlbumItem> &albums);
+
+private:
     QList<AlbumItem> m_albums;
+    mutable QMutex m_mutex;
 };
 
 class TrackModel : public QAbstractListModel
@@ -275,10 +284,14 @@ public:
 
     Q_PROPERTY(QString listenBrainzToken READ listenBrainzToken WRITE setListenBrainzToken NOTIFY listenBrainzTokenChanged)
     Q_PROPERTY(QString listenBrainzUsername READ listenBrainzUsername WRITE setListenBrainzUsername NOTIFY listenBrainzUsernameChanged)
+    Q_PROPERTY(bool lastfmCredentialsValid READ lastfmCredentialsValid NOTIFY lastfmCredentialsValidChanged)
     [[nodiscard]] auto listenBrainzToken() const -> QString;
     [[nodiscard]] auto listenBrainzUsername() const -> QString;
     void setListenBrainzToken(const QString &token);
     void setListenBrainzUsername(const QString &username);
+    [[nodiscard]] auto lastfmCredentialsValid() const -> bool;
+    Q_INVOKABLE void setLastfmCredentials(const QString &apiKey, const QString &secret, const QString &sessionKey);
+    Q_INVOKABLE void authenticateLastfm(const QString &username, const QString &password);
 
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
@@ -356,6 +369,7 @@ Q_SIGNALS:
     void audioSourceChanged();
     void listenBrainzTokenChanged();
     void listenBrainzUsernameChanged();
+    void lastfmCredentialsValidChanged();
     void playlistSaved(const QString &title, const QString &path);
 
 private Q_SLOTS:

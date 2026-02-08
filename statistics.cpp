@@ -693,3 +693,498 @@ void StatisticsManager::fetchUserPlaylists()
         }
     });
 }
+
+// --- Last.fm Scrobbling Implementation ---
+
+void StatisticsManager::setLastfmCredentials(const QString &apiKey, const QString &secret, const QString &sessionKey)
+{
+    setLastfmCredentialsInternal(apiKey, secret, sessionKey);
+}
+
+void StatisticsManager::setLastfmCredentialsInternal(const QString &apiKey, const QString &secret, const QString &sessionKey)
+{
+    m_lastfmApiKey = apiKey;
+    m_lastfmSecret = secret;
+    m_lastfmSessionKey = sessionKey;
+    
+    QSettings settings("Quester", "Quester");
+    settings.setValue("lastfmApiKey", apiKey);
+    settings.setValue("lastfmSecret", secret);
+    settings.setValue("lastfmSessionKey", sessionKey);
+    
+    if (!sessionKey.isEmpty()) {
+        m_lastfmCredentialsValid = true;
+        emit lastfmCredentialsValidChanged(true);
+    }
+}
+
+QString StatisticsManager::generateLastfmSignature(const QMap<QString, QString> &params)
+{
+    QString signature;
+    QList<QString> keys = params.keys();
+    std::sort(keys.begin(), keys.end());
+    for (const QString &key : keys) {
+        signature += key + params.value(key);
+    }
+    return QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+}
+
+void StatisticsManager::sendLastfmRequest(const QString &method, const QMap<QString, QString> &params)
+{
+    if (m_lastfmSessionKey.isEmpty() || m_lastfmApiKey.isEmpty()) {
+        qWarning() << "[Last.fm] Cannot send request: missing credentials";
+        return;
+    }
+
+    QUrl url("https://ws.audioscrobbler.com/2.0/");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    
+    QMap<QString, QString> postParams = params;
+    postParams["method"] = method;
+    postParams["api_key"] = m_lastfmApiKey;
+    postParams["sk"] = m_lastfmSessionKey;
+    
+    QMap<QString, QString> sigParams;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (it.key() != "api_sig") {
+            sigParams[it.key()] = it.value();
+        }
+    }
+    
+    QString signature;
+    QList<QString> keys = sigParams.keys();
+    std::sort(keys.begin(), keys.end());
+    for (const QString &key : keys) {
+        signature += key + sigParams.value(key);
+    }
+    signature += m_lastfmSecret;
+    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+    
+    QString postData;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (!postData.isEmpty()) postData += "&";
+        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
+    }
+    
+    qDebug().noquote() << "[Last.fm] Sending request:" << method;
+    
+    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [this, reply, method]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[Last.fm] Response:" << QString::fromLatin1(response);
+        } else {
+            qWarning().noquote() << "[Last.fm] Network error:" << reply->errorString();
+        }
+    });
+}
+
+void StatisticsManager::scrobbleToLastfmInternal(const QString &artist, const QString &title, const QString &album, qint64 timestamp)
+{
+    if (m_lastfmSessionKey.isEmpty()) return;
+    
+    QMap<QString, QString> params;
+    params["artist"] = artist;
+    params["track"] = title;
+    params["timestamp"] = QString::number(timestamp);
+    if (!album.isEmpty() && album != "Unknown Album") {
+        params["album"] = album;
+    }
+    
+    sendLastfmRequest("track.scrobble", params);
+}
+
+void StatisticsManager::submitLastfmNowPlayingInternal(const QString &artist, const QString &title, const QString &album)
+{
+    if (m_lastfmSessionKey.isEmpty()) return;
+    
+    QMap<QString, QString> params;
+    params["artist"] = artist;
+    params["track"] = title;
+    if (!album.isEmpty() && album != "Unknown Album") {
+        params["album"] = album;
+    }
+    
+    sendLastfmRequest("track.updateNowPlaying", params);
+}
+
+void StatisticsManager::validateLastfmCredentials()
+{
+    if (m_lastfmSessionKey.isEmpty() || m_lastfmApiKey.isEmpty()) {
+        m_lastfmCredentialsValid = false;
+        emit lastfmCredentialsValidChanged(false);
+        return;
+    }
+    
+    QUrl url("https://ws.audioscrobbler.com/2.0/");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    
+    QMap<QString, QString> postParams;
+    postParams["method"] = "user.getInfo";
+    postParams["api_key"] = m_lastfmApiKey;
+    postParams["sk"] = m_lastfmSessionKey;
+    
+    QString signature;
+    QList<QString> keys = {"api_key", "method", "sk"};
+    for (const QString &key : keys) {
+        signature += key + postParams.value(key);
+    }
+    signature += m_lastfmSecret;
+    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+    
+    QString postData;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (!postData.isEmpty()) postData += "&";
+        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
+    }
+    
+    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject userObj = doc.object()["user"].toObject();
+                m_lastfmUsername = userObj["name"].toString();
+                
+                if (!m_lastfmUsername.isEmpty()) {
+                    m_lastfmCredentialsValid = true;
+                    emit lastfmUsernameChanged();
+                    emit lastfmCredentialsValidChanged(true);
+                    qDebug() << "[Last.fm] Valid credentials for user:" << m_lastfmUsername;
+                    return;
+                }
+            }
+        }
+        
+        m_lastfmCredentialsValid = false;
+        emit lastfmCredentialsValidChanged(false);
+        qWarning() << "[Last.fm] Invalid credentials";
+    });
+}
+
+QString StatisticsManager::getLastfmAuthUrl(const QString &token)
+{
+    return QString("http://www.last.fm/api/auth/?api_key=%1&token=%2")
+        .arg(m_lastfmApiKey).arg(token);
+}
+
+void StatisticsManager::getLastfmToken()
+{
+    if (m_lastfmApiKey.isEmpty()) return;
+
+    QUrl url("https://ws.audioscrobbler.com/2.0/");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    
+    QMap<QString, QString> postParams;
+    postParams["method"] = "auth.gettoken";
+    postParams["api_key"] = m_lastfmApiKey;
+    
+    QString signature;
+    QList<QString> keys = {"api_key", "method"};
+    for (const QString &key : keys) {
+        signature += key + postParams.value(key);
+    }
+    signature += m_lastfmSecret;
+    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+    
+    QString postData;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (!postData.isEmpty()) postData += "&";
+        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
+    }
+    
+    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject tokenObj = doc.object()["token"].toObject();
+                QString token = tokenObj["token"].toString();
+                
+                if (!token.isEmpty()) {
+                    qDebug() << "[Last.fm] Got token:" << token;
+                    emit lastfmAuthTokenReceived(token, getLastfmAuthUrl(token));
+                }
+            }
+        }
+    });
+}
+
+void StatisticsManager::getLastfmSessionKey(const QString &token)
+{
+    if (m_lastfmApiKey.isEmpty() || m_lastfmSecret.isEmpty() || token.isEmpty()) return;
+
+    QUrl url("https://ws.audioscrobbler.com/2.0/");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    
+    QMap<QString, QString> postParams;
+    postParams["method"] = "auth.getsession";
+    postParams["api_key"] = m_lastfmApiKey;
+    postParams["token"] = token;
+    
+    QString signature;
+    QList<QString> keys = {"api_key", "method", "token"};
+    for (const QString &key : keys) {
+        signature += key + postParams.value(key);
+    }
+    signature += m_lastfmSecret;
+    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+    
+    QString postData;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (!postData.isEmpty()) postData += "&";
+        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
+    }
+    
+    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        QByteArray response = reply->readAll();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+            if (error.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject session = doc.object()["session"].toObject();
+                QString sessionKey = session["key"].toString();
+                QString username = session["name"].toString();
+                
+                if (!sessionKey.isEmpty()) {
+                    setLastfmCredentialsInternal(m_lastfmApiKey, m_lastfmSecret, sessionKey);
+                    m_lastfmUsername = username;
+                    emit lastfmUsernameChanged();
+                    qDebug() << "[Last.fm] Authenticated as:" << username;
+                }
+            }
+        }
+    });
+}
+
+// --- External Activity Data for Wrapped ---
+
+void StatisticsManager::fetchExternalActivityData(const QString &period)
+{
+    qDebug().noquote() << "[Activity] Fetching external data for period:" << period;
+    
+    // Clear previous data
+    m_externalActivityData = QVariantMap();
+    
+    // Fetch from both services in parallel
+    fetchListenBrainzStats(period);
+    fetchLastfmStats(period);
+}
+
+void StatisticsManager::fetchListenBrainzStats(const QString &period)
+{
+    if (m_lbToken.isEmpty() || m_lbUsername.isEmpty()) {
+        qDebug().noquote() << "[ListenBrainz] No credentials for stats";
+        return;
+    }
+
+    // Calculate time range based on period
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    qint64 startTime = 0;
+    
+    if (period == "weekly") {
+        startTime = now - (7 * 24 * 60 * 60);
+    } else if (period == "monthly") {
+        startTime = now - (30 * 24 * 60 * 60);
+    } else if (period == "yearly") {
+        startTime = now - (365 * 24 * 60 * 60);
+    }
+    
+    // Use ListenBrainz stats API
+    QUrl url(QString("https://api.listenbrainz.org/1/stats/user/%1/ listening-range?start=%2&end=%3")
+        .arg(m_lbUsername)
+        .arg(startTime)
+        .arg(now));
+    
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+    
+    QNetworkReply *reply = m_nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning().noquote() << "[ListenBrainz] Stats fetch error:" << reply->errorString();
+            return;
+        }
+        
+        QByteArray response = reply->readAll();
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+        
+        if (error.error != QJsonParseError::NoError) {
+            qWarning().noquote() << "[ListenBrainz] Stats parse error:" << error.errorString();
+            return;
+        }
+        
+        QJsonObject root = doc.object();
+        QVariantMap lbStats;
+        
+        // Extract listening range info
+        if (root.contains("listening_range")) {
+            QJsonObject range = root["listening_range"].toObject();
+            lbStats["start"] = range["start_ts"].toVariant().toLongLong();
+            lbStats["end"] = range["end_ts"].toVariant().toLongLong();
+        }
+        
+        // Get top artists
+        QUrl artistsUrl(QString("https://api.listenbrainz.org/1/stats/user/%1/top-artists?count=5").arg(m_lbUsername));
+        QNetworkRequest artistsRequest(artistsUrl);
+        artistsRequest.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
+        
+        QNetworkReply *artistsReply = m_nam->get(artistsRequest);
+        connect(artistsReply, &QNetworkReply::finished, this, [this, artistsReply, lbStats]() {
+            artistsReply->deleteLater();
+            
+            if (artistsReply->error() == QNetworkReply::NoError) {
+                QByteArray response = artistsReply->readAll();
+                QJsonParseError error;
+                QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+                
+                if (error.error == QJsonParseError::NoError) {
+                    QVariantMap stats = lbStats;
+                    QJsonArray topArtists = doc.object()["top_artists"].toArray();
+                    QVariantList artists;
+                    
+                    for (const QJsonValue &value : topArtists) {
+                        QJsonObject artist = value.toObject();
+                        QVariantMap artistMap;
+                        artistMap["name"] = artist["artist_name"].toString();
+                        artistMap["listen_count"] = artist["listen_count"].toVariant().toLongLong();
+                        artists.append(artistMap);
+                    }
+                    
+                    stats["lb_top_artists"] = artists;
+                    m_externalActivityData["listenbrainz"] = stats;
+                    emit externalActivityDataChanged();
+                    
+                    qDebug().noquote() << "[ListenBrainz] Got" << artists.count() << "top artists";
+                }
+            }
+        });
+    });
+}
+
+void StatisticsManager::fetchLastfmStats(const QString &period)
+{
+    if (m_lastfmSessionKey.isEmpty() || m_lastfmApiKey.isEmpty()) {
+        qDebug().noquote() << "[Last.fm] No credentials for stats";
+        return;
+    }
+    
+    if (m_lastfmUsername.isEmpty()) {
+        qDebug().noquote() << "[Last.fm] No username for stats";
+        return;
+    }
+    
+    // Calculate time range
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    qint64 from = 0;
+    
+    if (period == "weekly") {
+        from = now - (7 * 24 * 60 * 60);
+    } else if (period == "monthly") {
+        from = now - (30 * 24 * 60 * 60);
+    } else if (period == "yearly") {
+        from = now - (365 * 24 * 60 * 60);
+    }
+    
+    // Get recent tracks (includes play counts)
+    QUrl url("https://ws.audioscrobbler.com/2.0/");
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    
+    QMap<QString, QString> postParams;
+    postParams["method"] = "user.getRecentTracks";
+    postParams["user"] = m_lastfmUsername;
+    postParams["api_key"] = m_lastfmApiKey;
+    postParams["limit"] = "100";
+    postParams["from"] = QString::number(from);
+    postParams["to"] = QString::number(now);
+    
+    // Generate signature
+    QString signature;
+    QList<QString> keys = {"api_key", "from", "method", "to", "user"};
+    for (const QString &key : keys) {
+        signature += key + postParams.value(key);
+    }
+    signature += m_lastfmSecret;
+    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
+    
+    QString postData;
+    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
+        if (!postData.isEmpty()) postData += "&";
+        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
+    }
+    
+    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning().noquote() << "[Last.fm] Recent tracks error:" << reply->errorString();
+            return;
+        }
+        
+        QByteArray response = reply->readAll();
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+        
+        if (error.error != QJsonParseError::NoError) {
+            qWarning().noquote() << "[Last.fm] Recent tracks parse error:" << error.errorString();
+            return;
+        }
+        
+        QJsonObject root = doc.object();
+        QVariantMap stats;
+        stats["total_tracks"] = root["recenttracks"].toObject()["@attr"].toObject()["total"].toVariant().toLongLong();
+        
+        // Process top tracks from recent tracks
+        QJsonArray tracks = root["recenttracks"].toObject()["track"].toArray();
+        QMap<QString, int> trackCounts;
+        QMap<QString, QString> trackArtists;
+        
+        for (const QJsonValue &value : tracks) {
+            QJsonObject track = value.toObject();
+            QString name = track["name"].toString();
+            QString artist = track["artist"].toObject()["#text"].toString();
+            trackCounts[name]++;
+            if (!trackArtists.contains(name)) {
+                trackArtists[name] = artist;
+            }
+        }
+        
+        // Sort and get top 5
+        QVariantList topTracks;
+        auto it = trackCounts.begin();
+        for (int i = 0; i < qMin(5, trackCounts.size()); ++i, ++it) {
+            QVariantMap track;
+            track["title"] = it.key();
+            track["artist"] = trackArtists[it.key()];
+            track["play_count"] = it.value();
+            topTracks.append(track);
+        }
+        
+        stats["top_tracks"] = topTracks;
+        m_externalActivityData["lastfm"] = stats;
+        emit externalActivityDataChanged();
+        
+        qDebug().noquote() << "[Last.fm] Got" << topTracks.count() << "top tracks, total plays:" << stats["total_tracks"].toLongLong();
+    });
+}

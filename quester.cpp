@@ -83,11 +83,25 @@ void AlbumModel::setAlbums(const QList<AlbumItem> &albums)
 
 void AlbumModel::updateArt(int index, const QString &url)
 {
+    QMutexLocker locker(&m_mutex);
     if (index < 0 || index >= m_albums.count())
         return;
     m_albums[index].artUrl = url;
     m_albums[index].artLoading = false;
+    locker.unlock();
     emit dataChanged(this->index(index), this->index(index), {static_cast<int>(AlbumRoles::ArtRole)});
+}
+
+auto AlbumModel::albums() const -> QList<AlbumItem>
+{
+    QMutexLocker locker(&m_mutex);
+    return m_albums;
+}
+
+void AlbumModel::setAlbumsInternal(const QList<AlbumItem> &albums)
+{
+    QMutexLocker locker(&m_mutex);
+    m_albums = albums;
 }
 
 // --- TrackModel Implementation ---
@@ -333,6 +347,23 @@ MpdClient::MpdClient(QObject *parent)
     m_stats->setListenBrainzCredentials(settings.value("listenBrainzToken").toString(),
                                         settings.value("listenBrainzUsername").toString());
 
+    // Load Last.fm credentials (from settings or use defaults)
+    QString lastfmApiKey = settings.value("lastfmApiKey").toString();
+    QString lastfmSecret = settings.value("lastfmSecret").toString();
+    QString lastfmSessionKey = settings.value("lastfmSessionKey").toString();
+    
+    // Save default credentials if not already set
+    if (lastfmApiKey.isEmpty()) {
+        lastfmApiKey = "5b184bbfb5f3d1ac3a4955a6676d7dc3";
+        settings.setValue("lastfmApiKey", lastfmApiKey);
+    }
+    if (lastfmSecret.isEmpty()) {
+        lastfmSecret = "cc7e582cd3e1f5e79c0e9098fbc019ff";
+        settings.setValue("lastfmSecret", lastfmSecret);
+    }
+    
+    m_stats->setLastfmCredentials(lastfmApiKey, lastfmSecret, lastfmSessionKey);
+
     connect(m_stats, &StatisticsManager::playLogged, this, [this]() {
         emit weeklyStatsChanged();
         emit monthlyStatsChanged();
@@ -521,7 +552,7 @@ void MpdClient::updateStatus()
             m_currentMbid = mbid_tag ? QString::fromUtf8(mbid_tag) : "";
 
             if (m_albumModel) {
-                const auto &albums = m_albumModel->m_albums;
+                const auto albums = m_albumModel->albums();
                 int newIndex = -1;
                 for (int i = 0; i < albums.count(); ++i) {
                     if (albums[i].name == m_album) {
@@ -654,6 +685,22 @@ void MpdClient::setListenBrainzUsername(const QString &username) {
         m_stats->setListenBrainzCredentials(listenBrainzToken(), username);
         emit listenBrainzUsernameChanged();
     }
+}
+
+auto MpdClient::lastfmCredentialsValid() const -> bool {
+    return m_stats->lastfmCredentialsValid();
+}
+
+void MpdClient::setLastfmCredentials(const QString &apiKey, const QString &secret, const QString &sessionKey) {
+    m_stats->setLastfmCredentials(apiKey, secret, sessionKey);
+    emit lastfmCredentialsValidChanged();
+}
+
+void MpdClient::authenticateLastfm(const QString &username, const QString &password) {
+    // Last.fm authentication requires getting a session key via their auth web service
+    // For simplicity, users should get an API key and session key from last.fm/api
+    // This method can be extended for full auth flow if needed
+    qWarning() << "[Last.fm] Manual authentication required. Please get API credentials from last.fm/api";
 }
 
 void MpdClient::setArtist(const QString &artist) {
@@ -1252,7 +1299,10 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         }
     };
 
-    auto tryAudioDb = [this, params, onArtFound]() -> void {
+    // Forward declaration for tryMusicHoarders
+    std::function<void()> tryMusicHoarders;
+
+    auto tryAudioDb = [this, params, onArtFound, &tryMusicHoarders]() -> void {
         if (params.artist == "Unknown Artist" || params.album == "Unknown Album") return;
         
         QUrl url("https://www.theaudiodb.com/api/v1/json/123/searchalbum.php");
@@ -1265,26 +1315,57 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         request.setRawHeader("User-Agent", "Quester/1.0");
         
         QNetworkReply *reply = m_networkManager->get(request);
-        AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound]() -> void {
+        AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound, &tryMusicHoarders]() -> void {
             reply->deleteLater();
-            if (reply->error() != QNetworkReply::NoError) return;
+            if (reply->error() != QNetworkReply::NoError) {
+                tryMusicHoarders();
+                return;
+            }
             
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             QJsonArray albumArray = doc.object()["album"].toArray();
-            if (albumArray.isEmpty()) return;
+            if (albumArray.isEmpty()) {
+                tryMusicHoarders();
+                return;
+            }
             
             QString imageUrl = albumArray.first().toObject()["strAlbumThumb"].toString();
-            if (imageUrl.isEmpty()) return;
+            if (imageUrl.isEmpty()) {
+                tryMusicHoarders();
+                return;
+            }
             
             QNetworkRequest imgReq((QUrl(imageUrl)));
             imgReq.setRawHeader("User-Agent", "Quester/1.0");
             QNetworkReply *imgReply = m_networkManager->get(imgReq);
-            AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound]() -> void {
+            AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound, &tryMusicHoarders]() -> void {
                 imgReply->deleteLater();
                 if (imgReply->error() == QNetworkReply::NoError) {
                     onArtFound(imgReply->readAll());
+                } else {
+                    tryMusicHoarders();
                 }
             });
+        });
+    };
+
+    // Define tryMusicHoarders after tryAudioDb so it can be captured by reference
+    tryMusicHoarders = [this, params, onArtFound]() -> void {
+        if (params.artist == "Unknown Artist" || params.album == "Unknown Album") return;
+        
+        // Try covers.musichoarders.xyz
+        QUrl url(QString("https://covers.musichoarders.xyz/cover/%1/%2")
+            .arg(params.artist).arg(params.album));
+        
+        QNetworkRequest request(url);
+        request.setRawHeader("User-Agent", "Quester/1.0");
+        
+        QNetworkReply *reply = m_networkManager->get(request);
+        AlbumModel::connect(reply, &QNetworkReply::finished, this, [reply, onArtFound]() -> void {
+            reply->deleteLater();
+            if (reply->error() == QNetworkReply::NoError) {
+                onArtFound(reply->readAll());
+            }
         });
     };
 

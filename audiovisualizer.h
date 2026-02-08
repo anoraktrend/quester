@@ -69,7 +69,7 @@ private:
     pa_context *m_context = nullptr;
     pa_stream *m_stream = nullptr;
     
-    volatile bool m_quit = false;
+    std::atomic<bool> m_quit{false};
 };
 
 class PipeWireInput : public AudioInput

@@ -15,6 +15,9 @@ Item {
         return mpdClient.allTimeStats
     }
 
+    property string wrappedImagePath: ""
+    property bool generatingWrapped: false
+
     SystemPalette { id: palette }
 
     Rectangle {
@@ -149,6 +152,149 @@ Item {
                         font.pixelSize: 36
                         font.bold: true
                         Layout.alignment: Qt.AlignHCenter
+                    }
+                }
+            }
+
+            // Generate Wrapped Image Button
+            Button {
+                text: generatingWrapped ? qsTr("Generating...") : qsTr("Generate Wrapped Image")
+                enabled: !generatingWrapped
+                Layout.fillWidth: true
+                height: 50
+                onClicked: {
+                    generatingWrapped = true
+                    // Fetch external data first
+                    var periodStr = ["weekly", "monthly", "yearly", "all"][timePeriod]
+                    statistics.fetchExternalActivityData(periodStr)
+                    
+                    // Generate image after a short delay to allow external data to load
+                    Qt.callLater(function() {
+                        var periodStr = ["weekly", "monthly", "yearly", "all"][timePeriod]
+                        wrappedImagePath = statistics.generateWrappedImage(periodStr)
+                        generatingWrapped = false
+                    })
+                }
+            }
+
+            // Show generated image path if available
+            Label {
+                text: wrappedImagePath ? qsTr("Saved to: ") + wrappedImagePath : ""
+                color: palette.link
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                visible: wrappedImagePath !== ""
+            }
+
+            // External Data Section
+            Label {
+                text: qsTr("External Data")
+                font.pixelSize: 22
+                font.bold: true
+                color: palette.text
+                visible: statistics.externalActivityData && Object.keys(statistics.externalActivityData).length > 0
+            }
+
+            // ListenBrainz Top Artists
+            Label {
+                text: qsTr("From ListenBrainz")
+                font.pixelSize: 16
+                font.bold: true
+                color: palette.highlight
+                visible: statistics.externalActivityData && 
+                         statistics.externalActivityData.listenbrainz &&
+                         statistics.externalActivityData.listenbrainz.lb_top_artists
+            }
+
+            Repeater {
+                model: statistics.externalActivityData && 
+                       statistics.externalActivityData.listenbrainz ? 
+                       statistics.externalActivityData.listenbrainz.lb_top_artists : []
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    height: 50
+                    color: palette.base
+                    radius: 5
+                    border.color: palette.mid
+                    visible: modelData
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        Label {
+                            text: (index + 1) + "."
+                            font.bold: true
+                            color: palette.highlight
+                        }
+                        Label {
+                            text: modelData.name || ""
+                            Layout.fillWidth: true
+                            color: palette.text
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            text: (modelData.listen_count || 0) + " listens"
+                            color: palette.windowText
+                        }
+                    }
+                }
+            }
+
+            // Last.fm Top Tracks
+            Label {
+                text: qsTr("From Last.fm")
+                font.pixelSize: 16
+                font.bold: true
+                color: palette.highlight
+                Layout.topMargin: 10
+                visible: statistics.externalActivityData && 
+                         statistics.externalActivityData.lastfm &&
+                         statistics.externalActivityData.lastfm.top_tracks
+            }
+
+            Repeater {
+                model: statistics.externalActivityData && 
+                       statistics.externalActivityData.lastfm ? 
+                       statistics.externalActivityData.lastfm.top_tracks : []
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    height: 60
+                    color: palette.base
+                    radius: 5
+                    border.color: palette.mid
+                    visible: modelData
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        Label {
+                            text: (index + 1) + "."
+                            font.bold: true
+                            color: palette.highlight
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Label {
+                                text: modelData.title || ""
+                                color: palette.text
+                                font.pixelSize: 14
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                text: modelData.artist || ""
+                                color: palette.windowText
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+                        Label {
+                            text: (modelData.play_count || 0) + " plays"
+                            color: palette.windowText
+                        }
                     }
                 }
             }
