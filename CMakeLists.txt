@@ -65,29 +65,30 @@ pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
 pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 pkg_check_modules(PULSEAUDIO REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(LIBPULSE_SIMPLE REQUIRED IMPORTED_TARGET libpulse-simple)
-qt_add_resources(quester_resources resources.qrc)
+qt_add_resources(quester_resources resources/resources.qrc)
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 pkg_check_modules(SPA REQUIRED libspa-0.2)
 pkg_check_modules(HWY REQUIRED libhwy)
 pkg_check_modules(PROJECTM REQUIRED libprojectM)
 
 qt_add_executable(quester
-    main.cpp
-    quester.cpp
-    quester.h
-    audiovisualizer.cpp
-    audiovisualizer.h
-    projectmvisualizer.cpp
-    projectmvisualizer.h
-    dbus.cpp
-    dbus.h
-    statistics.cpp
-    statistics.h
+    src/main.cpp
+    src/quester.cpp
+    src/quester.h
+    src/audiovisualizer.cpp
+    src/audiovisualizer.h
+    src/projectmvisualizer.cpp
+    src/projectmvisualizer.h
+    src/dbus.cpp
+    src/dbus.h
+    src/statistics.cpp
+    src/statistics.h
     ${quester_resources}
 )
 
 
 target_include_directories(quester PRIVATE
+    src/
     ${PIPEWIRE_INCLUDE_DIRS}
     ${SPA_INCLUDE_DIRS}
     ${PROJECTM_INCLUDE_DIRS}
@@ -140,27 +141,27 @@ install(TARGETS quester
 )
 
 # Install the application icon.
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Quester.svg
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/Quester.svg
     DESTINATION ${KDE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
     RENAME quester.svg
 )
 
 
 # Install the .desktop file to the standard applications directory
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/quester.desktop
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/quester.desktop
     DESTINATION ${KDE_INSTALL_APPDIR}
 )
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/visualizerGradients/
     DESTINATION ${KDE_INSTALL_DATADIR}/Quester/presets
 )
 
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/visualizerGradients/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/visualizerGradients/
     DESTINATION /etc/config/Quester/presets
 )
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop")
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets-cream-of-the-crop/
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop")
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop/
         DESTINATION ${KDE_INSTALL_DATADIR}/Quester/projectM-presets
     )
 endif()
