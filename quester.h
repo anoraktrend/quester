@@ -338,6 +338,12 @@ public Q_SLOTS:
     Q_INVOKABLE void clearQueue();
     Q_INVOKABLE void removeId(int id);
     Q_INVOKABLE void openFileLocation(const QString &path);
+    [[nodiscard]] auto mpdMusicDirectory() -> QString;
+
+    // Deduplicator - Find and remove duplicate tracks
+    Q_INVOKABLE void findDuplicates();
+    Q_INVOKABLE void deleteSelectedDuplicates(const QVariantList &uris);
+    void refreshLibraryAfterDelete();
 
     // Application/Window controls
     Q_INVOKABLE void quitApplication();
@@ -371,6 +377,10 @@ Q_SIGNALS:
     void listenBrainzUsernameChanged();
     void lastfmCredentialsValidChanged();
     void playlistSaved(const QString &title, const QString &path);
+    
+    // Deduplicator signals
+    void duplicatesFound(const QVariantList &duplicates);
+    void duplicatesDeleted(int count);
 
 private Q_SLOTS:
     void updateStatus();

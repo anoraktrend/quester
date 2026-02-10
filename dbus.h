@@ -63,7 +63,7 @@ public:
     void setRate(double rate);
     double minimumRate() const { return 1.0; }
     double maximumRate() const { return 1.0; }
-    bool shuffle() const { return mpdClient()->random(); }
+    bool shuffle() const { return m_mpdClient->random(); }
     void setShuffle(bool shuffle);
     QString loopStatus() const;
     void setLoopStatus(const QString &status);
@@ -118,8 +118,6 @@ private:
 
 private:
     QVariantMap getMetadataForTrack(const QueueItem &item) const;
-    MpdClient *m_mpdClient;
-    QDBusConnection m_connection;
     mutable QHash<QString, QString> m_trackIdToUri;
     mutable QHash<QString, QString> m_uriToTrackId;
 };

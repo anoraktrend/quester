@@ -1452,4 +1452,286 @@ ApplicationWindow {
             // Could show a toast notification here
         }
     }
+
+    // --- Deduplicator Dialog ---
+    Dialog {
+        id: deduplicatorDialog
+        title: qsTr("Find Duplicates")
+        anchors.centerIn: parent
+        width: Math.min(700, parent.width - 40)
+        height: Math.min(600, parent.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+
+        property var duplicatesList: []
+        property var urisToDelete: []
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Label {
+                text: qsTr("Find and remove duplicate tracks from your library.")
+                color: palette.windowText
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Button {
+                text: qsTr("Scan for Duplicates")
+                onClicked: {
+                    mpdClient.findDuplicates()
+                    deduplicatorStatus.text = qsTr("Scanning...")
+                }
+                Layout.fillWidth: true
+            }
+
+            Label {
+                id: deduplicatorStatus
+                text: qsTr("Ready to scan")
+                color: palette.text
+                font.bold: true
+                Layout.fillWidth: true
+            }
+
+            // Duplicates list
+            ListView {
+                id: duplicatesListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: deduplicatorDialog.duplicatesList.length
+
+                delegate: Rectangle {
+                    width: ListView.view.width
+                    height: 80
+                    color: palette.base
+                    radius: 5
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 5
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: modelData.title
+                                font.bold: true
+                                color: palette.text
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: qsTr("%n duplicate(s)", "", modelData.count)
+                                color: palette.highlight
+                                font.bold: true
+                            }
+                        }
+
+                        Text {
+                            text: modelData.artist + " - " + modelData.album + " (" + modelData.duration + ")"
+                            color: palette.windowText
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            CheckBox {
+                                id: selectCheckbox
+                                text: qsTr("Keep first")
+                                checked: true
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Button {
+                                text: qsTr("View Paths")
+                                onClicked: {
+                                    duplicatePathsDialog.duplicateData = modelData
+                                    duplicatePathsDialog.open()
+                                }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            // Toggle selection logic handled in deleteSelectedDuplicates
+                        }
+                    }
+                }
+                ScrollBar.vertical: ScrollBar { }
+            }
+
+            // Summary and delete button
+            RowLayout {
+                Layout.fillWidth: true
+
+                Label {
+                    id: deleteSummary
+                    text: qsTr("Select duplicates above to delete")
+                    color: palette.windowText
+                    font.pixelSize: 12
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    text: qsTr("Delete Selected")
+                    enabled: deduplicatorDialog.urisToDelete.length > 0
+                    onClicked: {
+                        deleteConfirmDialog.open()
+                    }
+                }
+            }
+        }
+
+        onDuplicatesListChanged: {
+            var count = deduplicatorDialog.duplicatesList.length
+            deduplicatorStatus.text = qsTr("Found %n duplicate group(s)", "", count)
+        }
+
+        Connections {
+            target: mpdClient
+            function onDuplicatesFound(duplicates) {
+                deduplicatorDialog.duplicatesList = duplicates
+                deduplicatorDialog.urisToDelete = []
+                if (duplicates.length === 0) {
+                    deduplicatorStatus.text = qsTr("No duplicates found!")
+                } else {
+                    deduplicatorStatus.text = qsTr("Found %n duplicate group(s)", "", duplicates.length)
+                }
+            }
+
+            function onDuplicatesDeleted(count) {
+                deduplicatorStatus.text = qsTr("Deleted %n track(s)", "", count)
+                deduplicatorDialog.urisToDelete = []
+                deduplicatorDialog.duplicatesList = []
+            }
+        }
+    }
+
+    // Dialog to show paths for a duplicate group
+    Dialog {
+        id: duplicatePathsDialog
+        property var duplicateData: null
+        title: qsTr("Duplicate Files")
+        anchors.centerIn: parent
+        width: Math.min(600, parent.width - 40)
+        height: Math.min(400, parent.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Label {
+                text: duplicateData ? (duplicateData.artist + " - " + duplicateData.title) : ""
+                font.bold: true
+                color: palette.text
+                Layout.fillWidth: true
+            }
+
+            ListView {
+                id: pathsListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: duplicateData ? duplicateData.uris : []
+
+                delegate: Rectangle {
+                    width: ListView.view.width
+                    height: 40
+                    color: index % 2 === 0 ? palette.base : palette.alternateBase
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 10
+
+                        CheckBox {
+                            id: pathCheckbox
+                            checked: index > 0  // Uncheck first (keep it), check rest for deletion
+                            onCheckedChanged: {
+                                if (duplicatePathsDialog.visible && checked) {
+                                    var uris = deduplicatorDialog.urisToDelete
+                                    var uri = modelData
+                                    if (!uris.includes(uri)) {
+                                        uris.push(uri)
+                                        deduplicatorDialog.urisToDelete = uris
+                                    }
+                                } else if (!checked) {
+                                    var uris = deduplicatorDialog.urisToDelete
+                                    var index = uris.indexOf(modelData)
+                                    if (index > -1) {
+                                        uris.splice(index, 1)
+                                        deduplicatorDialog.urisToDelete = uris
+                                    }
+                                }
+                                updateDeleteSummary()
+                            }
+                        }
+
+                        Text {
+                            text: modelData
+                            color: palette.text
+                            font.pixelSize: 11
+                            elide: Text.ElideLeft
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+                ScrollBar.vertical: ScrollBar { }
+            }
+
+            Label {
+                text: qsTr("Uncheck files you want to KEEP. Check files you want to DELETE.")
+                color: palette.highlight
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+
+        function updateDeleteSummary() {
+            var count = deduplicatorDialog.urisToDelete.length
+            deleteSummary.text = qsTr("%n file(s) selected for deletion", "", count)
+        }
+    }
+
+    // Confirmation dialog for deletion
+    Dialog {
+        id: deleteConfirmDialog
+        title: qsTr("Confirm Deletion")
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        ColumnLayout {
+            spacing: 10
+
+            Label {
+                text: qsTr("Are you sure you want to delete %n track(s)?", "", deduplicatorDialog.urisToDelete.length)
+                font.bold: true
+                color: palette.text
+            }
+
+            Label {
+                text: qsTr("This will remove the files from disk and update MPD.")
+                color: palette.windowText
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        onAccepted: {
+            mpdClient.deleteSelectedDuplicates(deduplicatorDialog.urisToDelete)
+        }
+    }
 }

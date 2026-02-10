@@ -30,6 +30,7 @@
 #include <QPainter>
 #include <QImage>
 #include <QDesktopServices>
+#include <QRegularExpression>
 
 constexpr int TIMER_INTERVAL = 100;
 constexpr int MPD_PORT = 6600;
@@ -1952,16 +1953,219 @@ void MpdClient::updateTrayTooltip()
     m_trayIcon->setToolTip(tooltip);
 }
 
-void MpdClient::loadMostPlayedPlaylist()
+QString MpdClient::mpdMusicDirectory()
 {
-    if (!m_connection) return;
+    if (!m_connection) return {};
     
-    QStringList uris = m_stats->getMostPlayedUris(50);
-    if (uris.isEmpty()) return;
-
-    clearQueue();
-    for (const auto &uri : uris) {
-        addTrack(uri);
+    QString musicDir;
+    
+    // Get MPD's configured music directory from settings or try MPD command
+    QSettings settings("Quester", "Quester");
+    musicDir = settings.value("mpdMusicDirectory").toString();
+    
+    // If not configured, try to get from MPD
+    if (musicDir.isEmpty()) {
+        // Fallback to common locations
+        QByteArray envPath = qgetenv("HOME");
+        if (!envPath.isEmpty()) {
+            musicDir = QString::fromLatin1(envPath) + "/Music";
+        }
+        
+        QString musicDir2 = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+        if (!musicDir2.isEmpty() && QDir(musicDir2).exists()) {
+            musicDir = musicDir2;
+        }
     }
-    play();
+    
+    return musicDir;
+}
+
+// --- Deduplicator Implementation ---
+
+struct DuplicateGroup {
+    QString key;                    // Unique identifier for the duplicate group
+    QString artist;
+    QString title;
+    QString album;
+    unsigned duration = 0;
+    QString recordingId;            // MusicBrainz Recording ID if available
+    QList<QString> uris;           // All duplicate file URIs
+};
+
+void MpdClient::findDuplicates()
+{
+    if (!m_connection) {
+        emit duplicatesFound(QVariantList());
+        return;
+    }
+
+    // Regex pattern for common audio file extensions
+    static const QRegularExpression audioFilePattern(
+        R"(/\.(?:mp3|wav|aiff|aif|flac|aac|wma|ogg|m4a)$)",
+        QRegularExpression::CaseInsensitiveOption
+    );
+
+    leaveIdle();
+
+    QList<DuplicateGroup> groups;
+    QMap<QString, DuplicateGroup*> groupMap;  // key -> group pointer
+
+    // Fetch all songs from MPD database
+    if (mpd_send_list_meta(m_connection, "")) {
+        struct mpd_entity *entity = nullptr;
+        while ((entity = mpd_recv_entity(m_connection)) != nullptr) {
+            if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
+                const struct mpd_song *song = mpd_entity_get_song(entity);
+                
+                const char *uri = mpd_song_get_uri(song);
+                const char *artist = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
+                const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+                const char *album = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
+                const char *recordingId = mpd_song_get_tag(song, MPD_TAG_MUSICBRAINZ_TRACKID, 0);
+                unsigned duration = mpd_song_get_duration(song);
+
+                if (uri && title && artist) {
+                    QString qUri = QString::fromUtf8(uri);
+                    
+                    // Only consider actual audio files using the regex
+                    if (!audioFilePattern.match(qUri).hasMatch()) {
+                        mpd_entity_free(entity);
+                        continue;
+                    }
+
+                    QString qArtist = QString::fromUtf8(artist);
+                    QString qTitle = QString::fromUtf8(title);
+                    QString qAlbum = album ? QString::fromUtf8(album) : "";
+                    QString qRecordingId = recordingId ? QString::fromUtf8(recordingId) : "";
+
+                    // Build a unique key for deduplication
+                    // Priority 1: MusicBrainz Recording ID (most reliable)
+                    // Priority 2: Artist + Title + Album + Duration (very specific)
+                    QString key;
+                    if (!qRecordingId.isEmpty()) {
+                        key = "mbid:" + qRecordingId;
+                    } else {
+                        // Use normalized strings for matching
+                        QString normArtist = qArtist.toLower().simplified().trimmed();
+                        QString normTitle = qTitle.toLower().simplified().trimmed();
+                        QString normAlbum = qAlbum.toLower().simplified().trimmed();
+                        key = QString("%1|%2|%3|%4").arg(normArtist, normTitle, normAlbum).arg(duration);
+                    }
+
+                    if (groupMap.contains(key)) {
+                        // Add to existing group
+                        groupMap[key]->uris.append(qUri);
+                    } else {
+                        // Create new group
+                        DuplicateGroup group;
+                        group.key = key;
+                        group.artist = qArtist;
+                        group.title = qTitle;
+                        group.album = qAlbum;
+                        group.duration = duration;
+                        group.recordingId = qRecordingId;
+                        group.uris.append(qUri);
+                        groups.append(group);
+                        groupMap[key] = &groups.last();
+                    }
+                }
+            }
+            mpd_entity_free(entity);
+        }
+        mpd_response_finish(m_connection);
+    } else {
+        mpd_connection_clear_error(m_connection);
+    }
+
+    sendIdle();
+
+    // Filter to only groups with actual duplicates (more than 1 URI)
+    QVariantList duplicateList;
+    for (const auto &group : groups) {
+        if (group.uris.size() > 1) {
+            QVariantMap groupMap;
+            groupMap["artist"] = group.artist;
+            groupMap["title"] = group.title;
+            groupMap["album"] = group.album;
+            groupMap["duration"] = QString("%1:%2")
+                .arg(group.duration / SECONDS_PER_MINUTE)
+                .arg(group.duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0'));
+            groupMap["count"] = group.uris.size();
+            groupMap["uris"] = QVariant::fromValue(group.uris);
+            groupMap["recordingId"] = group.recordingId;
+            duplicateList.append(groupMap);
+        }
+    }
+
+    qDebug() << "Deduplicator: Found" << duplicateList.size() << "duplicate groups";
+    emit duplicatesFound(duplicateList);
+}
+
+void MpdClient::deleteSelectedDuplicates(const QVariantList &selectedUris)
+{
+    if (selectedUris.isEmpty()) {
+        emit duplicatesDeleted(0);
+        return;
+    }
+
+    QString musicDir = mpdMusicDirectory();
+    int deletedCount = 0;
+
+    for (const QVariant &uriVar : selectedUris) {
+        QString uri = uriVar.toString();
+        if (uri.isEmpty()) continue;
+
+        // Determine the actual file path
+        QString filePath;
+        
+        if (uri.startsWith("file://")) {
+            filePath = uri.remove(0, 7);
+        } else if (uri.startsWith("/")) {
+            // If it's an absolute path, use it directly
+            filePath = uri;
+        } else {
+            // Relative path - prepend MPD music directory
+            if (!musicDir.isEmpty()) {
+                // Handle both trailing slash and no trailing slash
+                if (musicDir.endsWith('/')) {
+                    filePath = musicDir + uri;
+                } else {
+                    filePath = musicDir + "/" + uri;
+                }
+            } else {
+                filePath = uri;
+            }
+        }
+
+        // Delete the file from disk manually
+        QFile file(filePath);
+        if (file.exists()) {
+            if (file.remove()) {
+                deletedCount++;
+                qDebug() << "Deleted:" << filePath;
+            } else {
+                qWarning() << "Failed to delete file:" << filePath << file.errorString();
+            }
+        } else {
+            qWarning() << "File does not exist:" << filePath;
+        }
+    }
+
+    // Tell MPD to update its database to reflect the changes
+    if (m_connection) {
+        leaveIdle();
+        mpd_run_update(m_connection, "");
+        sendIdle();
+    }
+
+    // Refresh our local library
+    refreshLibrary();
+
+    emit duplicatesDeleted(deletedCount);
+}
+
+void MpdClient::refreshLibraryAfterDelete()
+{
+    // No longer needed - functionality moved to deleteSelectedDuplicates
+    // Kept for source compatibility
 }

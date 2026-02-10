@@ -108,22 +108,22 @@ DBusService::~DBusService()
 
 bool DBusService::canGoNext() const
 {
-    return mpdClient() && mpdClient()->state() != "stop";
+    return m_mpdClient && m_mpdClient->state() != "stop";
 }
 
 bool DBusService::canGoPrevious() const
 {
-    return mpdClient() && mpdClient()->state() != "stop";
+    return m_mpdClient && m_mpdClient->state() != "stop";
 }
 
 bool DBusService::canPlay() const
 {
-    return mpdClient() && mpdClient()->state() != "play";
+    return m_mpdClient && m_mpdClient->state() != "play";
 }
 
 bool DBusService::canPause() const
 {
-    return mpdClient() && mpdClient()->state() == "play";
+    return m_mpdClient && m_mpdClient->state() == "play";
 }
 
 QVariantMap DBusService::getMetadataForTrack(const QueueItem &item) const
@@ -134,8 +134,7 @@ QVariantMap DBusService::getMetadataForTrack(const QueueItem &item) const
     QString title = item.title;
     QString artist = item.artist;
     QString album = item.album;
-    qint64 duration = item.duration;
-    QString albumArtPath = item.albumArt;
+    qint64 duration = item.duration.toLongLong();
 
     // Only include metadata if we have a valid track
     if (uri.isEmpty() && title.isEmpty() && artist.isEmpty()) {
@@ -160,11 +159,6 @@ QVariantMap DBusService::getMetadataForTrack(const QueueItem &item) const
         metadata["mpris:length"] = static_cast<quint64>(duration * 1000000);
     }
 
-    // Add album art if available
-    if (!albumArtPath.isEmpty()) {
-        metadata["mpris:artUrl"] = albumArtPath;
-    }
-
     // Add URI
     if (!uri.isEmpty()) {
         metadata["xesam:url"] = uri;
@@ -175,39 +169,48 @@ QVariantMap DBusService::getMetadataForTrack(const QueueItem &item) const
 
 QVariantMap DBusService::metadata() const
 {
-    if (!mpdClient() || mpdClient()->queueModel()->m_queue.isEmpty())
+    if (!m_mpdClient || m_mpdClient->queueModel()->m_queue.isEmpty())
         return {};
 
-    int currentSong = mpdClient()->currentSong();
-    if (currentSong < 0 || currentSong >= mpdClient()->queueModel()->m_queue.size())
+    int currentSongId = m_mpdClient->queueModel()->m_currentSongId;
+    const auto &queue = m_mpdClient->queueModel()->m_queue;
+    int currentSongIndex = -1;
+    for (int i = 0; i < queue.size(); ++i) {
+        if (queue.at(i).id == currentSongId) {
+            currentSongIndex = i;
+            break;
+        }
+    }
+
+    if (currentSongIndex < 0 || currentSongIndex >= queue.size())
         return {};
 
-    const auto &item = mpdClient()->queueModel()->m_queue.at(currentSong);
+    const auto &item = queue.at(currentSongIndex);
     return getMetadataForTrack(item);
 }
 
 double DBusService::volume() const
 {
-    return mpdClient() ? mpdClient()->volume() / 100.0 : 0.0;
+    return m_mpdClient ? m_mpdClient->volume() / 100.0 : 0.0;
 }
 
 void DBusService::setVolume(double volume)
 {
-    if (mpdClient())
-        mpdClient()->setVolume(static_cast<int>(volume * 100));
+    if (m_mpdClient)
+        m_mpdClient->setVolume(static_cast<int>(volume * 100));
 }
 
 qlonglong DBusService::position() const
 {
-    return mpdClient() ? mpdClient()->elapsed() * 1000000 : 0;
+    return m_mpdClient ? m_mpdClient->elapsed() * 1000000 : 0;
 }
 
 QString DBusService::playbackStatus() const
 {
-    if (!mpdClient())
+    if (!m_mpdClient)
         return "Stopped";
 
-    QString state = mpdClient()->state();
+    QString state = m_mpdClient->state();
     if (state == "play")
         return "Playing";
     else if (state == "pause")
@@ -218,18 +221,18 @@ QString DBusService::playbackStatus() const
 
 void DBusService::setShuffle(bool shuffle)
 {
-    if (mpdClient())
-        mpdClient()->setRandom(shuffle);
+    if (m_mpdClient)
+        m_mpdClient->setRandom(shuffle);
 }
 
 QString DBusService::loopStatus() const
 {
-    if (!mpdClient())
+    if (!m_mpdClient)
         return "None";
 
-    if (mpdClient()->single())
+    if (m_mpdClient->single())
         return "Track";
-    else if (mpdClient()->repeat())
+    else if (m_mpdClient->repeat())
         return "Playlist";
     else
         return "None";
@@ -237,16 +240,16 @@ QString DBusService::loopStatus() const
 
 void DBusService::setLoopStatus(const QString &status)
 {
-    if (mpdClient()) {
+    if (m_mpdClient) {
         if (status == "None") {
-            mpdClient()->setRepeat(false);
-            mpdClient()->setSingle(false);
+            m_mpdClient->setRepeat(false);
+            m_mpdClient->setSingle(false);
         } else if (status == "Track") {
-            mpdClient()->setRepeat(false);
-            mpdClient()->setSingle(true);
+            m_mpdClient->setRepeat(false);
+            m_mpdClient->setSingle(true);
         } else if (status == "Playlist") {
-            mpdClient()->setRepeat(true);
-            mpdClient()->setSingle(false);
+            m_mpdClient->setRepeat(true);
+            m_mpdClient->setSingle(false);
         }
     }
 }
@@ -258,44 +261,44 @@ void DBusService::quit()
 
 void DBusService::raise()
 {
-    if (mpdClient() && mpdClient()->window())
-        mpdClient()->window()->show();
+    if (m_mpdClient && m_mpdClient->window())
+        m_mpdClient->window()->show();
 }
 
 void DBusService::next()
 {
-    if (mpdClient())
-        mpdClient()->next();
+    if (m_mpdClient)
+        m_mpdClient->next();
 }
 
 void DBusService::previous()
 {
-    if (mpdClient())
-        mpdClient()->previous();
+    if (m_mpdClient)
+        m_mpdClient->previous();
 }
 
 void DBusService::pause()
 {
-    if (mpdClient())
-        mpdClient()->pause();
+    if (m_mpdClient)
+        m_mpdClient->pause();
 }
 
 void DBusService::playPause()
 {
-    if (mpdClient())
-        mpdClient()->togglePlayPause();
+    if (m_mpdClient)
+        m_mpdClient->togglePlayPause();
 }
 
 void DBusService::stop()
 {
-    if (mpdClient())
-        mpdClient()->stop(); // MPD has a stop command
+    if (m_mpdClient)
+        m_mpdClient->stop(); // MPD has a stop command
 }
 
 void DBusService::play()
 {
-    if (mpdClient())
-        mpdClient()->play();
+    if (m_mpdClient)
+        m_mpdClient->play();
 }
 
 void DBusService::setRate(double rate)
@@ -306,13 +309,13 @@ void DBusService::setRate(double rate)
 
 void DBusService::seek(double offset)
 {
-    if (mpdClient()) {
+    if (m_mpdClient) {
         double offset_sec = offset / 1000000.0;
-        double current_pos_sec = mpdClient()->elapsed();
+        double current_pos_sec = m_mpdClient->elapsed();
         double new_pos_sec = current_pos_sec + offset_sec;
 
         // Seek to the new absolute position, not by the offset
-        mpdClient()->seekTo(static_cast<qint64>(new_pos_sec));
+        m_mpdClient->seekTo(static_cast<qint64>(new_pos_sec));
         emit seeked(static_cast<qlonglong>(new_pos_sec * 1000000.0));
     }
 }
@@ -320,27 +323,27 @@ void DBusService::seek(double offset)
 void DBusService::setPosition(const QString &trackId, double position)
 {
     Q_UNUSED(trackId);
-    if (mpdClient()) {
-        mpdClient()->seekTo(static_cast<qint64>(position / 1000000.0));
+    if (m_mpdClient) {
+        m_mpdClient->seekTo(static_cast<qint64>(position / 1000000.0));
         emit seeked(static_cast<qlonglong>(position));
     }
 }
 
 void DBusService::openUri(const QString &uri)
 {
-    if (mpdClient())
-        mpdClient()->playTrack(uri);
+    if (m_mpdClient)
+        m_mpdClient->playTrack(uri);
 }
 
 // Track List interface implementation
 QList<QDBusObjectPath> DBusService::tracks() const
 {
     QList<QDBusObjectPath> trackList;
-    if (!mpdClient())
+    if (!m_mpdClient)
         return trackList;
 
     // Get the current queue from MPD
-    QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+    QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
     
     for (const auto &item : queue) {
         QString trackId = createTrackId(item.uri);
@@ -353,13 +356,13 @@ QList<QDBusObjectPath> DBusService::tracks() const
 QList<QVariantMap> DBusService::getTracksMetadata(const QList<QDBusObjectPath> &trackIds) const
 {
     QList<QVariantMap> result;
-    if (!mpdClient())
+    if (!m_mpdClient)
         return result;
 
     for (const auto &trackId : trackIds) {
         int position = trackIdToPosition(trackId.path());
         if (position != -1) {
-            const auto &item = mpdClient()->queueModel()->m_queue.at(position);
+            const auto &item = m_mpdClient->queueModel()->m_queue.at(position);
             result.append(getMetadataForTrack(item));
         } else {
             result.append(QVariantMap());
@@ -370,11 +373,11 @@ QList<QVariantMap> DBusService::getTracksMetadata(const QList<QDBusObjectPath> &
 
 void DBusService::addTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent)
 {
-    if (!mpdClient())
+    if (!m_mpdClient)
         return;
 
     // Add track to MPD queue
-    mpdClient()->addTrack(uri);
+    m_mpdClient->addTrack(uri);
     
     QString trackId = createTrackId(uri);
     QDBusObjectPath newTrack(trackId);
@@ -383,15 +386,15 @@ void DBusService::addTrack(const QString &uri, const QDBusObjectPath &afterTrack
     emit TrackAdded(newTrack, afterTrack);
     
     // Refresh the queue to get updated track list
-    mpdClient()->refreshQueue();
+    m_mpdClient->refreshQueue();
     
     // If setAsCurrent is true, play the track
     if (setAsCurrent) {
         // Find the newly added track and play it
-        QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+        QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
         for (const auto &item : queue) {
             if (item.uri == uri) {
-                mpdClient()->playQueueId(item.id);
+                m_mpdClient->playQueueId(item.id);
                 break;
             }
         }
@@ -400,20 +403,20 @@ void DBusService::addTrack(const QString &uri, const QDBusObjectPath &afterTrack
 
 void DBusService::removeTrack(const QDBusObjectPath &trackId)
 {
-    if (!mpdClient())
+    if (!m_mpdClient)
         return;
 
     QString uri = uriFromTrackId(trackId.path());
     if (!uri.isEmpty()) {
         // Find the track in the queue and remove it
-        QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+        QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
         for (const auto &item : queue) {
             if (item.uri == uri) {
-                mpdClient()->removeId(item.id);
+                m_mpdClient->removeId(item.id);
                 emit TrackRemoved(trackId);
                 m_trackIdToUri.remove(trackId.path());
                 m_uriToTrackId.remove(uri);
-                mpdClient()->refreshQueue();
+                m_mpdClient->refreshQueue();
                 break;
             }
         }
@@ -459,7 +462,7 @@ int DBusService::trackIdToPosition(const QString &trackId) const
     if (uri.isEmpty())
         return -1;
 
-    QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+    QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
     for (int i = 0; i < queue.size(); ++i) {
         if (queue[i].uri == uri) {
             return i;
@@ -470,10 +473,10 @@ int DBusService::trackIdToPosition(const QString &trackId) const
 
 QString DBusService::positionToTrackId(int position) const
 {
-    if (!mpdClient() || position < 0)
+    if (!m_mpdClient || position < 0)
         return QString();
     
-    QList<QueueItem> queue = mpdClient()->queueModel()->m_queue;
+    QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
     if (position >= queue.size())
         return QString();
 
@@ -486,7 +489,7 @@ QString DBusService::positionToTrackId(int position) const
 
 quint32 DBusService::playlistCount() const
 {
-    return mpdClient() ? mpdClient()->playlists().count() : 0;
+    return m_mpdClient ? m_mpdClient->playlists().count() : 0;
 }
 
 QStringList DBusService::orderings() const
@@ -503,20 +506,20 @@ MprisActivePlaylist DBusService::activePlaylist() const
 
 void DBusService::activatePlaylist(const QDBusObjectPath &playlistId)
 {
-    if (!mpdClient()) return;
+    if (!m_mpdClient) return;
     QString name = decodePlaylistId(playlistId);
     if (!name.isEmpty()) {
-        mpdClient()->clearQueue();
-        mpdClient()->loadPlaylist(name);
-        mpdClient()->play();
+        m_mpdClient->clearQueue();
+        m_mpdClient->loadPlaylist(name);
+        m_mpdClient->play();
     }
 }
 
 QList<MprisPlaylist> DBusService::getPlaylists(quint32 index, quint32 maxCount, const QString &order, bool reverseOrder)
 {
-    if (!mpdClient()) return {};
+    if (!m_mpdClient) return {};
 
-    QStringList playlists = mpdClient()->playlists();
+    QStringList playlists = m_mpdClient->playlists();
     if (order == "Alphabetical") {
         playlists.sort(Qt::CaseInsensitive);
     }
@@ -538,7 +541,7 @@ QList<MprisPlaylist> DBusService::getPlaylists(quint32 index, quint32 maxCount, 
 
 void DBusService::broadcastProperties()
 {
-    if (!mpdClient()) {
+    if (!m_mpdClient) {
         return;
     }
 

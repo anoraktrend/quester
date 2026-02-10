@@ -18,6 +18,7 @@
 #include <spa/param/audio/format-utils.h>
 #include <thread>
 #include <atomic>
+#include <vector>
 
 class AudioInput : public QObject
 {
@@ -203,8 +204,17 @@ private:
     QString m_currentPresetName;
     QVariantList m_barColors;
 
+    std::vector<double> m_hannWindow;
+    struct BarRange {
+        int startIndex;
+        int endIndex;
+    };
+    QList<BarRange> m_leftBarRanges;
+    QList<BarRange> m_rightBarRanges;
+
     void loadPresets();
     void updateBarColors();
+    void computeBarRanges();
 };
 
 #endif // AUDIOVISUALIZER_H

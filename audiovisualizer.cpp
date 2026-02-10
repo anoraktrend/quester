@@ -530,6 +530,7 @@ void AudioVisualizer::setWidth(int width)
         m_magnitudes.fill(0.0, m_numBars);
         m_smoothBuffer.fill(0.0, m_numBars);
         updateBarColors();
+        computeBarRanges();
         Q_EMIT magnitudesChanged();
     }
     Q_EMIT widthChanged();
@@ -599,6 +600,13 @@ void AudioVisualizer::start()
         stop();
         return;
     }
+
+    // Precompute Hann window
+    m_hannWindow.resize(m_fft_size);
+    for (int i = 0; i < m_fft_size; ++i) {
+        m_hannWindow[i] = HANN_MULTIPLIER * (1.0 - std::cos(CIRCLE_RAD * M_PI * i / (m_fft_size - 1)));
+    }
+    computeBarRanges();
 
     m_buffer.clear();
     m_smoothBuffer.fill(0.0, m_numBars);
@@ -685,11 +693,6 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     QList<double> bars;
     bars.fill(0.0, m_numBars);
 
-    int numBins = m_fft_size / 2 + 1;
-    // Skip DC and very low frequencies
-    int minBin = MIN_BIN_INDEX;
-    int maxBin = MAX_BIN_INDEX;
-
     double currentFrameMax = 0.0;
 
     int leftBarsCount = m_numBars / 2;
@@ -699,10 +702,8 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         // 0 = Left, 1 = Right
 
         for (int i = 0; i < m_fft_size; ++i) {
-            double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-            // KISS: Hann windowing to reduce spectral leakage
-            double window = HANN_MULTIPLIER * (1.0 - std::cos(CIRCLE_RAD * M_PI * i / (m_fft_size - 1)));
-            m_fftw_in[i] = sample * window; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+            double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE;
+            m_fftw_in[i] = sample * m_hannWindow[i];
         }
 
         fftw_execute(m_fftw_plan);
@@ -712,28 +713,20 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         bool reverse = (channel == 0); // Reverse left channel to put bass in center
 
         for (int i = 0; i < barCount; i++) {
-            // Logarithmic interpolation
-            double start = minBin * std::pow((double) maxBin / minBin, (double) i / barCount);
-            double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / barCount);
-
-            int startIndex = (int) start;
-            int endIndex = (int) end;
-
-            if (endIndex <= startIndex)
-                endIndex = startIndex + 1;
-            if (endIndex > numBins)
-                endIndex = numBins;
+            const QList<BarRange> &ranges = (channel == 0) ? m_leftBarRanges : m_rightBarRanges;
+            const BarRange &range = ranges[i];
+            int startIndex = range.startIndex;
+            int endIndex = range.endIndex;
 
             double maxMag = 0.0;
             for (int b = startIndex; b < endIndex; ++b) {
-                double re = m_fftw_out[b][0]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-                double im = m_fftw_out[b][1]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+                double re = m_fftw_out[b][0];
+                double im = m_fftw_out[b][1];
                 double mag = std::sqrt(re * re + im * im);
                 if (mag > maxMag)
                     maxMag = mag;
             }
 
-            // CAVA-style normalization: multiply by log2(index + 2) to boost higher frequencies
             maxMag *= std::log2(i + 2);
 
             if (maxMag > currentFrameMax) {
@@ -1028,4 +1021,30 @@ void AudioVisualizer::updateSystemColors(const QColor &highlight, const QColor &
     if (m_currentPresetName == QStringLiteral("System")) {
         updateBarColors();
     }
+}
+
+void AudioVisualizer::computeBarRanges()
+{
+    int leftBarsCount = m_numBars / 2;
+    int rightBarsCount = m_numBars - leftBarsCount;
+    int minBin = MIN_BIN_INDEX;
+    int maxBin = MAX_BIN_INDEX;
+    int numBins = m_fft_size / 2 + 1;
+
+    auto computeRanges = [&](QList<BarRange> &ranges, int barCount) {
+        ranges.clear();
+        ranges.reserve(barCount);
+        for (int i = 0; i < barCount; ++i) {
+            double start = minBin * std::pow((double) maxBin / minBin, (double) i / barCount);
+            double end = minBin * std::pow((double) maxBin / minBin, (double) (i + 1) / barCount);
+            int startIndex = (int) start;
+            int endIndex = (int) end;
+            if (endIndex <= startIndex) endIndex = startIndex + 1;
+            if (endIndex > numBins) endIndex = numBins;
+            ranges.append({startIndex, endIndex});
+        }
+    };
+
+    computeRanges(m_leftBarRanges, leftBarsCount);
+    computeRanges(m_rightBarRanges, rightBarsCount);
 }
