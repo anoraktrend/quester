@@ -1416,7 +1416,7 @@ ApplicationWindow {
             spacing: 10
 
             Label {
-                text: duplicateData ? (duplicateData.artist + " - " + duplicateData.title) : ""
+                text: duplicatePathsDialog.duplicateData ? (duplicatePathsDialog.duplicateData.artist + " - " + duplicatePathsDialog.duplicateData.title) : ""
                 font.bold: true
                 color: palette.text
                 Layout.fillWidth: true
@@ -1427,7 +1427,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                model: duplicateData ? duplicateData.uris : []
+                model: duplicatePathsDialog.duplicateData ? duplicatePathsDialog.duplicateData.uris : []
 
                 delegate: Rectangle {
                     width: ListView.view.width

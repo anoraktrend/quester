@@ -1952,7 +1952,16 @@ void MpdClient::setupSystemTray()
     m_trayMenu->addAction(m_quitAction);
 
     m_trayIcon->setContextMenu(m_trayMenu);
+    
+    // macOS specific tray icon setup
+#ifdef Q_OS_MACOS
+    // On macOS, use the 512x512 PNG for better quality in the menu bar
+    m_trayIcon->setIcon(QIcon(":/Quester512.png"));
+#else
+    // On other platforms, use the SVG icon with theme fallback
     m_trayIcon->setIcon(QIcon::fromTheme("quester", QIcon(":/Quester.svg")));
+#endif
+    
     m_trayIcon->show();
 
     // Connect to state changes to update tray icon
@@ -1976,6 +1985,12 @@ void MpdClient::updateTrayIcon()
 {
     if (!m_trayIcon) return;
 
+#ifdef Q_OS_MACOS
+    // On macOS, we keep the application icon constant in the menu bar
+    // instead of changing it to play/pause indicators for better user experience
+    m_trayIcon->setIcon(QIcon(":/Quester512.png"));
+#else
+    // On other platforms, show play/pause indicators
     QIcon icon;
     if (m_state == "play") {
         icon = QIcon::fromTheme("media-playback-start", QIcon(":/Quester.svg"));
@@ -1986,6 +2001,7 @@ void MpdClient::updateTrayIcon()
     }
     
     m_trayIcon->setIcon(icon);
+#endif
 }
 
 void MpdClient::updateTrayTooltip()

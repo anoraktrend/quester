@@ -19,6 +19,7 @@
 #endif
 #ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
+#include <Accelerate/Accelerate.h>
 #endif
 #include <QMutex>
 #include <QColor>
@@ -143,8 +144,14 @@ public:
     void stop() override;
 
 private:
-    static void audioQueueCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumPackets, const AudioStreamPacketDescription *inPacketDesc);
-    AudioQueueRef m_queue;
+    static OSStatus audioTapCallback(void *inClientData, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
+    void setupAudioTap();
+    void cleanupAudioTap();
+    
+    AudioComponentInstance m_remoteIOUnit = nullptr;
+    AudioComponent m_remoteIOComponent = nullptr;
+    bool m_isRunning = false;
+    AudioStreamBasicDescription m_streamFormat;
 };
 #endif
 
@@ -206,9 +213,22 @@ signals:
     void audioSourceChanged();
 
 private:
+#ifdef __APPLE__
+    // vDSP (Apple Accelerate framework) for Fourier transforms
+    struct vDSPContext {
+        vDSP_DFT_Setup setup;
+        float *realData;
+        float *imagData;
+        float *outputReal;
+        float *outputImag;
+    };
+    vDSPContext m_vdsp_context{};
+#else
+    // FFTW for other platforms
     fftw_plan m_fftw_plan{nullptr};
     double *m_fftw_in{nullptr};
     fftw_complex *m_fftw_out{nullptr};
+#endif
     int m_fft_size{FFT_SIZE};
 
     AudioInput *m_input{nullptr};

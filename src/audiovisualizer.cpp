@@ -585,6 +585,29 @@ void AudioVisualizer::start()
 
     m_maxPeak = 100.0;
     m_fft_size = FFT_SIZE;
+
+#ifdef __APPLE__
+    // Initialize vDSP (Apple Accelerate framework)
+    m_vdsp_context.setup = vDSP_DFT_zop_CreateSetup(nullptr, m_fft_size, vDSP_DFT_FORWARD);
+    if (!m_vdsp_context.setup) {
+        qWarning() << "Failed to create vDSP DFT setup";
+        stop();
+        return;
+    }
+
+    m_vdsp_context.realData = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
+    m_vdsp_context.imagData = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
+    m_vdsp_context.outputReal = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
+    m_vdsp_context.outputImag = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
+
+    if (!m_vdsp_context.realData || !m_vdsp_context.imagData ||
+        !m_vdsp_context.outputReal || !m_vdsp_context.outputImag) {
+        qWarning() << "Failed to allocate vDSP buffers";
+        stop();
+        return;
+    }
+#else
+    // Initialize FFTW for other platforms
     m_fftw_in = static_cast<double *>(fftw_malloc(sizeof(double) * m_fft_size));
     m_fftw_out = static_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * (m_fft_size / 2 + 1)));
 
@@ -600,6 +623,7 @@ void AudioVisualizer::start()
         stop();
         return;
     }
+#endif
 
     // Precompute Hann window
     m_hannWindow.resize(m_fft_size);
@@ -658,6 +682,30 @@ void AudioVisualizer::stop()
         m_input = nullptr;
     }
 
+#ifdef __APPLE__
+    // Cleanup vDSP
+    if (m_vdsp_context.setup) {
+        vDSP_DFT_DestroySetup(m_vdsp_context.setup);
+        m_vdsp_context.setup = nullptr;
+    }
+    if (m_vdsp_context.realData) {
+        free(m_vdsp_context.realData);
+        m_vdsp_context.realData = nullptr;
+    }
+    if (m_vdsp_context.imagData) {
+        free(m_vdsp_context.imagData);
+        m_vdsp_context.imagData = nullptr;
+    }
+    if (m_vdsp_context.outputReal) {
+        free(m_vdsp_context.outputReal);
+        m_vdsp_context.outputReal = nullptr;
+    }
+    if (m_vdsp_context.outputImag) {
+        free(m_vdsp_context.outputImag);
+        m_vdsp_context.outputImag = nullptr;
+    }
+#else
+    // Cleanup FFTW
     if (m_fftw_plan) {
         fftw_destroy_plan(m_fftw_plan);
         m_fftw_plan = nullptr;
@@ -670,6 +718,7 @@ void AudioVisualizer::stop()
         fftw_free(m_fftw_out);
         m_fftw_out = nullptr;
     }
+#endif
 }
 
 void AudioVisualizer::onDataReady(const QByteArray &data)
@@ -677,9 +726,15 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     // KISS: We use Qt's signal/slot mechanism with QueuedConnection to handle audio data.
     // This ensures onDataReady runs on the main thread, avoiding the need for complex
     // locking around the FFT plan and output vectors, at the cost of some main thread CPU usage.
+#ifdef __APPLE__
+    if (!m_active || !m_vdsp_context.setup) {
+        return;
+    }
+#else
     if (!m_active || !m_fftw_plan) {
         return;
     }
+#endif
 
     m_buffer.append(data);
 
@@ -709,6 +764,48 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     for (int channel = 0; channel < 2; ++channel) {
         // 0 = Left, 1 = Right
 
+#ifdef __APPLE__
+        // Apple vDSP implementation
+        for (int i = 0; i < m_fft_size; ++i) {
+            double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+            m_vdsp_context.realData[i] = static_cast<float>(sample * m_hannWindow[i]);
+            m_vdsp_context.imagData[i] = 0.0f;
+        }
+
+        // Execute FFT
+        vDSP_DFT_Execute(m_vdsp_context.setup, m_vdsp_context.realData, m_vdsp_context.imagData,
+                        m_vdsp_context.outputReal, m_vdsp_context.outputImag);
+
+        int barCount = (channel == 0) ? leftBarsCount : rightBarsCount;
+        int offset = (channel == 0) ? 0 : leftBarsCount;
+        bool reverse = (channel == 0); // Reverse left channel to put bass in center
+
+        for (int i = 0; i < barCount; i++) {
+            const QList<BarRange> &ranges = (channel == 0) ? m_leftBarRanges : m_rightBarRanges;
+            const BarRange &range = ranges[i];
+            int startIndex = range.startIndex;
+            int endIndex = range.endIndex;
+
+            double maxMag = 0.0;
+            for (int b = startIndex; b < endIndex; ++b) {
+                float re = m_vdsp_context.outputReal[b];
+                float im = m_vdsp_context.outputImag[b];
+                double mag = std::sqrt(re * re + im * im);
+                if (mag > maxMag)
+                    maxMag = mag;
+            }
+
+            maxMag *= std::log2(i + 2);
+
+            if (maxMag > currentFrameMax) {
+                currentFrameMax = maxMag;
+            }
+
+            int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
+            bars[targetIdx] = maxMag;
+        }
+#else
+        // FFTW implementation for other platforms
         for (int i = 0; i < m_fft_size; ++i) {
             double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
             m_fftw_in[i] = sample * m_hannWindow[i]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
@@ -746,6 +843,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
             int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
             bars[targetIdx] = maxMag;
         }
+#endif
     }
 
     // Dynamic scaling (AGC)
@@ -1064,61 +1162,161 @@ void AudioVisualizer::computeBarRanges()
 }
 
 #ifdef __APPLE__
-CoreAudioInput::CoreAudioInput(QObject *parent) : AudioInput(parent), m_queue(nullptr)
+CoreAudioInput::CoreAudioInput(QObject *parent) : AudioInput(parent)
 {
-    AudioStreamBasicDescription format = {0};
-    format.mSampleRate = 44100.0;
-    format.mFormatID = kAudioFormatLinearPCM;
-    format.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
-    format.mBitsPerChannel = 16;
-    format.mChannelsPerFrame = 2;
-    format.mBytesPerFrame = 4;
-    format.mFramesPerPacket = 1;
-    format.mBytesPerPacket = 4;
-    format.mReserved = 0;
-
-    OSStatus status = AudioQueueNewInput(&format, audioQueueCallback, this, nullptr, nullptr, 0, &m_queue);
-    if (status != noErr) {
-        qWarning() << "Failed to create audio queue";
-        return;
-    }
-
-    // Allocate buffers
-    for (int i = 0; i < 3; ++i) {
-        AudioQueueBufferRef buffer;
-        AudioQueueAllocateBuffer(m_queue, 4096, &buffer);
-        AudioQueueEnqueueBuffer(m_queue, buffer, 0, nullptr);
-    }
+    // Set up stream format (16-bit PCM, 44.1kHz, stereo)
+    memset(&m_streamFormat, 0, sizeof(m_streamFormat));
+    m_streamFormat.mSampleRate = SAMPLE_RATE;
+    m_streamFormat.mFormatID = kAudioFormatLinearPCM;
+    m_streamFormat.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+    m_streamFormat.mBitsPerChannel = 16;
+    m_streamFormat.mChannelsPerFrame = 2;
+    m_streamFormat.mBytesPerFrame = 4; // 2 channels * 2 bytes per channel
+    m_streamFormat.mFramesPerPacket = 1;
+    m_streamFormat.mBytesPerPacket = 4;
+    m_streamFormat.mReserved = 0;
 }
 
 CoreAudioInput::~CoreAudioInput()
 {
-    if (m_queue) {
-        AudioQueueDispose(m_queue, true);
+    if (m_isRunning) {
+        stop();
     }
+    cleanupAudioTap();
 }
 
 void CoreAudioInput::start()
 {
-    if (m_queue) {
-        AudioQueueStart(m_queue, nullptr);
+    if (m_isRunning) {
+        return;
     }
+
+    if (setupAudioTap() != noErr) {
+        qWarning() << "Failed to set up Core Audio Tap";
+        return;
+    }
+
+    m_isRunning = true;
 }
 
 void CoreAudioInput::stop()
 {
-    if (m_queue) {
-        AudioQueueStop(m_queue, true);
+    if (!m_isRunning) {
+        return;
+    }
+
+    m_isRunning = false;
+    cleanupAudioTap();
+}
+
+OSStatus CoreAudioInput::audioTapCallback(void *inClientData, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData)
+{
+    CoreAudioInput *self = static_cast<CoreAudioInput *>(inClientData);
+    
+    if (!self->m_isRunning) {
+        return noErr;
+    }
+
+    // Create a buffer to store the captured audio
+    AudioBufferList bufferList;
+    bufferList.mNumberBuffers = 1;
+    bufferList.mBuffers[0].mNumberChannels = self->m_streamFormat.mChannelsPerFrame;
+    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * self->m_streamFormat.mBytesPerFrame;
+    bufferList.mBuffers[0].mData = malloc(bufferList.mBuffers[0].mDataByteSize);
+
+    // Render the audio into our buffer
+    OSStatus status = AudioUnitRender(self->m_remoteIOUnit, ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, &bufferList);
+    if (status == noErr && bufferList.mBuffers[0].mData) {
+        // Convert to QByteArray and emit signal
+        QByteArray data(static_cast<char *>(bufferList.mBuffers[0].mData), bufferList.mBuffers[0].mDataByteSize);
+        emit self->dataReady(data);
+    }
+
+    // Clean up
+    if (bufferList.mBuffers[0].mData) {
+        free(bufferList.mBuffers[0].mData);
+    }
+
+    return noErr;
+}
+
+void CoreAudioInput::setupAudioTap()
+{
+    // Find the RemoteIO Audio Unit
+    AudioComponentDescription desc;
+    memset(&desc, 0, sizeof(desc));
+    desc.componentType = kAudioUnitType_Output;
+    desc.componentSubType = kAudioUnitSubType_RemoteIO;
+    desc.componentManufacturer = kAudioUnitManufacturer_Apple;
+    desc.componentFlags = 0;
+    desc.componentFlagsMask = 0;
+
+    m_remoteIOComponent = AudioComponentFindNext(nullptr, &desc);
+    if (!m_remoteIOComponent) {
+        qWarning() << "Failed to find RemoteIO Audio Unit";
+        return;
+    }
+
+    // Create an instance of the RemoteIO unit
+    OSStatus status = AudioComponentInstanceNew(m_remoteIOComponent, &m_remoteIOUnit);
+    if (status != noErr) {
+        qWarning() << "Failed to create RemoteIO Audio Unit instance";
+        return;
+    }
+
+    // Enable input on the RemoteIO unit
+    UInt32 one = 1;
+    status = AudioUnitSetProperty(m_remoteIOUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &one, sizeof(one));
+    if (status != noErr) {
+        qWarning() << "Failed to enable input on RemoteIO unit";
+        cleanupAudioTap();
+        return;
+    }
+
+    // Set the stream format for input
+    status = AudioUnitSetProperty(m_remoteIOUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &m_streamFormat, sizeof(m_streamFormat));
+    if (status != noErr) {
+        qWarning() << "Failed to set stream format on RemoteIO unit";
+        cleanupAudioTap();
+        return;
+    }
+
+    // Set the callback to tap into the audio
+    AURenderCallbackStruct callbackStruct;
+    callbackStruct.inputProc = audioTapCallback;
+    callbackStruct.inputProcRefCon = this;
+    status = AudioUnitSetProperty(m_remoteIOUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 1, &callbackStruct, sizeof(callbackStruct));
+    if (status != noErr) {
+        qWarning() << "Failed to set input callback on RemoteIO unit";
+        cleanupAudioTap();
+        return;
+    }
+
+    // Initialize the RemoteIO unit
+    status = AudioUnitInitialize(m_remoteIOUnit);
+    if (status != noErr) {
+        qWarning() << "Failed to initialize RemoteIO unit";
+        cleanupAudioTap();
+        return;
+    }
+
+    // Start the RemoteIO unit
+    status = AudioOutputUnitStart(m_remoteIOUnit);
+    if (status != noErr) {
+        qWarning() << "Failed to start RemoteIO unit";
+        cleanupAudioTap();
+        return;
     }
 }
 
-void CoreAudioInput::audioQueueCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumPackets, const AudioStreamPacketDescription *inPacketDesc)
+void CoreAudioInput::cleanupAudioTap()
 {
-    CoreAudioInput *self = static_cast<CoreAudioInput *>(inUserData);
-    if (inNumPackets > 0) {
-        QByteArray data(reinterpret_cast<char *>(inBuffer->mAudioData), inBuffer->mAudioDataByteSize);
-        emit self->dataReady(data);
+    if (m_remoteIOUnit) {
+        AudioOutputUnitStop(m_remoteIOUnit);
+        AudioUnitUninitialize(m_remoteIOUnit);
+        AudioComponentInstanceDispose(m_remoteIOUnit);
+        m_remoteIOUnit = nullptr;
     }
-    AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nullptr);
+    m_remoteIOComponent = nullptr;
 }
 #endif

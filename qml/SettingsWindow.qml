@@ -134,20 +134,21 @@ Window {
                             }
                         }
                         Button {
-                            text: qsTr("Start Last.fm Auth")
+                            text: qsTr("Authenticate Last.fm")
                             onClicked: {
                                 mpdClient.statistics.startLastfmAuth()
                             }
                             Layout.fillWidth: true
+                            visible: !mpdClient.statistics.lastfmCredentialsValid
                         }
                         Button {
-                            text: qsTr("Complete Last.fm Auth")
+                            text: qsTr("Deauthenticate Last.fm")
                             onClicked: {
-                                if (lastfmAuthToken) {
-                                    mpdClient.statistics.completeLastfmAuth(lastfmAuthToken)
-                                }
+                                // Clear Last.fm credentials
+                                mpdClient.statistics.setLastfmCredentials("", "", "")
                             }
                             Layout.fillWidth: true
+                            visible: mpdClient.statistics.lastfmCredentialsValid
                         }
                     }
                 }

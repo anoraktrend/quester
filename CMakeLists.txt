@@ -85,13 +85,6 @@ if(NOT APPLE)
     pkg_check_modules(SPA REQUIRED libspa-0.2)
 endif()
 
-find_path(LIBLASTFM_INCLUDE_DIR NAMES ws.h Track.h Audioscrobbler.h Auth.h PATHS /usr/include/lastfm6)
-find_library(LIBLASTFM_LIBRARY NAMES lastfm6 lastfm PATHS /usr/lib /usr/lib/x86_64-linux-gnu)
-if(NOT LIBLASTFM_INCLUDE_DIR OR NOT LIBLASTFM_LIBRARY)
-    message(FATAL_ERROR "liblastfm not found")
-endif()
-set(LIBLASTFM_INCLUDE_DIRS ${LIBLASTFM_INCLUDE_DIR})
-set(LIBLASTFM_LIBRARIES ${LIBLASTFM_LIBRARY})
 pkg_check_modules(PROJECTM REQUIRED libprojectM)
 
 qt_add_executable(quester
@@ -102,6 +95,8 @@ qt_add_executable(quester
     src/audiovisualizer.h
     src/projectmvisualizer.cpp
     src/projectmvisualizer.h
+    src/statistics.cpp
+    src/statistics.h
     ${quester_resources}
 )
 
@@ -127,7 +122,6 @@ target_include_directories(quester PRIVATE
     ${PIPEWIRE_INCLUDE_DIRS}
     ${SPA_INCLUDE_DIRS}
     ${PROJECTM_INCLUDE_DIRS}
-    ${LIBLASTFM_INCLUDE_DIRS}
 )
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
@@ -163,7 +157,6 @@ target_link_libraries(quester
     PkgConfig::MPDCLIENT
     PkgConfig::FFTW3
     ${PROJECTM_LIBRARIES}
-    ${LIBLASTFM_LIBRARIES}
 )
 
 # Platform-specific libraries
@@ -178,6 +171,7 @@ if(NOT APPLE)
 else()
     target_link_libraries(quester PRIVATE
         "-framework AudioToolbox"
+        "-framework Accelerate"
     )
 endif()
 

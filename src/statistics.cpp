@@ -23,18 +23,6 @@
 #include <QJsonArray>
 #include <algorithm>
 
-#include <ws.h>
-#include <Auth.h>
-#include <Audioscrobbler.h>
-
-// Define the extern constants for liblastfm
-namespace lastfm {
-namespace ws {
-const char* ApiKey = "5b184bbfb5f3d1ac3a4955a6676d7dc3";
-const char* SharedSecret = "cc7e582cd3e1f5e79c0e9098fbc019ff";
-}
-}
-
 const QString LASTFM_API_KEY = "5b184bbfb5f3d1ac3a4955a6676d7dc3";
 const QString LASTFM_SECRET = "cc7e582cd3e1f5e79c0e9098fbc019ff";
 
@@ -57,8 +45,6 @@ StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent), m_nam(n
     }
 
     if (!m_lastfmSessionKey.isEmpty()) {
-        lastfm::ws::SessionKey = m_lastfmSessionKey;
-        lastfm::setNetworkAccessManager(m_nam);
         qDebug() << "[Last.fm] Loaded existing session key";
     } else {
         qDebug() << "[Last.fm] No existing session key found";
@@ -143,12 +129,7 @@ void StatisticsManager::logPlay(const QString &artist, const QString &title, con
     // Submit to Last.fm (Now Playing)
     if (!m_lastfmSessionKey.isEmpty()) {
         qDebug() << "[Last.fm] Scrobbling now playing:" << artist << "-" << title << "(" << album << ")";
-        lastfm::Audioscrobbler scrobbler( "Quester" );
-        lastfm::MutableTrack track;
-        track.setArtist( artist );
-        track.setTitle( title );
-        track.setAlbum( album );
-        scrobbler.nowPlaying( track );
+        submitLastfmNowPlayingInternal(artist, title, album);
     } else {
         qDebug() << "[Last.fm] No session key, skipping scrobble";
     }
@@ -770,9 +751,16 @@ void StatisticsManager::setLastfmCredentialsInternal(const QString &apiKey, cons
     settings.setValue("lastfmSecret", secret);
     settings.setValue("lastfmSessionKey", sessionKey);
     
-    if (!sessionKey.isEmpty()) {
-        m_lastfmCredentialsValid = true;
-        emit lastfmCredentialsValidChanged(true);
+    bool isValid = !sessionKey.isEmpty();
+    if (m_lastfmCredentialsValid != isValid) {
+        m_lastfmCredentialsValid = isValid;
+        emit lastfmCredentialsValidChanged(isValid);
+    }
+    
+    // Clear username if session is invalid
+    if (!isValid) {
+        m_lastfmUsername.clear();
+        emit lastfmUsernameChanged();
     }
 }
 
@@ -825,16 +813,16 @@ void StatisticsManager::sendLastfmRequest(const QString &method, const QMap<QStr
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
-    qDebug().noquote() << "[Last.fm] Sending request:" << method;
+    qDebug().noquote() << "[Last.fm] API Call:" << method << "|" << postData;
     
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply, method]() -> void {
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[Last.fm] Response:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[Last.fm] API Response:" << QString::fromLatin1(response);
         } else {
-            qWarning().noquote() << "[Last.fm] Network error:" << reply->errorString();
+            qWarning().noquote() << "[Last.fm] API Error:" << reply->errorString() << "|" << QString::fromLatin1(response);
         }
     });
 }
@@ -906,13 +894,17 @@ void StatisticsManager::getLastfmToken()
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
-    qDebug() << "[Last.fm] Requesting auth token from Last.fm";
+    qDebug().noquote() << "[Last.fm] API Call: auth.gettoken |" << postData;
     
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
         QByteArray response = reply->readAll();
-        qDebug() << "[Last.fm] Auth token response:" << QString::fromLatin1(response);
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[Last.fm] API Response: auth.gettoken |" << QString::fromLatin1(response);
+        } else {
+            qWarning().noquote() << "[Last.fm] API Error: auth.gettoken |" << reply->errorString() << "|" << QString::fromLatin1(response);
+        }
         
         if (reply->error() == QNetworkReply::NoError) {
 
@@ -963,6 +955,13 @@ void StatisticsManager::getLastfmToken()
                 emit lastfmAuthTokenReceived(token, authUrl);
 
                 QDesktopServices::openUrl(QUrl(authUrl));
+                
+                // Automatically complete authentication after token is received
+                // This eliminates the need for the "Complete Last.fm Auth" button
+                QTimer::singleShot(10000, this, [this, token]() {
+                    qDebug() << "[Last.fm] Automatically completing authentication with token:" << token;
+                    getLastfmSessionKey(token);
+                });
 
             } else {
 
@@ -1005,15 +1004,17 @@ void StatisticsManager::getLastfmSessionKey(const QString &token)
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
-    qDebug() << "[Last.fm] Requesting session key from Last.fm with token:" << token;
+    qDebug().noquote() << "[Last.fm] API Call: auth.getsession |" << postData;
     
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
-
         QByteArray response = reply->readAll();
-
-        qDebug() << "[Last.fm] Session key response:" << QString::fromLatin1(response);
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug().noquote() << "[Last.fm] API Response: auth.getsession |" << QString::fromLatin1(response);
+        } else {
+            qWarning().noquote() << "[Last.fm] API Error: auth.getsession |" << reply->errorString() << "|" << QString::fromLatin1(response);
+        }
 
         if (reply->error() == QNetworkReply::NoError) {
 
@@ -1241,51 +1242,114 @@ void StatisticsManager::fetchLastfmStats(const QString &period)
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
+    qDebug().noquote() << "[Last.fm] API Call: user.getRecentTracks |" << postData;
+    
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
         
         if (reply->error() != QNetworkReply::NoError) {
-            qWarning().noquote() << "[Last.fm] Recent tracks error:" << reply->errorString();
+            qWarning().noquote() << "[Last.fm] API Error: user.getRecentTracks |" << reply->errorString();
             return;
         }
         
         QByteArray response = reply->readAll();
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(response, &error);
+        qDebug().noquote() << "[Last.fm] API Response: user.getRecentTracks |" << QString::fromLatin1(response);
         
-        if (error.error != QJsonParseError::NoError) {
-            qWarning().noquote() << "[Last.fm] Recent tracks parse error:" << error.errorString();
-            return;
-        }
-        
-        QJsonObject root = doc.object();
+        // Parse XML response
+        QXmlStreamReader reader(response);
         QVariantMap stats;
-        stats["total_tracks"] = root["recenttracks"].toObject()["@attr"].toObject()["total"].toVariant().toLongLong();
         
-        // Process top tracks from recent tracks
-        QJsonArray tracks = root["recenttracks"].toObject()["track"].toArray();
         QMap<QString, int> trackCounts;
         QMap<QString, QString> trackArtists;
+        bool statusOk = false;
+        QString totalPages;
         
-        for (const QJsonValue &value : tracks) {
-            QJsonObject track = value.toObject();
-            QString name = track["name"].toString();
-            QString artist = track["artist"].toObject()["#text"].toString();
-            trackCounts[name]++;
-            if (!trackArtists.contains(name)) {
-                trackArtists[name] = artist;
+        while (!reader.atEnd()) {
+            reader.readNext();
+            
+            if (reader.isStartElement()) {
+                if (reader.name() == "lfm") {
+                    statusOk = reader.attributes().value("status") == "ok";
+                } else if (reader.name() == "recenttracks" && statusOk) {
+                    // Get total tracks count from attributes
+                    QString total = reader.attributes().value("total").toString();
+                    if (!total.isEmpty()) {
+                        stats["total_tracks"] = total.toLongLong();
+                    }
+                } else if (reader.name() == "track" && statusOk) {
+                    QString trackName;
+                    QString artistName;
+                    
+                    while (!reader.atEnd()) {
+                        reader.readNext();
+                        
+                        if (reader.isStartElement()) {
+                            if (reader.name() == "name") {
+                                trackName = reader.readElementText();
+                            } else if (reader.name() == "artist") {
+                                // Artist name is in <artist><name>...</name></artist> or <artist>#text="..."</artist>
+                                if (reader.attributes().hasAttribute("#text")) {
+                                    artistName = reader.attributes().value("#text").toString();
+                                } else {
+                                    // Look for <name> inside <artist>
+                                    while (!reader.atEnd()) {
+                                        reader.readNext();
+                                        if (reader.isStartElement() && reader.name() == "name") {
+                                            artistName = reader.readElementText();
+                                            break;
+                                        } else if (reader.isEndElement() && reader.name() == "artist") {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (reader.isEndElement() && reader.name() == "track") {
+                            break;
+                        }
+                    }
+                    
+                    if (!trackName.isEmpty()) {
+                        trackCounts[trackName]++;
+                        if (!trackArtists.contains(trackName)) {
+                            trackArtists[trackName] = artistName;
+                        }
+                    }
+                }
             }
         }
         
-        // Sort and get top 5
+        if (reader.hasError()) {
+            qWarning().noquote() << "[Last.fm] XML parse error:" << reader.errorString();
+            return;
+        }
+        
+        if (!statusOk) {
+            qWarning().noquote() << "[Last.fm] API response status not OK";
+            return;
+        }
+        
+        // Process top tracks from recent tracks
         QVariantList topTracks;
-        auto it = trackCounts.begin();
-        for (int i = 0; i < qMin(5, trackCounts.size()); ++i, ++it) {
+        
+        // Convert to list and sort by count descending
+        QList<QPair<QString, int>> trackCountList;
+        for (auto it = trackCounts.begin(); it != trackCounts.end(); ++it) {
+            trackCountList.append(qMakePair(it.key(), it.value()));
+        }
+        
+        std::sort(trackCountList.begin(), trackCountList.end(), 
+            [](const QPair<QString, int>& a, const QPair<QString, int>& b) {
+                return a.second > b.second;
+            });
+        
+        // Get top 5 tracks
+        int limit = qMin(5, trackCountList.size());
+        for (int i = 0; i < limit; ++i) {
             QVariantMap track;
-            track["title"] = it.key();
-            track["artist"] = trackArtists[it.key()];
-            track["play_count"] = it.value();
+            track["title"] = trackCountList[i].first;
+            track["artist"] = trackArtists[trackCountList[i].first];
+            track["play_count"] = trackCountList[i].second;
             topTracks.append(track);
         }
         
@@ -1306,4 +1370,3 @@ void StatisticsManager::completeLastfmAuth(const QString &token) {
     qDebug() << "[Last.fm] Completing Last.fm authentication with token:" << token;
     getLastfmSessionKey(token);
 }
-

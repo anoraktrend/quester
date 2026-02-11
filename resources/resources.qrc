@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>Quester.svg</file>
+        <file>Quester512.png</file>
         <file>../qml/HeaderBar.qml</file>
         <file>../qml/main.qml</file>
         <file>../qml/VisualizerView.qml</file>
