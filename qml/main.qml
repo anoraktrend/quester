@@ -21,6 +21,9 @@ ApplicationWindow {
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
     property bool useProjectM: false
+    property string lastfmAuthToken
+    property bool selectionMode: false
+    property var selectedAlbums: []
     SystemPalette { id: palette }
 
     // A HeaderBar provides Client-Side Decorations, which is the standard on
@@ -39,10 +42,10 @@ ApplicationWindow {
         viewMode: coverFlow.viewMode
         useProjectM: window.useProjectM
 
-        onOpenSettings: settingsDialog.open()
+        onOpenSettings: settingsWindow.show()
         onOpenVisualizerSettings: {
-            settingsTabBar.currentIndex = 1
-            settingsDialog.open()
+            settingsWindow.defaultTab = 1
+            settingsWindow.show()
         }
         onRequestVisualizer: goToVisualizer()
         onRequestQueue: coverFlow.state = "queueView"
@@ -50,11 +53,15 @@ ApplicationWindow {
         onRequestLibrary: coverFlow.state = "libraryView"
         onRequestWrapped: coverFlow.state = "wrappedView"
         onRequestRefresh: mpdClient.refreshLibrary()
+        onRequestAddAllToQueue: mpdClient.addAll()
+        onToggleSelectionMode: {
+            selectionMode = !selectionMode;
+            if (!selectionMode) selectedAlbums = [];
+        }
         onToggleProjectM: {
             window.useProjectM = !window.useProjectM
         }
-        onSetViewMode: (mode) => coverFlow.viewMode = mode
-        onRequestBrowser: mpdClient.browsePath(mpdClient.currentPath)
+        onSetViewMode: (mode) => { coverFlow.viewMode = mode; if (mode === "browser") mpdClient.browsePath(mpdClient.currentPath) }
     }
     
     Component.onCompleted: {
@@ -254,6 +261,20 @@ ApplicationWindow {
                 width: albumGridView.cellWidth
                 height: albumGridView.cellHeight
                 
+                CheckBox {
+                    visible: selectionMode
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    checked: selectedAlbums.indexOf(model.mbid) !== -1
+                    onCheckedChanged: function(checked) {
+                        if (checked && selectedAlbums.indexOf(model.mbid) === -1) {
+                            selectedAlbums.push(model.mbid);
+                        } else if (!checked) {
+                            selectedAlbums.splice(selectedAlbums.indexOf(model.mbid), 1);
+                        }
+                    }
+                }
+                
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 10
@@ -290,12 +311,22 @@ ApplicationWindow {
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: (mouse) => {
+                            onClicked: function(mouse) {
                                 if (mouse.button === Qt.RightButton) {
-                                    gridContextMenu.popup()
+                                    if (selectedAlbums.length > 0) {
+                                        selectionMenu.popup()
+                                    } else {
+                                        gridContextMenu.popup()
+                                    }
                                 } else {
-                                    pathView.currentIndex = index
-                                    coverFlow.viewMode = "flow"
+                                    if (selectionMode) {
+                                        var idx = selectedAlbums.indexOf(model.mbid);
+                                        if (idx === -1) selectedAlbums.push(model.mbid);
+                                        else selectedAlbums.splice(idx, 1);
+                                    } else {
+                                        pathView.currentIndex = index;
+                                        coverFlow.viewMode = "flow";
+                                    }
                                 }
                             }
 
@@ -311,11 +342,37 @@ ApplicationWindow {
                                 }
                             }
                         }
+
                     }
                     
+                    Menu {
+                        id: selectionMenu
+                        MenuItem {
+                            text: qsTr("Add selected to queue")
+                            onTriggered: {
+                                    mpdClient.addAlbums(selectedAlbums);
+                                    selectedAlbums = [];
+                                    selectionMode = false;
+                                }
+                            }
+                            MenuItem {
+                                text: qsTr("Play selected")
+                                onTriggered: {
+                                    mpdClient.playAlbums(selectedAlbums);
+                                    selectedAlbums = [];
+                                    selectionMode = false;
+                                }
+                            }
+                            MenuItem {
+                                text: qsTr("Clear selection")
+                                onTriggered: {
+                                    selectedAlbums = [];
+                                }
+                            }
+                        }
+                    }
                     Text {
-                        anchors.top: artContainer.bottom
-                        anchors.topMargin: 5
+                        y: artContainer.y + artContainer.height + 5
                         width: parent.width
                         text: model.name
                         font.bold: true
@@ -325,8 +382,7 @@ ApplicationWindow {
                     }
                     
                     Text {
-                        anchors.top: artContainer.bottom
-                        anchors.topMargin: 22
+                        y: artContainer.y + artContainer.height + 22
                         width: parent.width
                         text: model.artist
                         font.pixelSize: 12 * window.fontScale
@@ -337,57 +393,99 @@ ApplicationWindow {
                 }
             }
             
-            ScrollBar.vertical: ScrollBar { }
-        }
-
-        ListView {
-            id: browserListView
-            anchors.top: parent.top
-            anchors.topMargin: headerBar.height + 10
-            anchors.bottom: bottomControls.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 10
-            clip: true
-            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
-            model: mpdClient.browserModel
-            
-            delegate: ItemDelegate {
-                width: ListView.view.width
-                height: 50
-                text: model.name
-                icon.source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
-                icon.width: 24
-                icon.height: 24
+            GridView {
+                id: artistGridView
+                anchors.top: albumGridView.bottom
+                anchors.topMargin: 10
+                anchors.bottom: bottomControls.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 10
+                clip: true
+                visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "artists"
                 
-                background: Rectangle {
-                    color: parent.down ? palette.midlight : (index % 2 == 0 ? palette.base : palette.alternateBase)
-                }
+                cellWidth: 200
+                cellHeight: 100
+                model: mpdClient.artistModel
 
-                onClicked: {
-                    if (model.isDir) {
-                        mpdClient.browsePath(model.path)
-                    } else {
-                        mpdClient.playTrack(model.path)
+                delegate: Item {
+                    width: artistGridView.cellWidth
+                    height: artistGridView.cellHeight
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        color: palette.base
+                        radius: 5
+                        border.color: palette.accent
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: model.name
+                            color: palette.text
+                            font.pixelSize: 16 * window.fontScale
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: mpdClient.loadArtist(model.name)
+                        }
                     }
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: (mouse) => browserContextMenu.popup()
-                }
-
-                Menu {
-                    id: browserContextMenu
-                    MenuItem {
-                        text: qsTr("Add to Queue")
-                        onTriggered: mpdClient.addPath(model.path)
-                    }
-                }
+                ScrollBar.vertical: ScrollBar { }
             }
-            ScrollBar.vertical: ScrollBar { }
-        }
+
+            ListView {
+                id: browserListView
+                anchors.top: albumGridView.bottom
+                anchors.topMargin: 10
+                anchors.bottom: bottomControls.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 10
+                clip: true
+                visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
+                model: mpdClient.browserModel
+            
+                delegate: ItemDelegate {
+                    width: ListView.view.width
+                    height: 50
+                    text: model.name
+                    icon.source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
+                    icon.width: 24
+                    icon.height: 24
+                
+                    background: Rectangle {
+                        color: parent.down ? palette.midlight : (index % 2 == 0 ? palette.base : palette.alternateBase)
+                    }
+
+                    onClicked: {
+                        if (model.isDir) {
+                            mpdClient.browsePath(model.path)
+                        } else {
+                            mpdClient.playTrack(model.path)
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: (mouse) => browserContextMenu.popup()
+                    }
+
+                    Menu {
+                        id: browserContextMenu
+                        MenuItem {
+                            text: qsTr("Add to Queue")
+                            onTriggered: mpdClient.addPath(model.path)
+                        }
+                    }
+                }
+                ScrollBar.vertical: ScrollBar { }
+            }
 
         VisualizerView {
             id: visualizerView
@@ -833,6 +931,7 @@ ApplicationWindow {
 
         WrappedView {
             id: wrappedView
+            statistics: mpdClient.statistics
             anchors.fill: parent
             visible: coverFlow.state === "wrappedView"
         }
@@ -884,332 +983,7 @@ ApplicationWindow {
         ]
     }
 
-    Dialog {
-        id: settingsDialog
-        title: qsTr("Settings")
-        anchors.centerIn: parent
-        width: Math.min(500, parent.width - 40)
-        height: Math.min(500, parent.height - 40)
-        modal: true
-        standardButtons: Dialog.Close
-        background: Rectangle {
-            color: palette.window
-            border.color: palette.midlight
-            radius: 10
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 10
-
-            TabBar {
-                id: settingsTabBar
-                Layout.fillWidth: true
-                TabButton { text: qsTr("General") }
-                TabButton { text: qsTr("Visualizer") }
-                TabButton { text: qsTr("ProjectM") }
-            }
-
-            StackLayout {
-                currentIndex: settingsTabBar.currentIndex
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                // General Tab
-                Item {
-                    ColumnLayout {
-                        spacing: 10
-                        Label { text: qsTr("Sort Library By:"); font.bold: true; color: palette.text }
-                        RadioButton {
-                            text: qsTr("Artist")
-                            checked: mpdClient.sortMode === MpdClient.AlbumArtist
-                            onClicked: mpdClient.sortMode = MpdClient.AlbumArtist
-                        }
-                        RadioButton {
-                            text: qsTr("Album")
-                            checked: mpdClient.sortMode === MpdClient.Album
-                            onClicked: mpdClient.sortMode = MpdClient.Album
-                        }
-                        RadioButton {
-                            text: qsTr("Artist & Year")
-                            checked: mpdClient.sortMode === MpdClient.ArtistYear
-                            onClicked: mpdClient.sortMode = MpdClient.ArtistYear
-                        }
-
-                        CheckBox {
-                            text: qsTr("Consume Mode")
-                            checked: mpdClient.consume
-                            onClicked: mpdClient.consume = checked
-                        }
-                        
-                        Button {
-                            text: qsTr("Refresh Library")
-                            onClicked: mpdClient.refreshLibrary()
-                        }
-
-                        Label { text: qsTr("ListenBrainz Settings"); font.bold: true; color: palette.text }
-                        RowLayout {
-                            id: listenBrainzRow
-                            Layout.fillWidth: true
-                            TextField {
-                                id: listenbrainzUsernameField
-                                placeholderText: qsTr("ListenBrainz Username")
-                                text: mpdClient.listenBrainzUsername
-                                onTextChanged: {
-                                    mpdClient.listenBrainzUsername = text
-                                }
-                                Layout.fillWidth: true
-                            }
-                            Rectangle {
-                                id: lbStatusIndicator
-                                width: 12
-                                height: 12
-                                radius: 6
-                            }
-                            Connections {
-                                target: mpdClient.statistics
-                                function onCredentialsValidChanged(valid: bool) {
-                                    lbStatusIndicator.color = valid ? "#4CAF50" : "#F44336"
-                                }
-                            }
-                            Binding {
-                                target: lbStatusIndicator
-                                property: "color"
-                                value: mpdClient.statistics.credentialsValid ? "#4CAF50" : "#F44336"
-                            }
-                        }
-                        TextField {
-                            id: listenbrainzTokenField
-                            placeholderText: qsTr("ListenBrainz Token")
-                            text: mpdClient.listenBrainzToken
-                            onTextChanged: {
-                                mpdClient.listenBrainzToken = text
-                                // Reset validation state when token changes
-                            }
-                            echoMode: TextInput.Password
-                            Layout.fillWidth: true
-                        }
-                        Button {
-                            text: qsTr("Connect ListenBrainz Account")
-                            onClicked: {
-                                // Save credentials first, then validate
-                                if (listenbrainzUsernameField.text && listenbrainzTokenField.text) {
-                                    mpdClient.listenBrainzUsername = listenbrainzUsernameField.text
-                                    mpdClient.listenBrainzToken = listenbrainzTokenField.text
-                                    mpdClient.statistics.validateListenBrainzCredentials()
-                                }
-                            }
-                            Layout.fillWidth: true
-                        }
-                    }
-                }
-
-                // Visualizer Tab
-                Item {
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 10
-
-                        Label { 
-                            text: qsTr("Visualizer Settings") 
-                            font.bold: true 
-                            color: palette.text
-                        }
-
-                        GridLayout {
-                            columns: 2
-                            columnSpacing: 10
-                            rowSpacing: 10
-                            Layout.fillWidth: true
-
-                            Label { text: qsTr("Color Preset:") }
-                            ComboBox {
-                                model: AudioVisualizer.presetNames
-                                currentIndex: model.indexOf(AudioVisualizer.currentPreset)
-                                onActivated: AudioVisualizer.currentPreset = currentText
-                                Layout.fillWidth: true
-                            }
-
-                            Label { text: qsTr("Appearance:") }
-                            ComboBox {
-                                model: [qsTr("Bottom Up"), qsTr("Top Down"), qsTr("Centered")]
-                                currentIndex: visualizerView.settings.visualizerMode
-                                onActivated: visualizerView.settings.visualizerMode = currentIndex
-                            }
-                        }
-                        
-                        Item { Layout.fillHeight: true }
-                    }
-                }
-
-                // ProjectM Tab
-                Item {
-                    ScrollView {
-                        anchors.fill: parent
-                        clip: true
-                        
-                        ColumnLayout {
-                            width: parent.width
-                            spacing: 10
-
-                            Label { 
-                                text: qsTr("ProjectM Preset Path") 
-                                color: palette.text
-                                font.bold: true 
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                TextField {
-                                    id: presetPathField
-                                    text: visualizerView.settings.projectMPresetPath
-                                    placeholderText: qsTr("Default")
-                                    readOnly: true
-                                    Layout.fillWidth: true
-                                    color: palette.text
-                                    background: Rectangle { color: palette.base; border.color: palette.mid }
-                                }
-                                Button {
-                                    text: qsTr("Browse...")
-                                    onClicked: folderDialog.open()
-                                }
-                            }
-                            
-                            Label {
-                                text: qsTr("Note: Changes require restarting the visualizer (toggle off/on).")
-                                color: palette.windowText
-                                font.pixelSize: 12
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-
-                            GridLayout {
-                                columns: 2
-                                columnSpacing: 10
-                                rowSpacing: 10
-                                Layout.fillWidth: true
-
-                                Label { text: qsTr("Texture Size:") }
-                                ComboBox {
-                                    model: [1024, 2048, 4096]
-                                    currentIndex: model.indexOf(visualizerView.settings.projectMTextureSize)
-                                    onCurrentIndexChanged: visualizerView.settings.projectMTextureSize = model[currentIndex]
-                                }
-
-                                Label { text: qsTr("Mesh X:") }
-                                SpinBox {
-                                    from: 16
-                                    to: 256
-                                    value: visualizerView.settings.projectMMeshX
-                                    onValueChanged: visualizerView.settings.projectMMeshX = value
-                                }
-
-                                Label { text: qsTr("Mesh Y:") }
-                                SpinBox {
-                                    from: 12
-                                    to: 192
-                                    value: visualizerView.settings.projectMMeshY
-                                    onValueChanged: visualizerView.settings.projectMMeshY = value
-                                }
-
-                                Label { text: qsTr("FPS:") }
-                                SpinBox {
-                                    from: 15
-                                    to: 60
-                                    value: visualizerView.settings.projectMFPS
-                                    onValueChanged: visualizerView.settings.projectMFPS = value
-                                }
-
-                                Label { text: qsTr("Smooth Preset Duration:") }
-                                SpinBox {
-                                    from: 0
-                                    to: 30
-                                    value: visualizerView.settings.projectMSmoothPresetDuration
-                                    onValueChanged: visualizerView.settings.projectMSmoothPresetDuration = value
-                                }
-
-                                Label { text: qsTr("Preset Duration:") }
-                                SpinBox {
-                                    from: 5
-                                    to: 600
-                                    value: visualizerView.settings.projectMPresetDuration
-                                    onValueChanged: visualizerView.settings.projectMPresetDuration = value
-                                }
-                                
-                                Label { text: qsTr("Beat Sensitivity:") }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Slider {
-                                        Layout.fillWidth: true
-                                        from: 0
-                                        to: 100
-                                        value: visualizerView.settings.projectMBeatSensitivity
-                                        onValueChanged: visualizerView.settings.projectMBeatSensitivity = value
-                                    }
-                                    Label {
-                                        text: visualizerView.settings.projectMBeatSensitivity.toFixed(1)
-                                    }
-                                }
-
-                                CheckBox {
-                                    text: qsTr("Shuffle Enabled")
-                                    checked: visualizerView.settings.projectMShuffleEnabled
-                                    onClicked: visualizerView.settings.projectMShuffleEnabled = checked
-                                    Layout.columnSpan: 2
-                                }
-
-                                CheckBox {
-                                    text: qsTr("Show Bars with ProjectM")
-                                    checked: visualizerView.settings.projectMShowBars
-                                    onClicked: visualizerView.settings.projectMShowBars = checked
-                                    Layout.columnSpan: 2
-                                }
-
-                                Label { 
-                                    text: qsTr("Bar Opacity:") 
-                                    visible: visualizerView.settings.projectMShowBars
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    visible: visualizerView.settings.projectMShowBars
-                                    Slider {
-                                        Layout.fillWidth: true
-                                        from: 0.1
-                                        to: 1.0
-                                        value: visualizerView.settings.projectMBarOpacity
-                                        onValueChanged: visualizerView.settings.projectMBarOpacity = value
-                                    }
-                                    Label { text: visualizerView.settings.projectMBarOpacity.toFixed(1) }
-                                }
-
-                                Label { text: qsTr("Selected Preset:") }
-                                ComboBox {
-                                    id: presetComboBox
-                                    model: visualizerView.presetModel
-                                    currentIndex: -1
-                                    Layout.columnSpan: 2
-                                    width: parent.width
-                                    
-                                    onModelChanged: {
-                                        if (visualizerView.settings.projectMSelectedPreset) {
-                                            var idx = model.indexOf(visualizerView.settings.projectMSelectedPreset)
-                                            if (idx >= 0) currentIndex = idx
-                                        }
-                                    }
-
-                                    onCurrentIndexChanged: {
-                                        if (currentIndex >= 0) {
-                                            visualizerView.settings.projectMSelectedPreset = model[currentIndex]
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    SettingsWindow { id: settingsWindow; lastfmAuthToken: lastfmAuthToken }
 
     Dialog {
         id: removePlaylistDialog
@@ -1289,6 +1063,15 @@ ApplicationWindow {
             } else {
                 console.log("Playlist save failed:", message)
             }
+        }
+    }
+
+    // Connection to handle Last.fm auth token
+    Connections {
+        target: mpdClient.statistics
+        function onLastfmAuthTokenReceived(token, authUrl) {
+            lastfmAuthToken = token;
+            Qt.openUrlExternally(authUrl);
         }
     }
 

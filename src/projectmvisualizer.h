@@ -18,28 +18,28 @@ public:
     ~ProjectMVisualizer() override;
 
     ProjectMVisualizer(const ProjectMVisualizer &) = delete;
-    ProjectMVisualizer &operator=(const ProjectMVisualizer &) = delete;
+    ProjectMVisualizer & operator=(const ProjectMVisualizer &) = delete;
     ProjectMVisualizer(ProjectMVisualizer &&) = delete;
-    ProjectMVisualizer &operator=(ProjectMVisualizer &&) = delete;
+    ProjectMVisualizer & operator=(ProjectMVisualizer &&) = delete;
 
-    auto createRenderer() const -> Renderer * override;
+    Renderer * createRenderer() const override;
 
-    auto active() const -> bool;
+    bool active() const;
     void setActive(bool active);
 
-    auto shuffleEnabled() const -> bool;
+    bool shuffleEnabled() const;
     void setShuffleEnabled(bool enabled);
 
-    auto audioSource() const -> QString;
+    QString audioSource() const;
     void setAudioSource(const QString &source);
 
     // Internal use for Renderer
-    auto takePcmData() -> QByteArray;
-    auto takePresetRequest(bool &hardCut) -> QString;
-    auto takeShuffleRequest(bool &enabled) -> bool;
+    QByteArray takePcmData();
+    QString takePresetRequest(bool &hardCut);
+    bool takeShuffleRequest(bool &enabled);
 
     // Preset management
-    Q_INVOKABLE auto getPresetList(const QString &presetPath) const -> QStringList;
+    Q_INVOKABLE QStringList getPresetList(const QString &presetPath) const;
     Q_INVOKABLE void selectPresetByName(const QString &presetName, bool hardCut = true);
 
 signals:

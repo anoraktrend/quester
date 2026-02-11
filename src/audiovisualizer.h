@@ -7,15 +7,22 @@
 #include <QList>
 #include <QByteArray>
 #include <fftw3.h>
+#include <QtMultimedia/QAudioSource>
+#include <QtMultimedia/QAudioFormat>
+#ifndef __APPLE__
 #include <pulse/pulseaudio.h>
 #include <pulse/simple.h>
 #include <pulse/error.h>
 #include <pulse/thread-mainloop.h>
+#include <pipewire/pipewire.h>
+#include <spa/param/audio/format-utils.h>
+#endif
+#ifdef __APPLE__
+#include <AudioToolbox/AudioToolbox.h>
+#endif
 #include <QMutex>
 #include <QColor>
 #include <QVariantList>
-#include <pipewire/pipewire.h>
-#include <spa/param/audio/format-utils.h>
 #include <thread>
 #include <atomic>
 #include <vector>
@@ -40,6 +47,7 @@ signals:
     void error(const QString &errorString);
 };
 
+#ifndef __APPLE__
 class PulseAudioInput : public AudioInput
 {
     Q_OBJECT
@@ -74,7 +82,9 @@ private:
     
     std::atomic<bool> m_quit{false};
 };
+#endif
 
+#ifndef __APPLE__
 class PipeWireInput : public AudioInput
 {
     Q_OBJECT
@@ -96,6 +106,7 @@ private:
     struct pw_core *m_core = nullptr;
     struct pw_stream *m_stream = nullptr;
 };
+#endif
 
 class FifoInput : public AudioInput
 {
@@ -116,6 +127,26 @@ private:
     std::atomic<bool> m_running;
     std::thread m_thread;
 };
+
+#ifdef __APPLE__
+class CoreAudioInput : public AudioInput
+{
+    Q_OBJECT
+public:
+    explicit CoreAudioInput(QObject *parent = nullptr);
+    ~CoreAudioInput() override;
+    CoreAudioInput(const CoreAudioInput &) = delete;
+    auto operator=(const CoreAudioInput &) -> CoreAudioInput & = delete;
+    CoreAudioInput(CoreAudioInput &&) = delete;
+    auto operator=(CoreAudioInput &&) -> CoreAudioInput & = delete;
+    void start() override;
+    void stop() override;
+
+private:
+    static void audioQueueCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumPackets, const AudioStreamPacketDescription *inPacketDesc);
+    AudioQueueRef m_queue;
+};
+#endif
 
 class AudioVisualizer : public QObject
 {

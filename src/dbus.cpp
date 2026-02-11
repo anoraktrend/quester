@@ -3,37 +3,40 @@
 #include <QDBusMessage>
 #include <QDBusVariant>
 #include <QDBusObjectPath>
+#include <algorithm>
+#include <utility>
 
 const int PLAYLIST_PATH_PREFIX_LENGTH = 34;
 const qint64 MICROSECONDS_PER_SECOND = 1000000;
 const int VOLUME_SCALE = 100;
 
-auto operator<<(QDBusArgument &argument, const MprisPlaylist &playlist) -> QDBusArgument & {
+QDBusArgument & operator<<(QDBusArgument &argument, const MprisPlaylist &playlist) {
     argument.beginStructure();
     argument << playlist.id << playlist.name << playlist.iconUri;
     argument.endStructure();
     return argument;
 }
 
-auto operator>>(QDBusArgument &argument, MprisPlaylist &playlist) -> QDBusArgument & {
-    argument.beginStructure();
-    argument >> playlist.id >> playlist.name >> playlist.iconUri;
-    argument.endStructure();
-    return argument;
-}
-
-auto operator<<(QDBusArgument &argument, const MprisActivePlaylist &ap) -> QDBusArgument & {
+QDBusArgument & operator<<(QDBusArgument &argument, const MprisActivePlaylist &ap) {
     argument.beginStructure();
     argument << ap.valid << ap.playlist;
     argument.endStructure();
     return argument;
 }
 
-auto operator>>(QDBusArgument &argument, MprisActivePlaylist &ap) -> QDBusArgument & {
+const QDBusArgument & operator>>(const QDBusArgument &argument, MprisPlaylist &playlist) {
     argument.beginStructure();
-    argument >> ap.valid >> ap.playlist;
+    argument >> playlist.id >> playlist.name >> playlist.iconUri;
     argument.endStructure();
-    return argument;
+    return argument; // NOLINT
+}
+
+const QDBusArgument & operator>>(const QDBusArgument &argument, MprisActivePlaylist &ap) {
+    argument.beginStructure();
+    argument >> ap.valid;
+    argument >> ap.playlist.id >> ap.playlist.name >> ap.playlist.iconUri;
+    argument.endStructure();
+    return argument; // NOLINT
 }
 
 static auto encodePlaylistId(const QString &name) -> QString {
@@ -86,6 +89,23 @@ DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
         qDebug() << "Successfully registered MPRIS service" << serviceName;
     }
 
+    // Emit initial TrackListReplaced
+    QString currentTrackId = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
+    if (m_mpdClient && m_mpdClient->queueModel()->m_currentSongId != -1) {
+        QList<QueueItem> queue = m_mpdClient->queueModel()->m_queue;
+        int currentIndex = -1;
+        for (int i = 0; i < queue.size(); ++i) {
+            if (queue[i].id == m_mpdClient->queueModel()->m_currentSongId) {
+                currentIndex = i;
+                break;
+            }
+        }
+        if (currentIndex != -1) {
+            currentTrackId = positionToTrackId(currentIndex);
+        }
+    }
+    emit TrackListReplaced(tracks(), QDBusObjectPath(currentTrackId));
+
     // Connect to MPD client signals
     if (mpdClient) {
         connect(mpdClient, &MpdClient::stateChanged, this, &DBusService::broadcastProperties);
@@ -137,6 +157,7 @@ auto DBusService::getMetadataForTrack(const QueueItem &item) const -> QVariantMa
     QString title = item.title;
     QString artist = item.artist;
     QString album = item.album;
+    QString albumArt = m_mpdClient->albumArt();
     qint64 duration = item.duration.toLongLong();
 
     // Only include metadata if we have a valid track
@@ -162,6 +183,11 @@ auto DBusService::getMetadataForTrack(const QueueItem &item) const -> QVariantMa
         metadata["mpris:length"] = static_cast<quint64>(duration * MICROSECONDS_PER_SECOND);
     }
 
+    // Add album art if available
+    if (!albumArt.isEmpty()) { // NOLINT
+        metadata["mpris:artUrl"] = QUrl::fromLocalFile(albumArt).toString(); // NOLINT
+    }
+
     // Add URI
     if (!uri.isEmpty()) {
         metadata["xesam:url"] = uri;
@@ -175,21 +201,28 @@ auto DBusService::metadata() const -> QVariantMap
     if (!m_mpdClient || m_mpdClient->queueModel()->m_queue.isEmpty())
         return {};
 
-    int currentSongId = m_mpdClient->queueModel()->m_currentSongId;
     const auto &queue = m_mpdClient->queueModel()->m_queue;
-    int currentSongIndex = -1;
-    for (int i = 0; i < queue.size(); ++i) {
-        if (queue.at(i).id == currentSongId) {
-            currentSongIndex = i;
-            break;
+
+    // First, try to use currentSongId if available
+    int currentSongId = m_mpdClient->queueModel()->m_currentSongId;
+    for (const auto &item : queue) {
+        if (item.id == currentSongId) {
+            return getMetadataForTrack(item);
         }
     }
 
-    if (currentSongIndex < 0 || currentSongIndex >= queue.size())
-        return {};
+    // Fallback: Match by current title/artist/album
+    QString currentTitle = m_mpdClient->title();
+    QString currentArtist = m_mpdClient->artist();
+    QString currentAlbum = m_mpdClient->album();
 
-    const auto &item = queue.at(currentSongIndex);
-    return getMetadataForTrack(item);
+    for (const auto &item : queue) {
+        if (item.title == currentTitle && item.artist == currentArtist && item.album == currentAlbum) {
+            return getMetadataForTrack(item);
+        }
+    }
+
+    return {};
 }
 
 auto DBusService::volume() const -> double
@@ -314,7 +347,7 @@ void DBusService::seek(double offset)
 {
     if (m_mpdClient) {
         double offset_sec = offset / static_cast<double>(MICROSECONDS_PER_SECOND);
-        double current_pos_sec = static_cast<double>(m_mpdClient->elapsed());
+        auto current_pos_sec = static_cast<double>(m_mpdClient->elapsed());
         double new_pos_sec = current_pos_sec + offset_sec;
 
         // Seek to the new absolute position, not by the offset
@@ -436,6 +469,14 @@ void DBusService::goPrevious()
     previous();
 }
 
+void DBusService::goTo(const QDBusObjectPath &trackId)
+{
+    QString uri = uriFromTrackId(trackId.path());
+    if (!uri.isEmpty()) {
+        m_mpdClient->playTrack(uri);
+    }
+}
+
 auto DBusService::createTrackId(const QString &uri) const -> QString
 {
     if (m_uriToTrackId.contains(uri))
@@ -504,7 +545,7 @@ auto DBusService::activePlaylist() const -> MprisActivePlaylist
 {
     // MPD doesn't have a concept of a persistent "active" playlist object,
     // it just has the current queue.
-    return {false, {QDBusObjectPath("/"), "", ""}};
+    return {.valid=false, .playlist={.id=QDBusObjectPath("/"), .name="", .iconUri=""}};
 }
 
 void DBusService::activatePlaylist(const QDBusObjectPath &playlistId)
@@ -527,17 +568,17 @@ auto DBusService::getPlaylists(quint32 index, quint32 maxCount, const QString &o
         playlists.sort(Qt::CaseInsensitive);
     }
     if (reverseOrder) {
-        std::reverse(playlists.begin(), playlists.end());
+        std::ranges::reverse(playlists);
     }
 
-    if (index >= static_cast<quint32>(playlists.size())) return {};
+    if (std::cmp_greater_equal(index ,playlists.size())) return {};
 
     int count = (maxCount == 0) ? static_cast<int>(playlists.size() - index) : std::min(static_cast<int>(maxCount), static_cast<int>(playlists.size() - index));
     
     QList<MprisPlaylist> result;
     for (int i = 0; i < count; ++i) {
         QString name = playlists[index + i];
-        result.append({QDBusObjectPath(encodePlaylistId(name)), name, ""});
+        result.append({.id=QDBusObjectPath(encodePlaylistId(name)), .name=name, .iconUri=""});
     }
     return result;
 }
@@ -570,12 +611,14 @@ void DBusService::broadcastProperties()
 
 MprisRootAdaptor::MprisRootAdaptor(DBusService *parent) : QDBusAbstractAdaptor(parent), m_service(parent) { setAutoRelaySignals(true); }
 auto MprisRootAdaptor::canQuit() const -> bool { return m_service->canQuit(); }
-auto MprisRootAdaptor::canSetFullscreen() const -> bool { return m_service->canSetFullscreen(); }
 auto MprisRootAdaptor::fullscreen() const -> bool { return m_service->fullscreen(); }
+auto MprisRootAdaptor::canSetFullscreen() const -> bool { return m_service->canSetFullscreen(); }
 auto MprisRootAdaptor::canRaise() const -> bool { return m_service->canRaise(); }
+auto MprisRootAdaptor::hasTrackList() const -> bool { return true; }
 auto MprisRootAdaptor::identity() const -> QString { return m_service->identity(); }
-auto MprisRootAdaptor::supportedUriSchemes() const -> QStringList { return m_service->supportedUriSchemes(); }
-auto MprisRootAdaptor::supportedMimeTypes() const -> QStringList { return m_service->supportedMimeTypes(); }
+auto MprisRootAdaptor::desktopEntry() const -> QString { return "quester"; }
+auto MprisRootAdaptor::supportedUriSchemes() const -> QStringList { return {"file"}; }
+auto MprisRootAdaptor::supportedMimeTypes() const -> QStringList { return {"audio/mpeg", "audio/ogg", "audio/flac", "audio/wav"}; }
 void MprisRootAdaptor::Quit() { m_service->quit(); }
 void MprisRootAdaptor::Raise() { m_service->raise(); }
 
@@ -618,7 +661,6 @@ void MprisPlayerAdaptor::OpenUri(const QString &uri) { m_service->openUri(uri); 
 // --- MprisTrackListAdaptor Implementation ---
 
 MprisTrackListAdaptor::MprisTrackListAdaptor(DBusService *parent) : QDBusAbstractAdaptor(parent), m_service(parent) {
-    setAutoRelaySignals(true);
     connect(parent, &DBusService::TrackListReplaced, this, &MprisTrackListAdaptor::TrackListReplaced);
     connect(parent, &DBusService::TrackAdded, this, &MprisTrackListAdaptor::TrackAdded);
     connect(parent, &DBusService::TrackRemoved, this, &MprisTrackListAdaptor::TrackRemoved);
@@ -641,6 +683,10 @@ void MprisTrackListAdaptor::AddTrack(const QString &uri, const QDBusObjectPath &
 
 void MprisTrackListAdaptor::RemoveTrack(const QDBusObjectPath &trackId) { 
     m_service->removeTrack(trackId); 
+}
+
+void MprisTrackListAdaptor::GoTo(const QDBusObjectPath &trackId) { 
+    m_service->goTo(trackId); 
 }
 
 void MprisTrackListAdaptor::GoNext() { m_service->goNext(); }

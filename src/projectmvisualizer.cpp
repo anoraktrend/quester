@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <memory>
+#include <QDirIterator>
 
 constexpr int DEFAULT_PROJECTM_TEXTURE_SIZE = 2048;
 constexpr int DEFAULT_PROJECTM_MESH_X = 64;
@@ -96,9 +97,9 @@ public:
     ~ProjectMRenderer() override = default;
 
     ProjectMRenderer(const ProjectMRenderer &) = delete;
-    ProjectMRenderer &operator=(const ProjectMRenderer &) = delete;
+    auto operator=(const ProjectMRenderer &) -> ProjectMRenderer & = delete;
     ProjectMRenderer(ProjectMRenderer &&) = delete;
-    ProjectMRenderer &operator=(ProjectMRenderer &&) = delete;
+    auto operator=(ProjectMRenderer &&) -> ProjectMRenderer & = delete;
 
     void render() override {
         if (!m_projectM || m_width <= 0 || m_height <= 0 || !m_running) return;
@@ -140,13 +141,17 @@ public:
         bool hardCut = false;
         QString requestedPreset = viz->takePresetRequest(hardCut);
         if (!requestedPreset.isEmpty()) {
+            qInfo() << "Requested preset:" << requestedPreset;
             try {
                 unsigned int count = m_projectM->getPlaylistSize();
+                qInfo() << "Playlist size:" << count;
                 for (unsigned int i = 0; i < count; ++i) {
                     QString name = QString::fromStdString(m_projectM->getPresetName(i));
-                    if (QFileInfo(name).completeBaseName() == requestedPreset) {
+                    QString baseName = QFileInfo(name).completeBaseName();
+                    qInfo() << "Preset" << i << "name:" << name << "baseName:" << baseName;
+                    if (baseName == requestedPreset) {
                         m_projectM->selectPreset(i, hardCut);
-                        qInfo() << "ProjectM preset selected:" << requestedPreset;
+                        qInfo() << "ProjectM preset selected:" << requestedPreset << "at index" << i;
                         break;
                     }
                 }
@@ -174,8 +179,8 @@ public:
                 }
                 // Fill remainder with 0
                 for (int i = chunk; i < PCM_CHUNK_SIZE; ++i) {
-                    pcm_data[0][i] = 0;
-                    pcm_data[1][i] = 0;
+                    pcm_data[0][i] = 0; // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
+                    pcm_data[1][i] = 0; // NOLINT(cppcoreguidelines-pro-bounds-constant-array-index)
                 }
                 m_projectM->pcm()->addPCM16(pcm_data); // NOLINT(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
                 processed += chunk;
@@ -351,11 +356,11 @@ auto ProjectMVisualizer::getPresetList(const QString &presetPath) const -> QStri
     }
     
     if (dir.exists()) {
-        // Get all .milk and .prjm files
-        QFileInfoList files = dir.entryInfoList(QStringList() << "*.milk" << "*.prjm", QDir::Files);
-        
-        for (const QFileInfo &file : files) {
-            QString name = file.completeBaseName();
+        // Use QDirIterator to scan recursively
+        QDirIterator it(dir.path(), QStringList() << "*.milk" << "*.prjm", QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            QString name = it.fileInfo().completeBaseName();
             if (!name.isEmpty()) {
                 presets << name;
             }

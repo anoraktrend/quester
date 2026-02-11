@@ -277,7 +277,7 @@ auto main(int argc, char *argv[]) -> int
         signal(SIGBUS, crashHandler);
     }
 
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() -> void {
         QMutexLocker locker(&g_logMutex);
         if (g_logFile) {
             QString oldName = g_logFile->fileName();
@@ -339,9 +339,9 @@ auto main(int argc, char *argv[]) -> int
     QLocalServer singleInstanceServer;
     QLocalServer::removeServer(serverName); // Clean up stale socket
     if (singleInstanceServer.listen(serverName)) {
-        QObject::connect(&singleInstanceServer, &QLocalServer::newConnection, &mpdClient, [&singleInstanceServer, &mpdClient]() {
+        QObject::connect(&singleInstanceServer, &QLocalServer::newConnection, &mpdClient, [&singleInstanceServer, &mpdClient]() -> void {
             QLocalSocket *clientConnection = singleInstanceServer.nextPendingConnection();
-            QObject::connect(clientConnection, &QLocalSocket::readyRead, [clientConnection, &mpdClient]() {
+            QObject::connect(clientConnection, &QLocalSocket::readyRead, [clientConnection, &mpdClient]() -> void {
                 QByteArray data = clientConnection->readAll();
                 if (data.startsWith("ACTIVATE")) {
                     if (auto *win = mpdClient.window()) {
@@ -413,7 +413,7 @@ const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
         },
         Qt::QueuedConnection);
 
-    QObject::connect(&mpdClient, &MpdClient::audioSourceChanged, &audioVisualizer, [&mpdClient, &audioVisualizer]() {
+    QObject::connect(&mpdClient, &MpdClient::audioSourceChanged, &audioVisualizer, [&mpdClient, &audioVisualizer]() -> void {
         audioVisualizer.setAudioSource(mpdClient.audioSource());
     });
 

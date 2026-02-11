@@ -20,9 +20,10 @@ ToolBar {
     signal requestRefresh()
     signal toggleProjectM()
     signal setViewMode(string mode)
-    signal requestBrowser()
+    signal requestAddAllToQueue()
     signal requestPlaylists()
     signal requestWrapped()
+    signal toggleSelectionMode()
 
     background: Rectangle {
         gradient: Gradient {
@@ -68,6 +69,21 @@ ToolBar {
             font.bold: true
             font.pixelSize: 16 * root.fontScale
             Layout.fillWidth: true
+        }
+
+        ToolButton {
+            text: qsTr("Add All")
+            onClicked: root.requestAddAllToQueue()
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Add all library to queue")
+        }
+
+        ToolButton {
+            text: qsTr("Select")
+            visible: root.viewMode === "grid"
+            onClicked: root.toggleSelectionMode()
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Toggle multi-select mode")
         }
 
         ToolButton {
@@ -126,11 +142,6 @@ ToolBar {
                     onClicked: root.requestLibrary()
                 }
 
-                MenuItem {
-                    text: qsTr("Refresh Library")
-                    onTriggered: root.requestRefresh()
-                }
-
                 MenuSeparator {
                     visible: root.viewState === "visualizerView"
                     height: visible ? implicitHeight : 0
@@ -157,13 +168,22 @@ ToolBar {
                     }
                 }
                 RadioButton {
+                    text: qsTr("Artists")
+                    height: visible ? implicitHeight : 0
+                    visible: root.viewState === "libraryView"
+                    checked: root.viewMode === "artists"
+                    onClicked: {
+                        root.setViewMode("artists")
+                        appMenu.close()
+                    }
+                }
+                RadioButton {
                     text: qsTr("Browser")
                     height: visible ? implicitHeight : 0
                     visible: root.viewState === "libraryView"
                     checked: root.viewMode === "browser"
                     onClicked: {
                         root.setViewMode("browser")
-                        root.requestBrowser()
                         appMenu.close()
                     }
                 }

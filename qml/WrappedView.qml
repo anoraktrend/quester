@@ -7,6 +7,7 @@ import Quester 1.0
 Item {
     id: root
     property int timePeriod: 0 // 0: Weekly, 1: Monthly, 2: Yearly, 3: All Time
+    property var statistics
 
     property var stats: {
         if (timePeriod === 0) return mpdClient.weeklyStats
@@ -180,7 +181,7 @@ Item {
             // Show generated image path if available
             Label {
                 text: wrappedImagePath ? qsTr("Saved to: ") + wrappedImagePath : ""
-                color: palette.link
+                color: palette.highlight
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -202,9 +203,9 @@ Item {
                 font.pixelSize: 16
                 font.bold: true
                 color: palette.highlight
-                visible: statistics.externalActivityData && 
-                         statistics.externalActivityData.listenbrainz &&
-                         statistics.externalActivityData.listenbrainz.lb_top_artists
+                visible: !!(statistics.externalActivityData && 
+                            statistics.externalActivityData.listenbrainz &&
+                            statistics.externalActivityData.listenbrainz.lb_top_artists)
             }
 
             Repeater {
@@ -248,9 +249,9 @@ Item {
                 font.bold: true
                 color: palette.highlight
                 Layout.topMargin: 10
-                visible: statistics.externalActivityData && 
+                visible: !!(statistics.externalActivityData && 
                          statistics.externalActivityData.lastfm &&
-                         statistics.externalActivityData.lastfm.top_tracks
+                         statistics.externalActivityData.lastfm.top_tracks)
             }
 
             Repeater {

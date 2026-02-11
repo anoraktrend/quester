@@ -7,7 +7,7 @@
 #include <QMutex>
 #include <QFuture>
 #include <QNetworkAccessManager>
-
+const int FIFTY = 50;
 class StatisticsManager : public QObject
 {
     Q_OBJECT
@@ -15,17 +15,22 @@ public:
     explicit StatisticsManager(QObject *parent = nullptr);
     ~StatisticsManager() override;
 
+    StatisticsManager(const StatisticsManager&) = delete;
+    StatisticsManager& operator=(const StatisticsManager&) = delete;
+    StatisticsManager(StatisticsManager&&) = delete;
+    StatisticsManager& operator=(StatisticsManager&&) = delete;
+
     void setListenBrainzCredentials(const QString &token, const QString &username);
     void logPlay(const QString &artist, const QString &title, const QString &album, const QString &uri, qint64 durationMs);
     void submitPlayingNow(const QString &artist, const QString &title, const QString &album, qint64 durationMs);
     Q_INVOKABLE void validateListenBrainzCredentials();
 
-    Q_INVOKABLE auto getWeeklyStats() -> QVariantMap;
-    Q_INVOKABLE auto getMonthlyStats() -> QVariantMap;
-    Q_INVOKABLE auto getYearlyStats() -> QVariantMap;
-    Q_INVOKABLE auto getAllTimeStats() -> QVariantMap;
-    Q_INVOKABLE auto generateWrappedImage(const QString &period) -> QString;
-    Q_INVOKABLE auto getMostPlayedUris(int limit = 50) -> QList<QString>;
+    Q_INVOKABLE QVariantMap getWeeklyStats();
+    Q_INVOKABLE QVariantMap getMonthlyStats();
+    Q_INVOKABLE QVariantMap getYearlyStats();
+    Q_INVOKABLE QVariantMap getAllTimeStats();
+    Q_INVOKABLE QString generateWrappedImage(const QString &period);
+    Q_INVOKABLE QList<QString> getMostPlayedUris(int limit = FIFTY);
     Q_INVOKABLE void fetchExternalActivityData(const QString &period);
 
     // Playlist functions
@@ -36,6 +41,8 @@ public:
     // Last.fm scrobbling - public API
     Q_INVOKABLE void setLastfmCredentials(const QString &apiKey, const QString &secret, const QString &sessionKey);
     Q_INVOKABLE void validateLastfmCredentials();
+    Q_INVOKABLE void startLastfmAuth();
+    Q_INVOKABLE void completeLastfmAuth(const QString &token);
     
     // QML properties
     Q_PROPERTY(bool lastfmCredentialsValid READ lastfmCredentialsValid NOTIFY lastfmCredentialsValidChanged)
@@ -71,9 +78,9 @@ signals:
 private:
     void initDb();
     void checkAutomaticWrapped();
-    auto getStatsForPeriod(qint64 startTime) -> QVariantMap;
-    auto getCachePath(const QString &artist, const QString &album) -> QString;
-    auto getActivityGraphData(const QString &period, int &outMax) -> QList<int>;
+    QVariantMap getStatsForPeriod(qint64 startTime);
+    QString getCachePath(const QString &artist, const QString &album);
+    QList<int> getActivityGraphData(const QString &period, int &outMax);
     void sendListenBrainzRequest(const QString &listenType, const QVariantMap &payload);
     void setCredentialsValid(bool valid) { 
         if (m_credentialsValid != valid) {
@@ -93,10 +100,10 @@ private:
     void sendLastfmRequest(const QString &method, const QMap<QString, QString> &params);
     void scrobbleToLastfmInternal(const QString &artist, const QString &title, const QString &album, qint64 timestamp);
     void submitLastfmNowPlayingInternal(const QString &artist, const QString &title, const QString &album);
-    auto getLastfmAuthUrl(const QString &token) -> QString;
+    QString getLastfmAuthUrl(const QString &token);
     void getLastfmToken();
     void getLastfmSessionKey(const QString &token);
-    static auto generateLastfmSignature(const QMap<QString, QString> &params) -> QString;
+    static QString generateLastfmSignature(const QMap<QString, QString> &params);
 
     // External activity data
     void fetchListenBrainzStats(const QString &period);
@@ -120,6 +127,7 @@ private:
     bool m_lastfmCredentialsValid = false;
     QString m_lastfmUsername;
     int m_pendingScrobbles = 0;
+    QString m_pendingLastfmToken;
 };
 
 #endif // STATISTICS_H

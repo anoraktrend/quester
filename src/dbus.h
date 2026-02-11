@@ -13,6 +13,7 @@
 #include <QVariantList>
 #include <QtDBus>
 #include <QtCore>
+
 #include "quester.h"
 
 struct MprisPlaylist {
@@ -28,10 +29,10 @@ struct MprisActivePlaylist {
 };
 Q_DECLARE_METATYPE(MprisActivePlaylist)
 
-auto operator<<(QDBusArgument &argument, const MprisPlaylist &playlist) -> QDBusArgument &;
-auto operator>>(const QDBusArgument &argument, MprisPlaylist &playlist) -> const QDBusArgument &;
-auto operator<<(QDBusArgument &argument, const MprisActivePlaylist &ap) -> QDBusArgument &;
-auto operator>>(const QDBusArgument &argument, MprisActivePlaylist &ap) -> const QDBusArgument &;
+QDBusArgument & operator<<(QDBusArgument &argument, const MprisPlaylist &playlist);
+const QDBusArgument & operator>>(const QDBusArgument &argument, MprisPlaylist &playlist);
+QDBusArgument & operator<<(QDBusArgument &argument, const MprisActivePlaylist &ap);
+const QDBusArgument & operator>>(const QDBusArgument &argument, MprisActivePlaylist &ap);
 
 class DBusService : public QObject
 {
@@ -41,37 +42,42 @@ public:
     explicit DBusService(MpdClient *mpdClient, QObject *parent = nullptr);
     ~DBusService() override;
 
+    DBusService(const DBusService&) = delete;
+    DBusService& operator=(const DBusService&) = delete;
+    DBusService(DBusService&&) = delete;
+    DBusService& operator=(DBusService&&) = delete;
+
     // Helper methods for Adaptors
-    auto canQuit() const -> bool { return true; }
-    auto canSetFullscreen() const -> bool { return false; }
-    auto fullscreen() const -> bool { return false; }
-    auto canRaise() const -> bool { return true; }
-    auto identity() const -> QString { return "Quester"; }
-    auto supportedUriSchemes() const -> QStringList { return {"file"}; }
-    auto supportedMimeTypes() const -> QStringList { return {"audio/mpeg", "audio/ogg", "audio/flac"}; }
+    bool canQuit() const { return true; }
+    bool canSetFullscreen() const { return false; }
+    bool fullscreen() const { return false; }
+    bool canRaise() const { return true; }
+    QString identity() const { return "Quester"; }
+    QStringList supportedUriSchemes() const { return {"file"}; }
+    QStringList supportedMimeTypes() const { return {"audio/mpeg", "audio/ogg", "audio/flac"}; }
 
     // Logic implementation
     void quit();
     void raise();
-    auto canGoNext() const -> bool;
-    auto canGoPrevious() const -> bool;
-    auto canPlay() const -> bool;
-    auto canPause() const -> bool;
-    auto canSeek() const -> bool { return true; }
-    auto canControl() const -> bool { return true; }
-    auto rate() const -> double { return 1.0; }
+    bool canGoNext() const;
+    bool canGoPrevious() const;
+    bool canPlay() const;
+    bool canPause() const;
+    bool canSeek() const { return true; }
+    bool canControl() const { return true; }
+    double rate() const { return 1.0; }
     void setRate(double rate);
-    auto minimumRate() const -> double { return 1.0; }
-    auto maximumRate() const -> double { return 1.0; }
-    auto shuffle() const -> bool { return m_mpdClient->random(); }
+    double minimumRate() const { return 1.0; }
+    double maximumRate() const { return 1.0; }
+    bool shuffle() const { return m_mpdClient->random(); }
     void setShuffle(bool shuffle);
-    auto loopStatus() const -> QString;
+    QString loopStatus() const;
     void setLoopStatus(const QString &status);
-    auto metadata() const -> QVariantMap;
-    auto volume() const -> double;
+    QVariantMap metadata() const;
+    double volume() const;
     void setVolume(double volume);
-    auto position() const -> qlonglong;
-    auto playbackStatus() const -> QString;
+    qlonglong position() const;
+    QString playbackStatus() const;
 
     void next();
     void previous();
@@ -84,20 +90,21 @@ public:
     void openUri(const QString &uri);
 
     // Track List interface methods
-    auto tracks() const -> QList<QDBusObjectPath>;
-    auto canEditTracks() const -> bool { return true; }
-    auto getTracksMetadata(const QList<QDBusObjectPath> &trackIds) const -> QList<QVariantMap>;
+    QList<QDBusObjectPath> tracks() const;
+    bool canEditTracks() const { return true; }
+    QList<QVariantMap> getTracksMetadata(const QList<QDBusObjectPath> &trackIds) const;
     void addTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent);
     void removeTrack(const QDBusObjectPath &trackId);
     void goNext();
     void goPrevious();
+    void goTo(const QDBusObjectPath &trackId);
 
     // Playlists interface methods
-    auto playlistCount() const -> quint32;
-    auto orderings() const -> QStringList;
-    auto activePlaylist() const -> MprisActivePlaylist;
+    quint32 playlistCount() const;
+    QStringList orderings() const;
+    MprisActivePlaylist activePlaylist() const;
     void activatePlaylist(const QDBusObjectPath &playlistId);
-    auto getPlaylists(quint32 index, quint32 maxCount, const QString &order, bool reverseOrder) -> QList<MprisPlaylist>;
+    QList<MprisPlaylist> getPlaylists(quint32 index, quint32 maxCount, const QString &order, bool reverseOrder);
 
 signals:
     void seeked(qlonglong position);
@@ -130,19 +137,23 @@ class MprisRootAdaptor : public QDBusAbstractAdaptor
     Q_PROPERTY(bool CanSetFullscreen READ canSetFullscreen)
     Q_PROPERTY(bool Fullscreen READ fullscreen)
     Q_PROPERTY(bool CanRaise READ canRaise)
+    Q_PROPERTY(bool HasTrackList READ hasTrackList)
     Q_PROPERTY(QString Identity READ identity)
+    Q_PROPERTY(QString DesktopEntry READ desktopEntry)
     Q_PROPERTY(QStringList SupportedUriSchemes READ supportedUriSchemes)
     Q_PROPERTY(QStringList SupportedMimeTypes READ supportedMimeTypes)
 
 public:
     explicit MprisRootAdaptor(DBusService *parent);
-    [[nodiscard]] auto canQuit() const -> bool;
-    [[nodiscard]] auto canSetFullscreen() const -> bool;
-    [[nodiscard]] auto fullscreen() const -> bool;
-    [[nodiscard]] auto canRaise() const -> bool;
-    [[nodiscard]] auto identity() const -> QString;
-    [[nodiscard]] auto supportedUriSchemes() const -> QStringList;
-    [[nodiscard]] auto supportedMimeTypes() const -> QStringList;
+    [[nodiscard]] bool canQuit() const;
+    [[nodiscard]] bool canSetFullscreen() const;
+    [[nodiscard]] bool fullscreen() const;
+    [[nodiscard]] bool canRaise() const;
+    [[nodiscard]] bool hasTrackList() const;
+    [[nodiscard]] QString identity() const;
+    [[nodiscard]] QString desktopEntry() const;
+    [[nodiscard]] QStringList supportedUriSchemes() const;
+    [[nodiscard]] QStringList supportedMimeTypes() const;
 
 public slots:
     void Quit();
@@ -174,25 +185,25 @@ class MprisPlayerAdaptor : public QDBusAbstractAdaptor
 
 public:
     explicit MprisPlayerAdaptor(DBusService *parent);
-    [[nodiscard]] auto canGoNext() const -> bool;
-    [[nodiscard]] auto canGoPrevious() const -> bool;
-    [[nodiscard]] auto canPlay() const -> bool;
-    [[nodiscard]] auto canPause() const -> bool;
-    [[nodiscard]] auto canSeek() const -> bool;
-    [[nodiscard]] auto canControl() const -> bool;
-    [[nodiscard]] auto rate() const -> double;
+    [[nodiscard]] bool canGoNext() const;
+    [[nodiscard]] bool canGoPrevious() const;
+    [[nodiscard]] bool canPlay() const;
+    [[nodiscard]] bool canPause() const;
+    [[nodiscard]] bool canSeek() const;
+    [[nodiscard]] bool canControl() const;
+    [[nodiscard]] double rate() const;
     void setRate(double rate);
-    [[nodiscard]] auto minimumRate() const -> double;
-    [[nodiscard]] auto maximumRate() const -> double;
-    [[nodiscard]] auto shuffle() const -> bool;
+    [[nodiscard]] double minimumRate() const;
+    [[nodiscard]] double maximumRate() const;
+    [[nodiscard]] bool shuffle() const;
     void setShuffle(bool shuffle);
-    [[nodiscard]] auto loopStatus() const -> QString;
+    [[nodiscard]] QString loopStatus() const;
     void setLoopStatus(const QString &status);
-    [[nodiscard]] auto metadata() const -> QVariantMap;
-    [[nodiscard]] auto volume() const -> double;
+    [[nodiscard]] QVariantMap metadata() const;
+    [[nodiscard]] double volume() const;
     void setVolume(double volume);
-    [[nodiscard]] auto position() const -> qlonglong;
-    [[nodiscard]] auto playbackStatus() const -> QString;
+    [[nodiscard]] qlonglong position() const;
+    [[nodiscard]] QString playbackStatus() const;
 
 public slots:
     void Next();
@@ -221,15 +232,16 @@ class MprisTrackListAdaptor : public QDBusAbstractAdaptor
 
 public:
     explicit MprisTrackListAdaptor(DBusService *parent);
-    [[nodiscard]] auto tracks() const -> QList<QDBusObjectPath>;
-    [[nodiscard]] auto canEditTracks() const -> bool;
+    [[nodiscard]] QList<QDBusObjectPath> tracks() const;
+    [[nodiscard]] bool canEditTracks() const;
 
 public slots:
-    auto GetTracksMetadata(const QList<QDBusObjectPath> &trackIds) -> QList<QVariantMap>;
+    QList<QVariantMap> GetTracksMetadata(const QList<QDBusObjectPath> &trackIds);
     void AddTrack(const QString &uri, const QDBusObjectPath &afterTrack, bool setAsCurrent);
     void RemoveTrack(const QDBusObjectPath &trackId);
     void GoNext();
     void GoPrevious();
+    void GoTo(const QDBusObjectPath &trackId);
 
 signals:
     void TrackListReplaced(const QList<QDBusObjectPath> &tracks, const QDBusObjectPath &currentTrack);
@@ -251,13 +263,13 @@ class MprisPlaylistsAdaptor : public QDBusAbstractAdaptor
 
 public:
     explicit MprisPlaylistsAdaptor(DBusService *parent);
-    [[nodiscard]] auto playlistCount() const -> quint32;
-    [[nodiscard]] auto orderings() const -> QStringList;
-    [[nodiscard]] auto activePlaylist() const -> MprisActivePlaylist;
+    [[nodiscard]] quint32 playlistCount() const;
+    [[nodiscard]] QStringList orderings() const;
+    [[nodiscard]] MprisActivePlaylist activePlaylist() const;
 
 public slots:
     void ActivatePlaylist(const QDBusObjectPath &PlaylistId);
-    auto GetPlaylists(quint32 Index, quint32 MaxCount, const QString &Order, bool ReverseOrder) -> QList<MprisPlaylist>;
+    QList<MprisPlaylist> GetPlaylists(quint32 Index, quint32 MaxCount, const QString &Order, bool ReverseOrder);
 
 signals:
     void PlaylistChanged(const MprisPlaylist &Playlist);

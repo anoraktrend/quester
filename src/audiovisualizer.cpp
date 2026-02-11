@@ -493,7 +493,11 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
     m_topDown = settings.value(QStringLiteral("visualizerTopDown"), false).toBool();
+#ifdef __APPLE__
+    m_audioSource = settings.value(QStringLiteral("audioSource"), QStringLiteral("coreaudio")).toString();
+#else
     m_audioSource = settings.value(QStringLiteral("audioSource"), QStringLiteral("pipewire")).toString();
+#endif
     QString saved = settings.value(QStringLiteral("visualizerPreset"), QStringLiteral("System")).toString();
     if (m_presets.contains(saved)) {
         m_currentPresetName = saved;
@@ -610,12 +614,20 @@ void AudioVisualizer::start()
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
 
     if (m_audioSource == QStringLiteral("pipewire")) {
+#ifndef __APPLE__
         m_input = new PipeWireInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+#endif
     } else if (m_audioSource == QStringLiteral("fifo")) {
         QString path = settings.value("fifoPath", QStringLiteral("/tmp/mpd.fifo")).toString();
         m_input = new FifoInput(path, this); // NOLINT(cppcoreguidelines-owning-memory)
+    } else if (m_audioSource == QStringLiteral("coreaudio")) {
+#ifdef __APPLE__
+        m_input = new CoreAudioInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+#endif
     } else {
+#ifndef __APPLE__
         m_input = new PulseAudioInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+#endif
     }
 
     connect(
@@ -753,7 +765,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         bars[i] *= h;
     }
 
-    monstercat_filter(bars, {0, MONSTERCAT_FACTOR, (int)h});
+    monstercat_filter(bars, {.waves=0, .monstercat=MONSTERCAT_FACTOR, .height=(int)h});
 
     for (int i = 0; i < m_numBars; i++) {
         bars[i] /= h;
@@ -890,12 +902,12 @@ void AudioVisualizer::loadPresets()
 
     // Generic Data (e.g. /usr/share)
     QStringList dataLocs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
-    std::reverse(dataLocs.begin(), dataLocs.end());
+    std::ranges::reverse(dataLocs);
     locations << dataLocs;
 
     // Config (e.g. /etc/xdg, ~/.config)
     QStringList configLocs = QStandardPaths::standardLocations(QStandardPaths::ConfigLocation);
-    std::reverse(configLocs.begin(), configLocs.end());
+    std::ranges::reverse(configLocs);
     locations << configLocs;
 
     for (const QString &location : locations) {
@@ -1043,10 +1055,70 @@ void AudioVisualizer::computeBarRanges()
             int endIndex = (int) end;
             if (endIndex <= startIndex) endIndex = startIndex + 1;
             if (endIndex > numBins) endIndex = numBins;
-            ranges.append({startIndex, endIndex});
+            ranges.append({.startIndex=startIndex, .endIndex=endIndex});
         }
     };
 
     computeRanges(m_leftBarRanges, leftBarsCount);
     computeRanges(m_rightBarRanges, rightBarsCount);
 }
+
+#ifdef __APPLE__
+CoreAudioInput::CoreAudioInput(QObject *parent) : AudioInput(parent), m_queue(nullptr)
+{
+    AudioStreamBasicDescription format = {0};
+    format.mSampleRate = 44100.0;
+    format.mFormatID = kAudioFormatLinearPCM;
+    format.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+    format.mBitsPerChannel = 16;
+    format.mChannelsPerFrame = 2;
+    format.mBytesPerFrame = 4;
+    format.mFramesPerPacket = 1;
+    format.mBytesPerPacket = 4;
+    format.mReserved = 0;
+
+    OSStatus status = AudioQueueNewInput(&format, audioQueueCallback, this, nullptr, nullptr, 0, &m_queue);
+    if (status != noErr) {
+        qWarning() << "Failed to create audio queue";
+        return;
+    }
+
+    // Allocate buffers
+    for (int i = 0; i < 3; ++i) {
+        AudioQueueBufferRef buffer;
+        AudioQueueAllocateBuffer(m_queue, 4096, &buffer);
+        AudioQueueEnqueueBuffer(m_queue, buffer, 0, nullptr);
+    }
+}
+
+CoreAudioInput::~CoreAudioInput()
+{
+    if (m_queue) {
+        AudioQueueDispose(m_queue, true);
+    }
+}
+
+void CoreAudioInput::start()
+{
+    if (m_queue) {
+        AudioQueueStart(m_queue, nullptr);
+    }
+}
+
+void CoreAudioInput::stop()
+{
+    if (m_queue) {
+        AudioQueueStop(m_queue, true);
+    }
+}
+
+void CoreAudioInput::audioQueueCallback(void *inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer, const AudioTimeStamp *inStartTime, UInt32 inNumPackets, const AudioStreamPacketDescription *inPacketDesc)
+{
+    CoreAudioInput *self = static_cast<CoreAudioInput *>(inUserData);
+    if (inNumPackets > 0) {
+        QByteArray data(reinterpret_cast<char *>(inBuffer->mAudioData), inBuffer->mAudioDataByteSize);
+        emit self->dataReady(data);
+    }
+    AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, nullptr);
+}
+#endif

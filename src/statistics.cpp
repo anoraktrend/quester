@@ -13,11 +13,30 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QThread>
 #include <QNetworkAccessManager>
+#include <QXmlStreamReader>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <algorithm>
+
+#include <ws.h>
+#include <Auth.h>
+#include <Audioscrobbler.h>
+
+// Define the extern constants for liblastfm
+namespace lastfm {
+namespace ws {
+const char* ApiKey = "5b184bbfb5f3d1ac3a4955a6676d7dc3";
+const char* SharedSecret = "cc7e582cd3e1f5e79c0e9098fbc019ff";
+}
+}
+
+const QString LASTFM_API_KEY = "5b184bbfb5f3d1ac3a4955a6676d7dc3";
+const QString LASTFM_SECRET = "cc7e582cd3e1f5e79c0e9098fbc019ff";
 
 StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent), m_nam(new QNetworkAccessManager(this))
 {
@@ -26,6 +45,24 @@ StatisticsManager::StatisticsManager(QObject *parent) : QObject(parent), m_nam(n
     
     // Validate existing credentials at startup if both token and username exist
     QTimer::singleShot(1000, this, &StatisticsManager::validateListenBrainzCredentials);
+    QTimer::singleShot(1000, this, &StatisticsManager::validateLastfmCredentials);
+
+    // Set built-in Last.fm credentials
+    m_lastfmApiKey = LASTFM_API_KEY;
+    m_lastfmSecret = LASTFM_SECRET;
+    QSettings settings("Quester", "Quester");
+    QString sessionKey = settings.value("lastfmSessionKey").toString();
+    if (!sessionKey.isEmpty()) {
+        m_lastfmSessionKey = sessionKey;
+    }
+
+    if (!m_lastfmSessionKey.isEmpty()) {
+        lastfm::ws::SessionKey = m_lastfmSessionKey;
+        lastfm::setNetworkAccessManager(m_nam);
+        qDebug() << "[Last.fm] Loaded existing session key";
+    } else {
+        qDebug() << "[Last.fm] No existing session key found";
+    }
 }
 
 StatisticsManager::~StatisticsManager()
@@ -101,6 +138,19 @@ void StatisticsManager::logPlay(const QString &artist, const QString &title, con
         payload["listened_at"] = QDateTime::currentSecsSinceEpoch();
         
         sendListenBrainzRequest("single", payload);
+    }
+
+    // Submit to Last.fm (Now Playing)
+    if (!m_lastfmSessionKey.isEmpty()) {
+        qDebug() << "[Last.fm] Scrobbling now playing:" << artist << "-" << title << "(" << album << ")";
+        lastfm::Audioscrobbler scrobbler( "Quester" );
+        lastfm::MutableTrack track;
+        track.setArtist( artist );
+        track.setTitle( title );
+        track.setAlbum( album );
+        scrobbler.nowPlaying( track );
+    } else {
+        qDebug() << "[Last.fm] No session key, skipping scrobble";
     }
 
     // Log to Local DB (Worker Thread)
@@ -400,9 +450,9 @@ void StatisticsManager::checkAutomaticWrapped()
         }
     };
 
-    check("weekly", "lastWeeklyWrapped", 7 * 24 * 3600, [this]( -> QVariantMap){ return getWeeklyStats(); });
-    check("monthly", "lastMonthlyWrapped", 30 * 24 * 3600, [this]( -> QVariantMap){ return getMonthlyStats(); });
-    check("yearly", "lastYearlyWrapped", 365 * 24 * 3600, [this]( -> QVariantMap){ return getYearlyStats(); });
+    check("weekly", "lastWeeklyWrapped", 7 * 24 * 3600, [this]() -> QVariantMap { return getWeeklyStats(); });
+    check("monthly", "lastMonthlyWrapped", 30 * 24 * 3600, [this]() -> QVariantMap { return getMonthlyStats(); });
+    check("yearly", "lastYearlyWrapped", 365 * 24 * 3600, [this]() -> QVariantMap { return getYearlyStats(); });
 }
 
 auto StatisticsManager::getActivityGraphData(const QString &period, int &outMax) -> QList<int>
@@ -730,7 +780,7 @@ auto StatisticsManager::generateLastfmSignature(const QMap<QString, QString> &pa
 {
     QString signature;
     QList<QString> keys = params.keys();
-    std::sort(keys.begin(), keys.end());
+    std::ranges::sort(keys);
     for (const QString &key : keys) {
         signature += key + params.value(key);
     }
@@ -762,7 +812,7 @@ void StatisticsManager::sendLastfmRequest(const QString &method, const QMap<QStr
     
     QString signature;
     QList<QString> keys = sigParams.keys();
-    std::sort(keys.begin(), keys.end());
+    std::ranges::sort(keys);
     for (const QString &key : keys) {
         signature += key + sigParams.value(key);
     }
@@ -820,66 +870,13 @@ void StatisticsManager::submitLastfmNowPlayingInternal(const QString &artist, co
 
 void StatisticsManager::validateLastfmCredentials()
 {
-    if (m_lastfmSessionKey.isEmpty() || m_lastfmApiKey.isEmpty()) {
-        m_lastfmCredentialsValid = false;
-        emit lastfmCredentialsValidChanged(false);
-        return;
-    }
-    
-    QUrl url("https://ws.audioscrobbler.com/2.0/");
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    
-    QMap<QString, QString> postParams;
-    postParams["method"] = "user.getInfo";
-    postParams["api_key"] = m_lastfmApiKey;
-    postParams["sk"] = m_lastfmSessionKey;
-    
-    QString signature;
-    QList<QString> keys = {"api_key", "method", "sk"};
-    for (const QString &key : keys) {
-        signature += key + postParams.value(key);
-    }
-    signature += m_lastfmSecret;
-    postParams["api_sig"] = QCryptographicHash::hash(signature.toUtf8(), QCryptographicHash::Md5).toHex();
-    
-    QString postData;
-    for (auto it = postParams.begin(); it != postParams.end(); ++it) {
-        if (!postData.isEmpty()) postData += "&";
-        postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
-    }
-    
-    QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
-        reply->deleteLater();
-        QByteArray response = reply->readAll();
-        
-        if (reply->error() == QNetworkReply::NoError) {
-            QJsonParseError error;
-            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
-            if (error.error == QJsonParseError::NoError && doc.isObject()) {
-                QJsonObject userObj = doc.object()["user"].toObject();
-                m_lastfmUsername = userObj["name"].toString();
-                
-                if (!m_lastfmUsername.isEmpty()) {
-                    m_lastfmCredentialsValid = true;
-                    emit lastfmUsernameChanged();
-                    emit lastfmCredentialsValidChanged(true);
-                    qDebug() << "[Last.fm] Valid credentials for user:" << m_lastfmUsername;
-                    return;
-                }
-            }
-        }
-        
-        m_lastfmCredentialsValid = false;
-        emit lastfmCredentialsValidChanged(false);
-        qWarning() << "[Last.fm] Invalid credentials";
-    });
+    m_lastfmCredentialsValid = !m_lastfmSessionKey.isEmpty();
+    emit lastfmCredentialsValidChanged(m_lastfmCredentialsValid);
 }
 
 auto StatisticsManager::getLastfmAuthUrl(const QString &token) -> QString
 {
-    return QString("http://www.last.fm/api/auth/?api_key=%1&token=%2")
+    return QString("https://www.last.fm/api/auth/?api_key=%1&token=%2")
         .arg(m_lastfmApiKey).arg(token);
 }
 
@@ -909,23 +906,74 @@ void StatisticsManager::getLastfmToken()
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
+    qDebug() << "[Last.fm] Requesting auth token from Last.fm";
+    
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
         QByteArray response = reply->readAll();
+        qDebug() << "[Last.fm] Auth token response:" << QString::fromLatin1(response);
         
         if (reply->error() == QNetworkReply::NoError) {
-            QJsonParseError error;
-            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
-            if (error.error == QJsonParseError::NoError && doc.isObject()) {
-                QJsonObject tokenObj = doc.object()["token"].toObject();
-                QString token = tokenObj["token"].toString();
-                
-                if (!token.isEmpty()) {
-                    qDebug() << "[Last.fm] Got token:" << token;
-                    emit lastfmAuthTokenReceived(token, getLastfmAuthUrl(token));
+
+            QXmlStreamReader reader(response);
+
+            QString token;
+
+            bool statusOk = false;
+
+            while (!reader.atEnd()) {
+
+                reader.readNext();
+
+                if (reader.isStartElement()) {
+
+                    if (reader.name() == "lfm") {
+
+                        if (reader.attributes().value("status") == "ok") {
+
+                            statusOk = true;
+
+                        }
+
+                    } else if (reader.name() == "token" && statusOk) {
+
+                        token = reader.readElementText();
+
+                        break;
+
+                    }
+
                 }
+
             }
+
+            if (reader.hasError()) {
+
+                qWarning() << "[Last.fm] Failed to parse XML token response:" << reader.errorString();
+
+            } else if (statusOk && !token.isEmpty()) {
+
+                qDebug() << "[Last.fm] Got token:" << token;
+
+                QString authUrl = getLastfmAuthUrl(token);
+
+                qDebug() << "[Last.fm] Opening auth URL:" << authUrl;
+
+                emit lastfmAuthTokenReceived(token, authUrl);
+
+                QDesktopServices::openUrl(QUrl(authUrl));
+
+            } else {
+
+                qWarning() << "[Last.fm] Bad response status or no token";
+
+            }
+
+        } else {
+
+            qWarning() << "[Last.fm] Token request error:" << reply->errorString();
+
         }
     });
 }
@@ -957,26 +1005,78 @@ void StatisticsManager::getLastfmSessionKey(const QString &token)
         postData += it.key() + "=" + QUrl::toPercentEncoding(it.value());
     }
     
+    qDebug() << "[Last.fm] Requesting session key from Last.fm with token:" << token;
+    
     QNetworkReply *reply = m_nam->post(request, postData.toUtf8());
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
+
         QByteArray response = reply->readAll();
-        
+
+        qDebug() << "[Last.fm] Session key response:" << QString::fromLatin1(response);
+
         if (reply->error() == QNetworkReply::NoError) {
-            QJsonParseError error;
-            QJsonDocument doc = QJsonDocument::fromJson(response, &error);
-            if (error.error == QJsonParseError::NoError && doc.isObject()) {
-                QJsonObject session = doc.object()["session"].toObject();
-                QString sessionKey = session["key"].toString();
-                QString username = session["name"].toString();
-                
-                if (!sessionKey.isEmpty()) {
-                    setLastfmCredentialsInternal(m_lastfmApiKey, m_lastfmSecret, sessionKey);
-                    m_lastfmUsername = username;
-                    emit lastfmUsernameChanged();
-                    qDebug() << "[Last.fm] Authenticated as:" << username;
+
+            QXmlStreamReader reader(response);
+
+            QString sessionKey;
+
+            QString username;
+
+            bool statusOk = false;
+
+            while (!reader.atEnd()) {
+
+                reader.readNext();
+
+                if (reader.isStartElement()) {
+
+                    if (reader.name() == "lfm") {
+
+                        if (reader.attributes().value("status") == "ok") {
+
+                            statusOk = true;
+
+                        }
+
+                    } else if (reader.name() == "key" && statusOk) {
+
+                        sessionKey = reader.readElementText();
+
+                    } else if (reader.name() == "name" && statusOk) {
+
+                        username = reader.readElementText();
+
+                    }
+
                 }
+
             }
+
+            if (reader.hasError()) {
+
+                qWarning() << "[Last.fm] Failed to parse XML session response:" << reader.errorString();
+
+            } else if (statusOk && !sessionKey.isEmpty()) {
+
+                setLastfmCredentialsInternal(m_lastfmApiKey, m_lastfmSecret, sessionKey);
+
+                m_lastfmUsername = username;
+
+                emit lastfmUsernameChanged();
+
+                qDebug() << "[Last.fm] Authenticated as:" << username << "with session key:" << sessionKey;
+
+            } else {
+
+                qWarning() << "[Last.fm] Bad response status or no session key";
+
+            }
+
+        } else {
+
+            qWarning() << "[Last.fm] Session key request error:" << reply->errorString();
+
         }
     });
 }
@@ -1196,3 +1296,14 @@ void StatisticsManager::fetchLastfmStats(const QString &period)
         qDebug().noquote() << "[Last.fm] Got" << topTracks.count() << "top tracks, total plays:" << stats["total_tracks"].toLongLong();
     });
 }
+
+void StatisticsManager::startLastfmAuth() {
+    qDebug() << "[Last.fm] Starting Last.fm authentication";
+    getLastfmToken();
+}
+
+void StatisticsManager::completeLastfmAuth(const QString &token) {
+    qDebug() << "[Last.fm] Completing Last.fm authentication with token:" << token;
+    getLastfmSessionKey(token);
+}
+

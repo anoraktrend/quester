@@ -264,15 +264,15 @@ private:
         int modelIndex;
     };
     void fetchAlbumArtFromAPIs(const FetchParams &params);
-    auto getCachePath(const QString &artist, const QString &album, const QString &mbid = QString()) -> QString;
+    QString getCachePath(const QString &artist, const QString &album, const QString &mbid = QString());
     void sortAlbums(QList<AlbumItem> &albums);
-    auto getMpdPicture(const QString &uri) -> QByteArray;
+    QByteArray getMpdPicture(const QString &uri);
     void connectToMpd();
     void sendIdle();
     void leaveIdle();
     void saveLibraryToCache(const QList<AlbumItem> &albums);
-    static auto loadLibraryFromCacheInternal() -> QList<AlbumItem>;
-    auto getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid = QString()) -> QList<SortableSong>;
+    static QList<AlbumItem> loadLibraryFromCacheInternal();
+    QList<SortableSong> getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid = QString());
     
     enum class SortMode : std::uint8_t {
         Artist,
@@ -281,26 +281,22 @@ private:
     };
     Q_ENUM(SortMode)
 
-    [[nodiscard]] auto artist() const -> QString;
-    [[nodiscard]] auto title() const -> QString;
-    [[nodiscard]] auto album() const -> QString;
-    [[nodiscard]] auto albumArt() const -> QString;
-    [[nodiscard]] auto duration() const -> qint64;
-    [[nodiscard]] auto currentAlbumIndex() const -> int;
-    [[nodiscard]] auto currentPath() const -> QString;
-    [[nodiscard]] auto consume() const -> bool;
-    [[nodiscard]] auto sortMode() const -> SortMode;
-    [[nodiscard]] auto uri() const -> QString;
-    [[nodiscard]] auto weeklyStats() const -> QVariantMap;
-    [[nodiscard]] auto monthlyStats() const -> QVariantMap;
-    [[nodiscard]] auto yearlyStats() const -> QVariantMap;
-    [[nodiscard]] auto allTimeStats() const -> QVariantMap;
-    [[nodiscard]] auto statistics() const -> StatisticsManager* { return m_stats; }
-    [[nodiscard]] auto albumModel() const -> AlbumModel*;
-    [[nodiscard]] auto trackModel() const -> TrackModel*;
-    [[nodiscard]] auto browserModel() const -> BrowserModel*;
-    [[nodiscard]] auto playlistModel() const -> PlaylistModel*;
-    [[nodiscard]] auto playlistTrackModel() const -> PlaylistTrackModel*;
+    [[nodiscard]] qint64 duration() const;
+    [[nodiscard]] int currentAlbumIndex() const;
+    [[nodiscard]] QString currentPath() const;
+    [[nodiscard]] bool consume() const;
+    [[nodiscard]] SortMode sortMode() const;
+    [[nodiscard]] QString uri() const;
+    [[nodiscard]] QVariantMap weeklyStats() const;
+    [[nodiscard]] QVariantMap monthlyStats() const;
+    [[nodiscard]] QVariantMap yearlyStats() const;
+    [[nodiscard]] QVariantMap allTimeStats() const;
+    [[nodiscard]] StatisticsManager* statistics() const { return m_stats; }
+    [[nodiscard]] AlbumModel* albumModel() const;
+    [[nodiscard]] TrackModel* trackModel() const;
+    [[nodiscard]] BrowserModel* browserModel() const;
+    [[nodiscard]] PlaylistModel* playlistModel() const;
+    [[nodiscard]] PlaylistTrackModel* playlistTrackModel() const;
 
     // ListenBrainz JSPF playlist methods
     Q_INVOKABLE void fetchJspfPlaylist(const QString &playlistIdentifier);
@@ -309,11 +305,11 @@ private:
     Q_PROPERTY(QString listenBrainzToken READ listenBrainzToken WRITE setListenBrainzToken NOTIFY listenBrainzTokenChanged)
     Q_PROPERTY(QString listenBrainzUsername READ listenBrainzUsername WRITE setListenBrainzUsername NOTIFY listenBrainzUsernameChanged)
     Q_PROPERTY(bool lastfmCredentialsValid READ lastfmCredentialsValid NOTIFY lastfmCredentialsValidChanged)
-    [[nodiscard]] auto listenBrainzToken() const -> QString;
-    [[nodiscard]] auto listenBrainzUsername() const -> QString;
+    [[nodiscard]] QString listenBrainzToken() const;
+    [[nodiscard]] QString listenBrainzUsername() const;
     void setListenBrainzToken(const QString &token);
     void setListenBrainzUsername(const QString &username);
-    [[nodiscard]] auto lastfmCredentialsValid() const -> bool;
+    [[nodiscard]] bool lastfmCredentialsValid() const;
     Q_INVOKABLE void setLastfmCredentials(const QString &apiKey, const QString &secret, const QString &sessionKey);
     Q_INVOKABLE void authenticateLastfm(const QString &username, const QString &password);
 
@@ -321,8 +317,17 @@ public:
     explicit MpdClient(QObject *parent = nullptr);
     ~MpdClient() override;
 
+    MpdClient(const MpdClient&) = delete;
+    MpdClient& operator=(const MpdClient&) = delete;
+    MpdClient(MpdClient&&) = delete;
+    MpdClient& operator=(MpdClient&&) = delete;
+
     void setWindow(QQuickWindow *window);
     [[nodiscard]] auto window() const -> QQuickWindow* { return m_window; }
+    [[nodiscard]] QString artist() const;
+    [[nodiscard]] QString title() const;
+    [[nodiscard]] QString album() const;
+    [[nodiscard]] QString albumArt() const;
     [[nodiscard]] auto random() const -> bool { return m_random; }
     [[nodiscard]] auto audioSource() const -> QString { return m_audioSource; }
     [[nodiscard]] auto playlists() const -> QStringList { return m_playlists; }
@@ -441,12 +446,12 @@ private:
     int m_currentSongId = -1;
     QString m_currentUri;
     int m_currentAlbumIndex = -1;
-
+    const int volMax = 100;
     bool m_repeat = false;
     bool m_random = false;
     bool m_single = false;
     bool m_consume = false;
-    int m_volume = 100;
+    int m_volume = volMax;
     QStringList m_playlists;
     SortMode m_sortMode = SortMode::Artist;
     QString m_audioSource;

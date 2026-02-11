@@ -648,7 +648,7 @@ void MpdClient::fetchAlbumArt(const QString &album)
         }
     }
 
-    fetchAlbumArtFromAPIs({m_artist, album, m_currentMbid, cachePath, true, -1});
+    fetchAlbumArtFromAPIs({.artist=m_artist, .album=album, .mbid=m_currentMbid, .cachePath=cachePath, .isMainArt=true, .modelIndex=-1});
 }
 
 auto MpdClient::artist() const -> QString { return m_artist; }
@@ -847,7 +847,7 @@ void MpdClient::refreshLibrary()
                         if (shouldAdd) {
                             QString cachePath = getCachePath(currentArtist, albumName, currentMbid);
                             QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
-                            albums.append(AlbumItem{currentArtist, albumName, art, currentMbid, "", false, currentYear});
+                            albums.append(AlbumItem{.artist=currentArtist, .name=albumName, .artUrl=art, .mbid=currentMbid, .uri="", .artLoading=false, .year=currentYear});
                         }
                     }
                 }
@@ -903,7 +903,7 @@ void MpdClient::loadAlbumTracks(int index)
         QList<TrackItem> tracks;
 
         for (const auto &t : sortedTracks) {
-            tracks.append({t.title, t.duration, t.uri});
+            tracks.append({.title=t.title, .duration=t.duration, .uri=t.uri});
         }
         
         mpd_connection_free(conn);
@@ -939,12 +939,12 @@ void MpdClient::refreshQueue()
                     unsigned duration = mpd_song_get_duration(song);
 
                     queue.append({
-                        id,
-                        title ? QString::fromUtf8(title) : QString::fromUtf8(uri).section('/', -1),
-                        artist ? QString::fromUtf8(artist) : tr("Unknown Artist"),
-                        album ? QString::fromUtf8(album) : tr("Unknown Album"),
-                        QString("%1:%2").arg(duration / SECONDS_PER_MINUTE).arg(duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0')),
-                        QString::fromUtf8(uri)
+                        .id=id,
+                        .title=title ? QString::fromUtf8(title) : QString::fromUtf8(uri).section('/', -1),
+                        .artist=artist ? QString::fromUtf8(artist) : tr("Unknown Artist"),
+                        .album=album ? QString::fromUtf8(album) : tr("Unknown Album"),
+                        .duration=QString("%1:%2").arg(duration / SECONDS_PER_MINUTE).arg(duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0')),
+                        .uri=QString::fromUtf8(uri)
                     });
                 }
                 mpd_entity_free(entity);
@@ -1137,7 +1137,7 @@ auto MpdClient::getSongsForAlbum(struct mpd_connection *conn, const QString &art
                 if (fetchSongs() && !songs.isEmpty()) {
                     QCollator collator;
                     collator.setNumericMode(true);
-                    std::sort(songs.begin(), songs.end(), [&](const SortableSong &a, const SortableSong &b) -> bool {
+                    std::ranges::sort(songs, [&](const SortableSong &a, const SortableSong &b) -> bool {
                         if (a.disc != b.disc) return a.disc < b.disc;
                         if (a.track != b.track) return a.track < b.track;
                         return collator.compare(a.uri, b.uri) < 0;
@@ -1156,7 +1156,7 @@ auto MpdClient::getSongsForAlbum(struct mpd_connection *conn, const QString &art
 
     QCollator collator;
     collator.setNumericMode(true);
-    std::sort(songs.begin(), songs.end(), [&](const SortableSong &a, const SortableSong &b) -> bool {
+    std::ranges::sort(songs, [&](const SortableSong &a, const SortableSong &b) -> bool {
         if (a.disc != b.disc) return a.disc < b.disc;
         if (a.track != b.track) return a.track < b.track;
         return collator.compare(a.uri, b.uri) < 0;
@@ -1182,7 +1182,7 @@ void MpdClient::browsePath(const QString &path)
             int idx = static_cast<int>(path.lastIndexOf('/'));
             if (idx >= 0)
                 parent = path.left(idx);
-            items.append({"..", parent, true});
+            items.append({.name="..", .path=parent, .isDir=true});
         }
 
         if (mpd_send_list_meta(conn, path.toUtf8().constData())) {
@@ -1190,15 +1190,15 @@ void MpdClient::browsePath(const QString &path)
             while ((entity = mpd_recv_entity(conn)) != nullptr) {
                 if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_DIRECTORY) {
                     const struct mpd_directory *dir = mpd_entity_get_directory(entity);
-                    items.append({QString::fromUtf8(mpd_directory_get_path(dir)).section('/', -1),
-                                  QString::fromUtf8(mpd_directory_get_path(dir)),
-                                  true});
+                    items.append({.name=QString::fromUtf8(mpd_directory_get_path(dir)).section('/', -1),
+                                  .path=QString::fromUtf8(mpd_directory_get_path(dir)),
+                                  .isDir=true});
                 } else if (mpd_entity_get_type(entity) == MPD_ENTITY_TYPE_SONG) {
                     const struct mpd_song *song = mpd_entity_get_song(entity);
                     const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
                     QString name = title ? QString::fromUtf8(title)
                                          : QString::fromUtf8(mpd_song_get_uri(song)).section('/', -1);
-                    items.append({name, QString::fromUtf8(mpd_song_get_uri(song)), false});
+                    items.append({.name=name, .path=QString::fromUtf8(mpd_song_get_uri(song)), .isDir=false});
                 }
                 mpd_entity_free(entity);
             }
@@ -1208,7 +1208,7 @@ void MpdClient::browsePath(const QString &path)
         QCollator collator;
         collator.setNumericMode(true);
 
-        std::sort(items.begin(), items.end(), [&](const BrowserItem &a, const BrowserItem &b) -> bool {
+        std::ranges::sort(items, [&](const BrowserItem &a, const BrowserItem &b) -> bool {
             if (a.name == "..") return true;
             if (b.name == "..") return false;
             if (a.isDir != b.isDir) return a.isDir;
@@ -1309,7 +1309,7 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
         }
     }
 
-    fetchAlbumArtFromAPIs({artist, albumName, mbid, getCachePath(artist, albumName, mbid), false, index});
+    fetchAlbumArtFromAPIs({.artist=artist, .album=albumName, .mbid=mbid, .cachePath=getCachePath(artist, albumName, mbid), .isMainArt=false, .modelIndex=index});
 }
 
 void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
@@ -1451,20 +1451,20 @@ void MpdClient::sortAlbums(QList<AlbumItem> &albums)
     collator.setCaseSensitivity(Qt::CaseInsensitive);
 
     if (m_sortMode == SortMode::Artist) {
-        std::sort(albums.begin(), albums.end(), [&](const AlbumItem &a, const AlbumItem &b) -> bool {
+        std::ranges::sort(albums, [&](const AlbumItem &a, const AlbumItem &b) -> bool {
             int res = collator.compare(a.artist, b.artist);
             if (res != 0) return res < 0;
             return collator.compare(a.name, b.name) < 0;
         });
     } else if (m_sortMode == SortMode::ArtistYear) {
-        std::sort(albums.begin(), albums.end(), [&](const AlbumItem &a, const AlbumItem &b) -> bool {
+        std::ranges::sort(albums, [&](const AlbumItem &a, const AlbumItem &b) -> bool {
             int res = collator.compare(a.artist, b.artist);
             if (res != 0) return res < 0;
             if (a.year != b.year) return a.year < b.year;
             return collator.compare(a.name, b.name) < 0;
         });
     } else {
-        std::sort(albums.begin(), albums.end(), [&](const AlbumItem &a, const AlbumItem &b) -> bool {
+        std::ranges::sort(albums, [&](const AlbumItem &a, const AlbumItem &b) -> bool {
             int res = collator.compare(a.name, b.name);
             if (res != 0) return res < 0;
             return collator.compare(a.artist, b.artist) < 0;
@@ -1597,13 +1597,13 @@ auto MpdClient::loadLibraryFromCacheInternal() -> QList<AlbumItem>
             continue;
         QJsonObject obj = value.toObject();
         albums.append(
-            {obj.value("artist").toString(),
-             obj.value("name").toString(),
-             obj.value("artUrl").toString(),
-             obj.value("musicbrainz_albumid").toString(),
-             obj.value("uri").toString(),
-             false,
-             obj.value("year").toInt()});
+            {.artist=obj.value("artist").toString(),
+             .name=obj.value("name").toString(),
+             .artUrl=obj.value("artUrl").toString(),
+             .mbid=obj.value("musicbrainz_albumid").toString(),
+             .uri=obj.value("uri").toString(),
+             .artLoading=false,
+             .year=obj.value("year").toInt()});
     }
     return albums;
 }
@@ -1705,7 +1705,7 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
                 trackDuration = QString("%1:%2").arg(minutes).arg(seconds, 2, DECIMAL_BASE, QChar('0'));
             }
             
-            tracks.append({trackTitle, trackCreator, trackAlbum, trackDuration, trackIdentifier});
+            tracks.append({.title=trackTitle, .creator=trackCreator, .album=trackAlbum, .duration=trackDuration, .identifier=trackIdentifier});
         }
         
         // Update playlist track model
