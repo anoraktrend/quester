@@ -190,7 +190,11 @@ auto main(int argc, char *argv[]) -> int
         std::cout << "  --minimized, -m           Start minimized to system tray\n";
         std::cout << "  --fullscreen, -f          Start in fullscreen mode\n";
         std::cout << "  --preset-path <path>      Set custom projectM preset path\n";
+#ifdef __APPLE__
+        std::cout << "  --audio-source <source>   Set audio input source (coreaudio, fifo)\n";
+#else
         std::cout << "  --audio-source <source>   Set audio input source (pulseaudio, pipewire, fifo)\n";
+#endif
         std::cout << "\n";
         std::cout << "Examples:\n";
         std::cout << "  quester                   Start normally in library flow view\n";

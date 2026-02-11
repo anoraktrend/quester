@@ -85,7 +85,39 @@ if(NOT APPLE)
     pkg_check_modules(SPA REQUIRED libspa-0.2)
 endif()
 
-pkg_check_modules(PROJECTM REQUIRED libprojectM)
+# Try to find system-wide libprojectM, fallback to building from submodule if not found
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+    pkg_check_modules(PROJECTM QUIET libprojectM)
+endif()
+
+# If system-wide libprojectM not found, build from submodule
+if(NOT PROJECTM_FOUND)
+    message(STATUS "libprojectM not found on system, will build from submodule")
+    
+    # Check if submodule exists
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libprojectm/CMakeLists.txt")
+        # Build libprojectM from submodule
+        set(PROJECTM_BUILD_EXAMPLES OFF CACHE BOOL "Disable projectM examples")
+        set(PROJECTM_BUILD_TESTING OFF CACHE BOOL "Disable projectM testing")
+        set(PROJECTM_BUILD_PLAYER OFF CACHE BOOL "Disable projectM player")
+        set(PROJECTM_BUILD_PUBLIC_HEADERS ON CACHE BOOL "Enable projectM public headers")
+        
+        add_subdirectory(libprojectm)
+        
+        # Set PROJECTM_INCLUDE_DIRS and PROJECTM_LIBRARIES to point to the built submodule
+        set(PROJECTM_INCLUDE_DIRS 
+            "${CMAKE_CURRENT_SOURCE_DIR}/libprojectm/include"
+            "${CMAKE_CURRENT_BINARY_DIR}/libprojectm/include"
+        )
+        
+        set(PROJECTM_LIBRARIES projectM::projectM)
+    else()
+        message(FATAL_ERROR "libprojectM not found on system and submodule not initialized. Please run 'git submodule update --init'")
+    endif()
+else()
+    message(STATUS "Found libprojectM: ${PROJECTM_VERSION}")
+endif()
 
 qt_add_executable(quester
     src/main.cpp
