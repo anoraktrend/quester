@@ -73,7 +73,6 @@ find_package(Qt6 REQUIRED COMPONENTS Xml)
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
-pkg_check_modules(FFTW3 REQUIRED IMPORTED_TARGET fftw3)
 
 qt_add_resources(quester_resources resources/resources.qrc)
 
@@ -81,8 +80,8 @@ qt_add_resources(quester_resources resources/resources.qrc)
 if(NOT APPLE)
     pkg_check_modules(PULSEAUDIO REQUIRED IMPORTED_TARGET libpulse)
     pkg_check_modules(LIBPULSE_SIMPLE REQUIRED IMPORTED_TARGET libpulse-simple)
-    pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
-    pkg_check_modules(SPA REQUIRED libspa-0.2)
+    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+    pkg_check_modules(SPA REQUIRED IMPORTED_TARGET libspa-0.2)
 endif()
 
 # Try to find system-wide libprojectM, fallback to building from submodule if not found
@@ -119,6 +118,60 @@ else()
     message(STATUS "Found libprojectM: ${PROJECTM_VERSION}")
 endif()
 
+# FFT Library Detection and Selection
+# Priority: Accelerate FFT (macOS) > FFTW (Linux if available) > Kiss FFT (fallback)
+option(USE_SYSTEM_FFTW "Prefer system FFTW library over Kiss FFT" OFF)
+
+if(APPLE)
+    message(STATUS "Apple platform detected - using Accelerate FFT")
+    set(GIST_USE_FFT "ACCELERATE")
+elseif(UNIX AND NOT ANDROID)
+    # Check for FFTW on Linux/Unix
+    # First try pkg-config
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFTW3 QUIET libfftw3)
+    endif()
+    
+    # If pkg-config didn't find it, try CMake's FindFFTW3 module
+    if(NOT FFTW3_FOUND)
+        find_package(FFTW3 QUIET)
+    endif()
+    
+    # Manual fallback: check for known FFTW3 locations
+    if(NOT FFTW3_FOUND)
+        if(EXISTS "/usr/include/fftw3.h")
+            message(STATUS "FFTW3 found manually at /usr/include/fftw3.h")
+            set(FFTW3_FOUND TRUE)
+            set(FFTW3_INCLUDE_DIRS "/usr/include")
+            set(FFTW3_LIBRARIES "/usr/lib/libfftw3.so")
+        endif()
+    endif()
+    
+    if(FFTW3_FOUND)
+        message(STATUS "FFTW3 found - using FFTW")
+        set(GIST_USE_FFT "FFTW")
+        # Create imported target for FFTW3 if not already available
+        if(NOT TARGET FFTW3::FFTW)
+            if(FFTW3_LIBRARIES)
+                add_library(FFTW3::FFTW STATIC IMPORTED)
+                set_target_properties(FFTW3::FFTW PROPERTIES
+                    IMPORTED_LOCATION "${FFTW3_LIBRARIES}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${FFTW3_INCLUDE_DIRS}"
+                )
+            endif()
+        endif()
+    else()
+        message(STATUS "FFTW3 not found - using Kiss FFT (fallback)")
+        set(GIST_USE_FFT "KISS")
+    endif()
+else()
+    message(STATUS "Unknown platform - using Kiss FFT (fallback)")
+    add_compile_definitions(USE_KISS_FFT)
+endif()
+
+add_subdirectory(vendor/gist)
+
 qt_add_executable(quester
     src/main.cpp
     src/quester.cpp
@@ -151,9 +204,9 @@ endif()
 
 target_include_directories(quester PRIVATE
     src/
-    ${PIPEWIRE_INCLUDE_DIRS}
-    ${SPA_INCLUDE_DIRS}
     ${PROJECTM_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/gist/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/gist/libs/kiss_fft130
 )
 # Pass source dir to C++ to allow running from the build directory (development)
 target_compile_definitions(quester PRIVATE
@@ -188,8 +241,8 @@ target_link_libraries(quester
     Qt6::Concurrent
     Qt6::Xml
     PkgConfig::MPDCLIENT
-    PkgConfig::FFTW3
     ${PROJECTM_LIBRARIES}
+    Gist
 )
 
 # Platform-specific libraries
@@ -198,8 +251,8 @@ if(NOT APPLE)
         Qt6::DBus
         PkgConfig::LIBPULSE_SIMPLE
         PkgConfig::PULSEAUDIO
-        ${PIPEWIRE_LIBRARIES}
-        ${SPA_LIBRARIES}
+        PkgConfig::PIPEWIRE
+        PkgConfig::SPA
     )
 else()
     target_link_libraries(quester PRIVATE

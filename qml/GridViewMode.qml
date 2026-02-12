@@ -19,6 +19,37 @@ Item {
         id: filteredAlbumModel
     }
 
+    // Artist model
+    ListModel {
+        id: artistModel
+    }
+
+    Component.onCompleted: {
+        updateArtistModel()
+        // TODO: Connect to a signal like mpdClient.albumModel.modelReset to automatically call updateArtistModel()
+    }
+
+    function updateArtistModel() {
+        artistModel.clear()
+        const artists = []
+        const seenArtists = new Set()
+        for (let i = 0; i < mpdClient.albumModel.count; i++) {
+            const album = mpdClient.albumModel.get(i)
+            if (!album.artist) continue;
+            if (!seenArtists.has(album.artist)) {
+                seenArtists.add(album.artist)
+                artists.push({
+                    "name": album.artist
+                })
+            }
+        }
+        // Sort artists alphabetically
+        artists.sort((a, b) => a.name.localeCompare(b.name))
+        for (let i = 0; i < artists.length; i++) {
+            artistModel.append(artists[i])
+        }
+    }
+
     // Filter albums by current artist
     function filterAlbumsByArtist(artistName) {
         filteredAlbumModel.clear()
@@ -90,26 +121,23 @@ Item {
 
         cellWidth: 200
         cellHeight: 100
-        model: {
-            // Create a unique list of artists from album model
-            const artists = []
-            const seenArtists = new Set()
-            for (let i = 0; i < mpdClient.albumModel.count; i++) {
-                const album = mpdClient.albumModel.get(i)
-                if (!seenArtists.has(album.artist)) {
-                    seenArtists.add(album.artist)
-                    artists.push({ name: album.artist })
-                }
-            }
-            // Sort artists alphabetically
-            return artists.sort((a, b) => a.name.localeCompare(b.name))
-        }
+        model: artistModel
 
         delegate: Item {
             width: artistGridView.cellWidth
             height: artistGridView.cellHeight
 
+            property string artistName: model.name
             property string imageUrl: ""
+
+            onArtistNameChanged: {
+                imageUrl = "" // Reset image
+                mpdClient.fetchArtistImage(artistName, function(artUrl) {
+                    if (artUrl) {
+                        imageUrl = artUrl;
+                    }
+                });
+            }
 
             Rectangle {
                 anchors.fill: parent
@@ -138,15 +166,6 @@ Item {
                         font.pixelSize: 24
                         visible: artistImage.status === Image.Null || artistImage.status === Image.Error
                     }
-
-                    Component.onCompleted: {
-                        // Fetch artist image
-                        mpdClient.fetchArtistImage(modelData.name, function(artUrl) {
-                            if (artUrl) {
-                                imageUrl = artUrl
-                            }
-                        })
-                    }
                 }
 
                 Text {
@@ -154,7 +173,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    text: modelData.name
+                    text: model.name
                     color: palette.text
                     font.pixelSize: 12
                     wrapMode: Text.Wrap
@@ -165,7 +184,7 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: loadArtistAlbums(modelData.name)
+                    onClicked: loadArtistAlbums(model.name)
                 }
             }
         }

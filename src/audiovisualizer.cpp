@@ -1,5 +1,4 @@
 #include "audiovisualizer.h"
-#include <fftw3.h>
 #include <algorithm>
 #include <cmath>
 #include <QCoreApplication>
@@ -14,7 +13,6 @@
 #include <QStandardPaths>
 #include <QtMath>
 #include <utility>
-#include <complex>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -179,8 +177,8 @@ void PulseAudioInput::server_info_callback(pa_context * /*c*/, const pa_server_i
         return;
     }
 
-    QString monitor_source = QString::fromUtf8(i->default_sink_name) + QStringLiteral(".monitor");
-    p->createStream(monitor_source.toUtf8().constData());
+    // Don't fallback to default monitor source - only use MPD streams
+    Q_EMIT p->error(QStringLiteral("No MPD audio stream found"));
 }
 
 void PulseAudioInput::sink_input_info_callback(
@@ -191,11 +189,9 @@ void PulseAudioInput::sink_input_info_callback(
         return;
 
     if (eol > 0) {
-        // If we haven't found a stream yet, fallback to default
+        // If we haven't found an MPD stream yet, fail gracefully
         if (!p->m_stream) {
-            pa_operation *o = pa_context_get_server_info(c, server_info_callback, p);
-            if (o)
-                pa_operation_unref(o);
+            Q_EMIT p->error(QStringLiteral("No MPD audio stream found"));
         }
         return;
     }
@@ -224,7 +220,13 @@ void PulseAudioInput::sink_info_callback(
         return;
     }
 
-    p->createStream(i->monitor_source_name);
+    // Only create stream if it's an MPD monitor source
+    QString monitor_source = QString::fromUtf8(i->monitor_source_name);
+    if (monitor_source.contains("mpd") || monitor_source.contains("MPD")) {
+        p->createStream(i->monitor_source_name);
+    } else {
+        Q_EMIT p->error(QStringLiteral("No MPD audio stream found"));
+    }
 }
 
 void PulseAudioInput::createStream(const char *deviceName)
@@ -326,55 +328,6 @@ PipeWireInput::~PipeWireInput()
     stopImpl();
 }
 
-void PipeWireInput::start()
-{
-    pw_init(nullptr, nullptr);
-    m_loop = pw_thread_loop_new("quester-pipewire", nullptr);
-    m_context = pw_context_new(pw_thread_loop_get_loop(m_loop), nullptr, 0);
-    m_core = pw_context_connect(m_context, nullptr, 0);
-
-    std::array<uint8_t, BUFFER_SIZE> buffer{};
-    struct spa_pod_builder b = {};
-    spa_pod_builder_init(&b, buffer.data(), buffer.size());
-    std::array<const struct spa_pod *, 1> params{};
-
-    struct spa_audio_info_raw info = {};
-    info.format = SPA_AUDIO_FORMAT_S16_LE;
-    info.rate = SAMPLE_RATE;
-    info.channels = 2;
-
-    params[0] = spa_format_audio_raw_build(&b, SPA_PARAM_EnumFormat, &info);
-
-    static struct pw_stream_events stream_events = {};
-    stream_events.version = PW_VERSION_STREAM_EVENTS;
-    stream_events.destroy = nullptr;
-    stream_events.state_changed = nullptr;
-    stream_events.param_changed = nullptr;
-    stream_events.add_buffer = nullptr;
-    stream_events.remove_buffer = nullptr;
-    stream_events.process = on_process;
-
-    m_stream = pw_stream_new_simple(
-        pw_thread_loop_get_loop(m_loop),
-        "Quester",
-        pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", // NOLINT(cppcoreguidelines-pro-type-vararg)
-                          PW_KEY_MEDIA_CATEGORY, "Capture",
-                          PW_KEY_MEDIA_ROLE, "Music",
-                          "stream.capture.sink", "true",
-                          NULL),
-        &stream_events,
-        this
-    );
-
-    pw_stream_connect(m_stream,
-                      PW_DIRECTION_INPUT,
-                      PW_ID_ANY,
-                      (pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS), // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange, cppcoreguidelines-pro-type-cstyle-cast)
-                      params.data(), 1);
-
-    pw_thread_loop_start(m_loop);
-}
-
 void PipeWireInput::stop()
 {
     stopImpl();
@@ -382,12 +335,22 @@ void PipeWireInput::stop()
 
 void PipeWireInput::stopImpl()
 {
+    m_quit = true;
     if (m_loop) {
         pw_thread_loop_stop(m_loop);
     }
+    cleanup();
+}
+
+void PipeWireInput::cleanup()
+{
     if (m_stream) {
         pw_stream_destroy(m_stream);
         m_stream = nullptr;
+    }
+    if (m_registry) {
+        pw_proxy_destroy(reinterpret_cast<pw_proxy*>(m_registry));
+        m_registry = nullptr;
     }
     if (m_core) {
         pw_core_disconnect(m_core);
@@ -403,33 +366,165 @@ void PipeWireInput::stopImpl()
     }
 }
 
+void PipeWireInput::on_core_error(void *userdata, uint32_t, int, int res, const char *message)
+{
+    auto *p = static_cast<PipeWireInput *>(userdata);
+    qWarning() << "PipeWire core error:" << message << "(code" << res << ")";
+    if (p) {
+        p->stopImpl();
+        Q_EMIT p->error(QString::fromUtf8(message));
+    }
+}
+
+void PipeWireInput::registry_event_global(void *userdata, uint32_t id, uint32_t, const char *type, uint32_t, const struct spa_dict *props)
+{
+    auto *p = static_cast<PipeWireInput *>(userdata);
+    if (p->m_quit || p->m_target_id != PW_ID_ANY) return;
+
+    if (props && strcmp(type, PW_TYPE_INTERFACE_Node) == 0) {
+        const char *appName = spa_dict_lookup(props, PW_KEY_APP_NAME);
+        const char *mediaName = spa_dict_lookup(props, PW_KEY_MEDIA_NAME);
+
+        bool isMpd = (appName && (strcmp(appName, "Music Player Daemon") == 0 || strcmp(appName, "mpd") == 0)) ||
+                     (mediaName && (strcmp(mediaName, "Music Player Daemon") == 0 || strcmp(mediaName, "mpd") == 0));
+
+        if (isMpd) {
+            p->m_target_id = id;
+            p->createStream();
+            // Don't need to listen anymore
+            pw_thread_loop_signal(p->m_loop, false);
+        }
+    }
+}
+
+void PipeWireInput::createStream() {
+    if (m_quit || m_stream) return;
+
+    std::array<uint8_t, BUFFER_SIZE> buffer{};
+    struct spa_pod_builder b = {};
+    spa_pod_builder_init(&b, buffer.data(), buffer.size());
+    std::array<const struct spa_pod *, 1> params{};
+
+    struct spa_audio_info_raw info = {};
+    info.format = SPA_AUDIO_FORMAT_S16_LE;
+    info.rate = SAMPLE_RATE;
+    info.channels = 2;
+    params[0] = spa_format_audio_raw_build(&b, SPA_PARAM_EnumFormat, &info);
+
+    static struct pw_stream_events stream_events = {};
+    stream_events.version = PW_VERSION_STREAM_EVENTS;
+    stream_events.process = on_process;
+
+    m_stream = pw_stream_new_simple(
+        pw_thread_loop_get_loop(m_loop),
+        "Quester-capture",
+        pw_properties_new(
+            PW_KEY_MEDIA_TYPE, "Audio",
+            PW_KEY_MEDIA_CATEGORY, "Capture",
+            PW_KEY_MEDIA_ROLE, "Music",
+            NULL),
+        &stream_events,
+        this
+    );
+
+    if (!m_stream) {
+        Q_EMIT error(QStringLiteral("Failed to create PipeWire stream"));
+        stopImpl();
+        return;
+    }
+
+    if (pw_stream_connect(m_stream,
+                      PW_DIRECTION_INPUT,
+                      m_target_id, // Connect to the found MPD node
+                      (pw_stream_flags)(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS | PW_STREAM_FLAG_RT_PROCESS),
+                      params.data(), 1) != 0) {
+        Q_EMIT error(QStringLiteral("Failed to connect PipeWire stream to MPD"));
+        stopImpl();
+    }
+}
+
+
+void PipeWireInput::start()
+{
+    m_quit = false;
+    pw_init(nullptr, nullptr);
+    m_loop = pw_thread_loop_new("quester-pipewire", nullptr);
+    if (!m_loop) {
+        Q_EMIT error(QStringLiteral("pw_thread_loop_new failed"));
+        return;
+    }
+
+    m_context = pw_context_new(pw_thread_loop_get_loop(m_loop), nullptr, 0);
+    if (!m_context) {
+        Q_EMIT error(QStringLiteral("pw_context_new failed"));
+        cleanup();
+        return;
+    }
+
+    m_core = pw_context_connect(m_context, nullptr, 0);
+    if (!m_core) {
+        Q_EMIT error(QStringLiteral("pw_context_connect failed"));
+        cleanup();
+        return;
+    }
+    
+    static const pw_core_events core_events = { .version = PW_VERSION_CORE_EVENTS, .error = on_core_error };
+    pw_core_add_listener(m_core, &m_core_listener, &core_events, this);
+    
+    m_registry = pw_core_get_registry(m_core, PW_VERSION_REGISTRY, 0);
+    if (!m_registry) {
+        Q_EMIT error(QStringLiteral("pw_core_get_registry failed"));
+        cleanup();
+        return;
+    }
+
+    static const pw_registry_events registry_events = { .version = PW_VERSION_REGISTRY_EVENTS, .global = registry_event_global };
+    pw_registry_add_listener(m_registry, &m_registry_listener, &registry_events, this);
+
+    pw_thread_loop_start(m_loop);
+    
+    // Give some time for the registry to find MPD.
+    // A better approach would be a timeout mechanism.
+    pw_thread_loop_timed_wait(m_loop, 2 * 1000);
+
+    if (m_target_id == PW_ID_ANY) {
+        Q_EMIT error(QStringLiteral("Could not find MPD sink in PipeWire. Is MPD playing?"));
+        stopImpl();
+    }
+}
+
 void PipeWireInput::on_process(void *userdata)
 {
     auto *p = static_cast<PipeWireInput *>(userdata);
+    if (p->m_quit) return;
+
     struct pw_buffer *b = nullptr;
-    struct spa_buffer *buf = nullptr;
-    uint8_t *data = nullptr;
-    uint32_t size = 0;
-
     b = pw_stream_dequeue_buffer(p->m_stream);
-    if (b == nullptr) return;
+    if (b == nullptr) {
+        qWarning() << "PipeWire: no buffer";
+        return;
+    }
 
-    buf = b->buffer;
-    data = static_cast<uint8_t*>(buf->datas[0].data); // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-    if (data == nullptr) return;
-    size = buf->datas[0].chunk->size; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+    struct spa_buffer *buf = b->buffer;
+    if (buf->datas[0].data == nullptr) {
+        pw_stream_queue_buffer(p->m_stream, b);
+        return;
+    }
 
+    uint32_t size = buf->datas[0].chunk->size;
     if (size > 0) {
-        QByteArray bytes(reinterpret_cast<const char*>(data), static_cast<qsizetype>(size)); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        QByteArray bytes(reinterpret_cast<const char*>(buf->datas[0].data), static_cast<qsizetype>(size));
         Q_EMIT p->dataReady(bytes);
     }
 
     pw_stream_queue_buffer(p->m_stream, b);
 }
 
+
 // --- FifoInput Implementation ---
 
-FifoInput::FifoInput(QString path, QObject *parent) : AudioInput(parent), m_path(std::move(path)), m_running(false) {}
+FifoInput::FifoInput(QString path, QObject *parent) 
+    : AudioInput(parent), m_path(std::move(path)), m_running(false), m_fifoFd(-1), m_cancelFd(-1) {}
 
 FifoInput::~FifoInput()
 {
@@ -439,22 +534,70 @@ FifoInput::~FifoInput()
 void FifoInput::start()
 {
     m_running = true;
+    
+    // Create cancellation pipe for interrupting select()
+    int cancelPipe[2];
+    if (pipe(cancelPipe) == -1) {
+        Q_EMIT error(QStringLiteral("Failed to create cancel pipe"));
+        return;
+    }
+    m_cancelFd = cancelPipe[1];  // write end
+    m_cancelReadFd = cancelPipe[0];  // read end
+    
     m_thread = std::thread([this]() -> void {
-        int fd = open(m_path.toUtf8().constData(), O_RDONLY); // NOLINT(cppcoreguidelines-pro-type-vararg)
-        if (fd < 0) {
+        m_fifoFd = open(m_path.toUtf8().constData(), O_RDONLY); // NOLINT(cppcoreguidelines-pro-type-vararg)
+        if (m_fifoFd < 0) {
             Q_EMIT error(QStringLiteral("Could not open FIFO: ") + m_path);
+            close(m_cancelFd);
+            close(m_cancelReadFd);
             return;
         }
+        
         std::array<char, FIFO_BUFFER_SIZE> buffer{};
+        fd_set readFds;
+        
         while (m_running) {
-            ssize_t bytes = read(fd, buffer.data(), buffer.size());
-            if (bytes > 0) {
-                Q_EMIT dataReady(QByteArray(buffer.data(), static_cast<qsizetype>(bytes)));
-            } else {
-                usleep(FIFO_SLEEP_USEC);
+            FD_ZERO(&readFds);
+            FD_SET(m_fifoFd, &readFds);
+            FD_SET(m_cancelReadFd, &readFds);
+            
+            int maxFd = std::max(m_fifoFd, m_cancelReadFd);
+            struct timeval tv = {0, 100000};  // 100ms timeout
+            
+            int ret = select(maxFd + 1, &readFds, nullptr, nullptr, &tv);
+            if (ret < 0) {
+                break;  // Error
+            }
+            if (ret == 0) {
+                continue;  // Timeout, check m_running again
+            }
+            
+            // Check if we got data from the FIFO
+            if (FD_ISSET(m_fifoFd, &readFds)) {
+                ssize_t bytes = read(m_fifoFd, buffer.data(), buffer.size());
+                if (bytes > 0) {
+                    Q_EMIT dataReady(QByteArray(buffer.data(), static_cast<qsizetype>(bytes)));
+                } else if (bytes < 0 && errno != EAGAIN) {
+                    break;  // Actual error
+                }
+            }
+            
+            // Check if cancellation was signaled
+            if (FD_ISSET(m_cancelReadFd, &readFds)) {
+                char dummy;
+                read(m_cancelReadFd, &dummy, 1);  // Clear the pipe
+                break;
             }
         }
-        close(fd);
+        
+        if (m_fifoFd >= 0) {
+            close(m_fifoFd);
+            m_fifoFd = -1;
+        }
+        close(m_cancelFd);
+        close(m_cancelReadFd);
+        m_cancelFd = -1;
+        m_cancelReadFd = -1;
     });
 }
 
@@ -466,9 +609,21 @@ void FifoInput::stop()
 void FifoInput::stopImpl()
 {
     m_running = false;
+    
+    // Signal cancellation by writing to the pipe
+    if (m_cancelFd >= 0) {
+        char dummy = 1;
+        write(m_cancelFd, &dummy, 1);
+    }
+    
     if (m_thread.joinable()) {
         m_thread.join();
     }
+    
+    // Reset file descriptors
+    m_fifoFd = -1;
+    m_cancelFd = -1;
+    m_cancelReadFd = -1;
 }
 
 // --- AudioVisualizer Implementation ---
@@ -584,52 +739,10 @@ void AudioVisualizer::start()
         return;
 
     m_maxPeak = 100.0;
-    m_fft_size = FFT_SIZE;
 
-#ifdef __APPLE__
-    // Initialize vDSP (Apple Accelerate framework)
-    m_vdsp_context.setup = vDSP_DFT_zop_CreateSetup(nullptr, m_fft_size, vDSP_DFT_FORWARD);
-    if (!m_vdsp_context.setup) {
-        qWarning() << "Failed to create vDSP DFT setup";
-        stop();
-        return;
-    }
-
-    m_vdsp_context.realData = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
-    m_vdsp_context.imagData = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
-    m_vdsp_context.outputReal = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
-    m_vdsp_context.outputImag = static_cast<float *>(malloc(sizeof(float) * m_fft_size));
-
-    if (!m_vdsp_context.realData || !m_vdsp_context.imagData ||
-        !m_vdsp_context.outputReal || !m_vdsp_context.outputImag) {
-        qWarning() << "Failed to allocate vDSP buffers";
-        stop();
-        return;
-    }
-#else
-    // Initialize FFTW for other platforms
-    m_fftw_in = static_cast<double *>(fftw_malloc(sizeof(double) * m_fft_size));
-    m_fftw_out = static_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * (m_fft_size / 2 + 1)));
-
-    if (!m_fftw_in || !m_fftw_out) {
-        qWarning() << "Failed to allocate FFTW buffers";
-        stop();
-        return;
-    }
-
-    m_fftw_plan = fftw_plan_dft_r2c_1d(m_fft_size, m_fftw_in, m_fftw_out, FFTW_MEASURE);
-    if (!m_fftw_plan) {
-        qWarning() << "Failed to create FFTW plan";
-        stop();
-        return;
-    }
-#endif
-
-    // Precompute Hann window
-    m_hannWindow.resize(m_fft_size);
-    for (int i = 0; i < m_fft_size; ++i) {
-        m_hannWindow[i] = HANN_MULTIPLIER * (1.0 - std::cos(CIRCLE_RAD * M_PI * i / (m_fft_size - 1)));
-    }
+    // Initialize Gist for audio analysis
+    m_gist = std::make_unique<Gist<double>>(m_fft_size, SAMPLE_RATE);
+    
     computeBarRanges();
 
     m_buffer.clear();
@@ -637,29 +750,36 @@ void AudioVisualizer::start()
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
 
-    if (m_audioSource == QStringLiteral("pipewire")) {
+    // Prioritize MPD FIFO input
+    QString fifoPath = settings.value("fifoPath", QStringLiteral("/tmp/mpd.fifo")).toString();
+    if (QFile::exists(fifoPath)) {
+        m_input = new FifoInput(fifoPath, this);
+    } else if (m_audioSource == QStringLiteral("pipewire")) {
 #ifndef __APPLE__
-        m_input = new PipeWireInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+        m_input = new PipeWireInput(this);
 #endif
     } else if (m_audioSource == QStringLiteral("fifo")) {
-        QString path = settings.value("fifoPath", QStringLiteral("/tmp/mpd.fifo")).toString();
-        m_input = new FifoInput(path, this); // NOLINT(cppcoreguidelines-owning-memory)
+        m_input = new FifoInput(fifoPath, this);
     } else if (m_audioSource == QStringLiteral("coreaudio")) {
 #ifdef __APPLE__
-        m_input = new CoreAudioInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+        m_input = new CoreAudioInput(this);
 #endif
     } else {
 #ifndef __APPLE__
-        m_input = new PulseAudioInput(this); // NOLINT(cppcoreguidelines-owning-memory)
+        m_input = new PulseAudioInput(this);
 #endif
     }
 
-    connect(
-        m_input,
-        &AudioInput::dataReady,
-        this,
-        &AudioVisualizer::onDataReady,
-        Qt::QueuedConnection);
+    if (!m_input) {
+        qWarning() << "No suitable audio input created for this platform/configuration.";
+        return;
+    }
+
+    connect(m_input,
+            &AudioInput::dataReady,
+            this,
+            &AudioVisualizer::onDataReady,
+            Qt::QueuedConnection);
     connect(m_input, &AudioInput::error, this, &AudioVisualizer::onPulseError);
 
     m_input->start();
@@ -682,65 +802,20 @@ void AudioVisualizer::stop()
         m_input = nullptr;
     }
 
-#ifdef __APPLE__
-    // Cleanup vDSP
-    if (m_vdsp_context.setup) {
-        vDSP_DFT_DestroySetup(m_vdsp_context.setup);
-        m_vdsp_context.setup = nullptr;
-    }
-    if (m_vdsp_context.realData) {
-        free(m_vdsp_context.realData);
-        m_vdsp_context.realData = nullptr;
-    }
-    if (m_vdsp_context.imagData) {
-        free(m_vdsp_context.imagData);
-        m_vdsp_context.imagData = nullptr;
-    }
-    if (m_vdsp_context.outputReal) {
-        free(m_vdsp_context.outputReal);
-        m_vdsp_context.outputReal = nullptr;
-    }
-    if (m_vdsp_context.outputImag) {
-        free(m_vdsp_context.outputImag);
-        m_vdsp_context.outputImag = nullptr;
-    }
-#else
-    // Cleanup FFTW
-    if (m_fftw_plan) {
-        fftw_destroy_plan(m_fftw_plan);
-        m_fftw_plan = nullptr;
-    }
-    if (m_fftw_in) {
-        fftw_free(m_fftw_in);
-        m_fftw_in = nullptr;
-    }
-    if (m_fftw_out) {
-        fftw_free(m_fftw_out);
-        m_fftw_out = nullptr;
-    }
-#endif
+    // Reset Gist
+    m_gist.reset();
 }
 
 void AudioVisualizer::onDataReady(const QByteArray &data)
 {
-    // KISS: We use Qt's signal/slot mechanism with QueuedConnection to handle audio data.
-    // This ensures onDataReady runs on the main thread, avoiding the need for complex
-    // locking around the FFT plan and output vectors, at the cost of some main thread CPU usage.
-#ifdef __APPLE__
-    if (!m_active || !m_vdsp_context.setup) {
+    if (!m_active || !m_gist) {
         return;
     }
-#else
-    if (!m_active || !m_fftw_plan) {
-        return;
-    }
-#endif
 
     m_buffer.append(data);
 
-    // We need m_fft_size samples. Stereo (2 channels), 16-bit (2 bytes) = 4 bytes per frame.
-    int frameSize = 4;
-    int requiredBytes = m_fft_size * frameSize;
+    // Gist expects mono audio frames of m_fft_size samples
+    int requiredBytes = m_fft_size * 2; // 2 bytes per sample (16-bit)
 
     if (m_buffer.size() < requiredBytes) {
         return;
@@ -751,7 +826,22 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         m_buffer = m_buffer.right(requiredBytes);
     }
 
-    const auto *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData()); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    const auto *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
+
+    // Process both channels and combine them
+    std::vector<double> monoFrame(m_fft_size);
+    for (int i = 0; i < m_fft_size; ++i) {
+        // Average left and right channels
+        double left = static_cast<double>(pcm[i * 2]) / MAX_PCM_VALUE;
+        double right = static_cast<double>(pcm[i * 2 + 1]) / MAX_PCM_VALUE;
+        monoFrame[i] = (left + right) / 2.0;
+    }
+
+    // Process with Gist - this calculates the magnitude spectrum internally
+    m_gist->processAudioFrame(monoFrame);
+
+    // Get the magnitude spectrum from Gist
+    const std::vector<double> &magnitudeSpectrum = m_gist->getMagnitudeSpectrum();
 
     QList<double> bars;
     bars.fill(0.0, m_numBars);
@@ -762,35 +852,21 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     int rightBarsCount = m_numBars - leftBarsCount;
 
     for (int channel = 0; channel < 2; ++channel) {
-        // 0 = Left, 1 = Right
-
-#ifdef __APPLE__
-        // Apple vDSP implementation
-        for (int i = 0; i < m_fft_size; ++i) {
-            double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-            m_vdsp_context.realData[i] = static_cast<float>(sample * m_hannWindow[i]);
-            m_vdsp_context.imagData[i] = 0.0f;
-        }
-
-        // Execute FFT
-        vDSP_DFT_Execute(m_vdsp_context.setup, m_vdsp_context.realData, m_vdsp_context.imagData,
-                        m_vdsp_context.outputReal, m_vdsp_context.outputImag);
-
         int barCount = (channel == 0) ? leftBarsCount : rightBarsCount;
         int offset = (channel == 0) ? 0 : leftBarsCount;
         bool reverse = (channel == 0); // Reverse left channel to put bass in center
 
         for (int i = 0; i < barCount; i++) {
             const QList<BarRange> &ranges = (channel == 0) ? m_leftBarRanges : m_rightBarRanges;
+            if (i >= ranges.size()) break;
+            
             const BarRange &range = ranges[i];
             int startIndex = range.startIndex;
             int endIndex = range.endIndex;
 
             double maxMag = 0.0;
-            for (int b = startIndex; b < endIndex; ++b) {
-                float re = m_vdsp_context.outputReal[b];
-                float im = m_vdsp_context.outputImag[b];
-                double mag = std::sqrt(re * re + im * im);
+            for (int b = startIndex; b < endIndex && b < static_cast<int>(magnitudeSpectrum.size()); ++b) {
+                double mag = magnitudeSpectrum[b];
                 if (mag > maxMag)
                     maxMag = mag;
             }
@@ -804,46 +880,6 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
             int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
             bars[targetIdx] = maxMag;
         }
-#else
-        // FFTW implementation for other platforms
-        for (int i = 0; i < m_fft_size; ++i) {
-            double sample = (double) pcm[2 * i + channel] / MAX_PCM_VALUE; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-            m_fftw_in[i] = sample * m_hannWindow[i]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-        }
-
-        fftw_execute(m_fftw_plan);
-
-        auto out = reinterpret_cast<std::complex<double>*>(m_fftw_out); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-
-        int barCount = (channel == 0) ? leftBarsCount : rightBarsCount;
-        int offset = (channel == 0) ? 0 : leftBarsCount;
-        bool reverse = (channel == 0); // Reverse left channel to put bass in center
-
-        for (int i = 0; i < barCount; i++) {
-            const QList<BarRange> &ranges = (channel == 0) ? m_leftBarRanges : m_rightBarRanges;
-            const BarRange &range = ranges[i];
-            int startIndex = range.startIndex;
-            int endIndex = range.endIndex;
-
-            double maxMag = 0.0;
-            for (int b = startIndex; b < endIndex; ++b) {
-                double re = out[b].real(); // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-                double im = out[b].imag(); // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-                double mag = std::sqrt(re * re + im * im);
-                if (mag > maxMag)
-                    maxMag = mag;
-            }
-
-            maxMag *= std::log2(i + 2);
-
-            if (maxMag > currentFrameMax) {
-                currentFrameMax = maxMag;
-            }
-
-            int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
-            bars[targetIdx] = maxMag;
-        }
-#endif
     }
 
     // Dynamic scaling (AGC)

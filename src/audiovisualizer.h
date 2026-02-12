@@ -6,7 +6,6 @@
 #include <QThread>
 #include <QList>
 #include <QByteArray>
-#include <fftw3.h>
 #include <QtMultimedia/QAudioSource>
 #include <QtMultimedia/QAudioFormat>
 #ifndef __APPLE__
@@ -15,6 +14,8 @@
 #include <pulse/error.h>
 #include <pulse/thread-mainloop.h>
 #include <pipewire/pipewire.h>
+#include <pipewire/node.h>
+#include <pipewire/keys.h>
 #include <spa/param/audio/format-utils.h>
 #endif
 #ifdef __APPLE__
@@ -27,6 +28,7 @@
 #include <thread>
 #include <atomic>
 #include <vector>
+#include "../vendor/gist/src/Gist.h"
 
 constexpr int FFT_SIZE = 16384;
 
@@ -100,12 +102,30 @@ public:
     void stop() override;
 
 private:
+    // Callbacks
     static void on_process(void *userdata);
+    static void on_core_error(void *userdata, uint32_t id, int seq, int res, const char *message);
+    static void registry_event_global(void *userdata, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *props);
+    
+    // Private methods
     void stopImpl();
+    void createStream();
+    void cleanup();
+
+    // PipeWire objects
     struct pw_thread_loop *m_loop = nullptr;
     struct pw_context *m_context = nullptr;
     struct pw_core *m_core = nullptr;
     struct pw_stream *m_stream = nullptr;
+    struct pw_registry *m_registry = nullptr;
+
+    // Listeners
+    struct spa_hook m_core_listener;
+    struct spa_hook m_registry_listener;
+    
+    // State
+    uint32_t m_target_id = PW_ID_ANY;
+    std::atomic<bool> m_quit{false};
 };
 #endif
 
@@ -127,6 +147,9 @@ private:
     QString m_path;
     std::atomic<bool> m_running;
     std::thread m_thread;
+    int m_fifoFd = -1;
+    int m_cancelFd = -1;
+    int m_cancelReadFd = -1;
 };
 
 #ifdef __APPLE__
@@ -213,23 +236,8 @@ signals:
     void audioSourceChanged();
 
 private:
-#ifdef __APPLE__
-    // vDSP (Apple Accelerate framework) for Fourier transforms
-    struct vDSPContext {
-        vDSP_DFT_Setup setup;
-        float *realData;
-        float *imagData;
-        float *outputReal;
-        float *outputImag;
-    };
-    vDSPContext m_vdsp_context{};
-#else
-    // FFTW for other platforms
-    fftw_plan m_fftw_plan{nullptr};
-    double *m_fftw_in{nullptr};
-    fftw_complex *m_fftw_out{nullptr};
-#endif
-    int m_fft_size{FFT_SIZE};
+    // Gist audio analysis instance
+    std::unique_ptr<Gist<double>> m_gist;
 
     AudioInput *m_input{nullptr};
     QList<qreal> m_magnitudes;
@@ -238,6 +246,7 @@ private:
     bool m_active{false};
     QTimer *m_decayTimer{};
     int m_width = 0;
+    int m_fft_size{FFT_SIZE};
     // Define named constants to avoid magic numbers
     static constexpr int DefaultHeight = 600;
     static constexpr int DefaultNumBars = 32;
@@ -257,7 +266,6 @@ private:
     QString m_currentPresetName;
     QVariantList m_barColors;
 
-    std::vector<double> m_hannWindow;
     struct BarRange {
         int startIndex;
         int endIndex;
