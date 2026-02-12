@@ -37,7 +37,7 @@ public:
 
         QString presetPath = settings.value("projectMPresetPath").toString();
         if (presetPath.isEmpty()) {
-            const QStringList candidates = {
+            QStringList candidates = {
 #ifdef QT_QML_SOURCE_DIR
                 QStringLiteral(QT_QML_SOURCE_DIR) + "/presets/presets-cream-of-the-crop",
 #endif
@@ -47,6 +47,11 @@ public:
                 "/usr/local/share/projectM/presets",
                 QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
             };
+            
+            // macOS bundle resource path
+#ifdef __APPLE__
+            candidates.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/projectM-presets"));
+#endif
 
             for (const QString &p : candidates) {
                 if (QDir(p).exists()) {
@@ -200,7 +205,11 @@ ProjectMVisualizer::ProjectMVisualizer(QQuickItem *parent)
      
 {
     QSettings settings("Quester", "Quester");
+#ifdef __APPLE__
+    m_audioSource = settings.value("audioSource", "coreaudio").toString();
+#else
     m_audioSource = settings.value("audioSource", "pipewire").toString();
+#endif
     setMirrorVertically(true); // FBOs are often flipped
 }
 
@@ -270,12 +279,20 @@ void ProjectMVisualizer::startInput()
 
     QSettings settings("Quester", "Quester");
     if (m_audioSource == "pipewire") {
+#ifndef __APPLE__
         m_input = std::make_unique<PipeWireInput>(this);
+#endif
     } else if (m_audioSource == "fifo") {
         QString path = settings.value("fifoPath", "/tmp/mpd.fifo").toString();
         m_input = std::make_unique<FifoInput>(path, this);
+    } else if (m_audioSource == "coreaudio") {
+#ifdef __APPLE__
+        m_input = std::make_unique<CoreAudioInput>(this);
+#endif
     } else {
+#ifndef __APPLE__
         m_input = std::make_unique<PulseAudioInput>(this);
+#endif
     }
     connect(m_input.get(), &AudioInput::dataReady, this, &ProjectMVisualizer::onDataReady, Qt::QueuedConnection);
     connect(m_input.get(), &AudioInput::error, this, &ProjectMVisualizer::onError);
@@ -336,7 +353,7 @@ auto ProjectMVisualizer::getPresetList(const QString &presetPath) const -> QStri
     QDir dir(presetPath);
     if (!dir.exists()) {
         // Try default paths if the provided path doesn't exist
-        const QStringList candidates = {
+        QStringList candidates = {
 #ifdef QT_QML_SOURCE_DIR
             QStringLiteral(QT_QML_SOURCE_DIR) + "/presets/presets-cream-of-the-crop",
 #endif
@@ -346,6 +363,11 @@ auto ProjectMVisualizer::getPresetList(const QString &presetPath) const -> QStri
             "/usr/local/share/projectM/presets",
             QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
         };
+        
+        // macOS bundle resource path
+#ifdef __APPLE__
+        candidates.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/projectM-presets"));
+#endif
         
         for (const QString &p : candidates) {
             if (QDir(p).exists()) {

@@ -22,7 +22,7 @@ set(REQUIRED_KF_VERSION 5.240.0)
 
 # macOS specific settings
 if(APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0" CACHE STRING "Minimum OS X deployment version")
     set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures for macOS")
 endif()
 
@@ -209,8 +209,8 @@ endif()
 
 # --- Installation Rules ---
 
-# Install only on Linux
 if(NOT APPLE)
+    # Install only on Linux
     # Install the executable to the standard binary location (e.g., /usr/local/bin)
     install(TARGETS quester
         RUNTIME DESTINATION ${KDE_INSTALL_BINDIR}
@@ -221,7 +221,6 @@ if(NOT APPLE)
         DESTINATION ${KDE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
         RENAME quester.svg
     )
-
 
     # Install the .desktop file to the standard applications directory
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/quester.desktop
@@ -241,4 +240,31 @@ if(NOT APPLE)
             DESTINATION ${KDE_INSTALL_DATADIR}/Quester/projectM-presets
         )
     endif()
+else()
+    # Install on macOS
+    set(MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})
+    set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+    
+    # Install the application bundle
+    install(TARGETS quester
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+    
+    # Install presets into the application bundle
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/visualizerGradients/
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources/presets
+    )
+    
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop")
+        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop/
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources/projectM-presets
+        )
+    endif()
+    
+    # Install application icon
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/Quester512.png
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources
+        RENAME Quester.icns
+    )
 endif()

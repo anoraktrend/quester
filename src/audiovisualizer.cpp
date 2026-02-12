@@ -975,6 +975,11 @@ void AudioVisualizer::loadPresets()
             QCoreApplication::applicationDirPath() + QStringLiteral("/presets/visualizerGradients/presets.json"),
             QCoreApplication::applicationDirPath() + QStringLiteral("/../presets/visualizerGradients/presets.json"),
             QStringLiteral("presets/visualizerGradients/presets.json")};
+    
+    // macOS bundle resource path
+#ifdef __APPLE__
+    paths.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/presets/presets.json"));
+#endif
 
 
     for (const QString &path : paths) {
