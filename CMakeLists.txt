@@ -169,6 +169,7 @@ qt_add_qml_module(quester
         qml/VisualizerView.qml
         qml/WrappedView.qml
         qml/SettingsWindow.qml
+        qml/GridViewMode.qml
     RESOURCE_PREFIX qml
 )
 

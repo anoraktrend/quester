@@ -2309,3 +2309,103 @@ void MpdClient::refreshLibraryAfterDelete()
     // No longer needed - functionality moved to deleteSelectedDuplicates
     // Kept for source compatibility
 }
+
+void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
+{
+    if (artistName.isEmpty() || artistName == "Unknown Artist" || !callback.isCallable())
+        return;
+
+    QString cachePath = getArtistImageCachePath(artistName);
+
+    // Check if we have a cached image
+    if (QFile::exists(cachePath)) {
+        QString artUrl = "file://" + cachePath;
+        QJSValueList args;
+        args << artUrl;
+        callback.call(args);
+        return;
+    }
+
+    // Try TheAudioDB for artist image
+    auto tryAudioDb = [this, artistName, cachePath, callback]() -> void {
+        QUrl url("https://www.theaudiodb.com/api/v1/json/1/search.php");
+        QUrlQuery query;
+        query.addQueryItem("s", artistName);
+        url.setQuery(query);
+
+        QNetworkRequest request(url);
+        request.setRawHeader("User-Agent", "Quester/1.0");
+
+        QNetworkReply *reply = m_networkManager->get(request);
+        QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, artistName, cachePath, callback]() -> void {
+            reply->deleteLater();
+            
+            if (reply->error() != QNetworkReply::NoError) {
+                qWarning() << "TheAudioDB artist image request failed:" << reply->errorString();
+                callback.call();
+                return;
+            }
+
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            QJsonArray artistArray = doc.object()["artists"].toArray();
+            
+            if (artistArray.isEmpty()) {
+                qWarning() << "TheAudioDB artist not found:" << artistName;
+                callback.call();
+                return;
+            }
+
+            QJsonObject artist = artistArray.first().toObject();
+            QString strArtistThumb = artist["strArtistThumb"].toString();
+            QString strArtistFanart = artist["strArtistFanart"].toString();
+            
+            QString imageUrl = strArtistThumb.isEmpty() ? strArtistFanart : strArtistThumb;
+            
+            if (imageUrl.isEmpty()) {
+                qWarning() << "TheAudioDB artist image not available:" << artistName;
+                callback.call();
+                return;
+            }
+
+            // Fetch the image
+            QNetworkRequest imgReq((QUrl(imageUrl)));
+            imgReq.setRawHeader("User-Agent", "Quester/1.0");
+            QNetworkReply *imgReply = m_networkManager->get(imgReq);
+            QObject::connect(imgReply, &QNetworkReply::finished, this, [imgReply, cachePath, callback]() -> void {
+                imgReply->deleteLater();
+                
+                if (imgReply->error() == QNetworkReply::NoError) {
+                    QByteArray imageData = imgReply->readAll();
+                    QFile file(cachePath);
+                    if (file.open(QIODevice::WriteOnly)) {
+                        file.write(imageData);
+                        file.close();
+                        QString artUrl = "file://" + cachePath;
+                        QJSValueList args;
+                        args << artUrl;
+                        callback.call(args);
+                    } else {
+                        qWarning() << "Failed to save artist image to cache:" << cachePath;
+                        callback.call();
+                    }
+                } else {
+                    qWarning() << "Artist image download failed:" << imgReply->errorString();
+                    callback.call();
+                }
+            });
+        });
+    };
+
+    tryAudioDb();
+}
+
+QString MpdClient::getArtistImageCachePath(const QString &artistName)
+{
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/artist_images/";
+    QDir dir(cacheDir);
+    if (!dir.exists()) {
+        dir.mkpath(".");
+    }
+    QByteArray hashName = QCryptographicHash::hash(artistName.toUtf8(), QCryptographicHash::Md5).toHex();
+    return cacheDir + hashName + ".jpg";
+}

@@ -298,6 +298,10 @@ private:
     [[nodiscard]] PlaylistModel* playlistModel() const;
     [[nodiscard]] PlaylistTrackModel* playlistTrackModel() const;
 
+    // Artist image fetching
+    Q_INVOKABLE void fetchArtistImage(const QString &artistName, QJSValue callback);
+    QString getArtistImageCachePath(const QString &artistName);
+
     // ListenBrainz JSPF playlist methods
     Q_INVOKABLE void fetchJspfPlaylist(const QString &playlistIdentifier);
     Q_INVOKABLE void saveJspfPlaylistToCache(const QString &identifier);

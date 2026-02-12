@@ -242,206 +242,44 @@ ApplicationWindow {
             }
         }
 
-        GridView {
-            id: albumGridView
-            anchors.top: parent.top
-            anchors.topMargin: headerBar.height + 10
-            anchors.bottom: bottomControls.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 10
-            clip: true
-            visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "grid"
-            
-            cellWidth: 180
-            cellHeight: 220
-            model: mpdClient.albumModel
-            
-            delegate: Item {
-                width: albumGridView.cellWidth
-                height: albumGridView.cellHeight
-                
-                CheckBox {
-                    visible: selectionMode
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    checked: selectedAlbums.indexOf(model.mbid) !== -1
-                    onCheckedChanged: function(checked) {
-                        if (checked && selectedAlbums.indexOf(model.mbid) === -1) {
-                            selectedAlbums.push(model.mbid);
-                        } else if (!checked) {
-                            selectedAlbums.splice(selectedAlbums.indexOf(model.mbid), 1);
-                        }
-                    }
-                }
-                
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    color: "transparent"
-                    
-                    Rectangle {
-                        id: artContainer
-                        height: width
-                        width: parent.width
-                        anchors.top: parent.top
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        color: palette.base
-                        radius: 5
-                        border.width: model.art ? 2 : 0
-                        border.color: palette.accent
-                        
-                        Image {
-                            anchors.fill: parent
-                            anchors.margins: 2
-                            source: model.art
-                            fillMode: Image.PreserveAspectCrop
-                        }
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            width: parent.width - 10
-                            text: model.name
-                            color: palette.text
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                            visible: !model.art
-                        }
-                        
-                        MouseArea {
-                            anchors.fill: parent
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: function(mouse) {
-                                if (mouse.button === Qt.RightButton) {
-                                    if (selectedAlbums.length > 0) {
-                                        selectionMenu.popup()
-                                    } else {
-                                        gridContextMenu.popup()
-                                    }
-                                } else {
-                                    if (selectionMode) {
-                                        var idx = selectedAlbums.indexOf(model.mbid);
-                                        if (idx === -1) selectedAlbums.push(model.mbid);
-                                        else selectedAlbums.splice(idx, 1);
-                                    } else {
-                                        pathView.currentIndex = index;
-                                        coverFlow.viewMode = "flow";
-                                    }
-                                }
-                            }
-
-                                Menu {
-                                id: gridContextMenu
-                                MenuItem {
-                                    text: qsTr("Play Album")
-                                    onTriggered: mpdClient.playAlbum(model.artist, model.name, model.mbid)
-                                }
-                                MenuItem {
-                                    text: qsTr("Add to Queue")
-                                    onTriggered: mpdClient.addAlbum(model.artist, model.name, model.mbid)
-                                }
-                            }
-                        }
-
-                    }
-                    
-                    Menu {
-                        id: selectionMenu
-                        MenuItem {
-                            text: qsTr("Add selected to queue")
-                            onTriggered: {
-                                    mpdClient.addAlbums(selectedAlbums);
-                                    selectedAlbums = [];
-                                    selectionMode = false;
-                                }
-                            }
-                            MenuItem {
-                                text: qsTr("Play selected")
-                                onTriggered: {
-                                    mpdClient.playAlbums(selectedAlbums);
-                                    selectedAlbums = [];
-                                    selectionMode = false;
-                                }
-                            }
-                            MenuItem {
-                                text: qsTr("Clear selection")
-                                onTriggered: {
-                                    selectedAlbums = [];
-                                }
-                            }
-                        }
-                    }
-                    Text {
-                        y: artContainer.y + artContainer.height + 5
-                        width: parent.width
-                        text: model.name
-                        font.bold: true
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignHCenter
-                        color: palette.text
-                    }
-                    
-                    Text {
-                        y: artContainer.y + artContainer.height + 22
-                        width: parent.width
-                        text: model.artist
-                        font.pixelSize: 12 * window.fontScale
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignHCenter
-                        color: palette.windowText
-                    }
-                }
-            }
-            
-            GridView {
-                id: artistGridView
-                anchors.top: albumGridView.bottom
-                anchors.topMargin: 10
+            GridViewMode {
+                id: gridViewMode
+                anchors.top: parent.top
+                anchors.topMargin: headerBar.height + 10
                 anchors.bottom: bottomControls.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.margins: 10
-                clip: true
-                visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "artists"
+                visible: coverFlow.state === "libraryView" && (coverFlow.viewMode === "grid" || coverFlow.viewMode === "artists")
                 
-                cellWidth: 200
-                cellHeight: 100
-                model: mpdClient.artistModel
-
-                delegate: Item {
-                    width: artistGridView.cellWidth
-                    height: artistGridView.cellHeight
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 5
-                        color: palette.base
-                        radius: 5
-                        border.color: palette.accent
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: model.name
-                            color: palette.text
-                            font.pixelSize: 16 * window.fontScale
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: mpdClient.loadArtist(model.name)
+                selectionMode: window.selectionMode
+                selectedAlbums: window.selectedAlbums
+                
+                // Initialize to appropriate view based on coverFlow.viewMode
+                Component.onCompleted: {
+                    if (coverFlow.viewMode === "artists") {
+                        gridViewMode.viewMode = "artists"
+                    } else {
+                        gridViewMode.viewMode = "albums"
+                    }
+                }
+                
+                // Update view mode when coverFlow.viewMode changes
+                Connections {
+                    target: coverFlow
+                    function onViewModeChanged() {
+                        if (coverFlow.viewMode === "artists") {
+                            gridViewMode.viewMode = "artists"
+                        } else if (coverFlow.viewMode === "grid") {
+                            gridViewMode.viewMode = "albums"
                         }
                     }
                 }
-
-                ScrollBar.vertical: ScrollBar { }
             }
 
             ListView {
                 id: browserListView
-                anchors.top: albumGridView.bottom
-                anchors.topMargin: 10
+                anchors.top: parent.top
+                anchors.topMargin: headerBar.height + 10
                 anchors.bottom: bottomControls.top
                 anchors.left: parent.left
                 anchors.right: parent.right

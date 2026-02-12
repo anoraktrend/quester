@@ -161,19 +161,9 @@ ToolBar {
                     text: qsTr("Grid View")
                     height: visible ? implicitHeight : 0
                     visible: root.viewState === "libraryView"
-                    checked: root.viewMode === "grid"
+                    checked: root.viewMode === "grid" || root.viewMode === "artists"
                     onClicked: {
                         root.setViewMode("grid")
-                        appMenu.close()
-                    }
-                }
-                RadioButton {
-                    text: qsTr("Artists")
-                    height: visible ? implicitHeight : 0
-                    visible: root.viewState === "libraryView"
-                    checked: root.viewMode === "artists"
-                    onClicked: {
-                        root.setViewMode("artists")
                         appMenu.close()
                     }
                 }
