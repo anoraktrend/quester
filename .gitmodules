@@ -7,6 +7,4 @@
 [submodule "vendor/gist"]
 	path = vendor/gist
 	url = https://github.com/anoraktrend/Gist
-[submodule "vendor/essentia"]
-	path = vendor/essentia
-	url = https://github.com/MTG/essentia
+
