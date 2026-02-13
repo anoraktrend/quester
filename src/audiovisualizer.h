@@ -30,7 +30,7 @@
 #include <vector>
 #include "../vendor/gist/src/Gist.h"
 
-constexpr int FFT_SIZE = 16384;
+constexpr int FFT_SIZE = 4096;
 
 class AudioInput : public QObject
 {
@@ -242,6 +242,9 @@ private:
     AudioInput *m_input{nullptr};
     QList<qreal> m_magnitudes;
     QList<double> m_smoothBuffer;
+    QList<double> m_bars;
+    std::vector<double> m_monoFrame;
+    std::vector<double> m_logScaleFactors;
     QByteArray m_buffer;
     bool m_active{false};
     QTimer *m_decayTimer{};

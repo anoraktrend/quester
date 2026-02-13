@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import QtQuick.Window
 import Quester 1.0
 import org.kde.kirigami as Kirigami
+import org.kde.qqc2desktopstyle.private as Style
 
 Kirigami.ApplicationWindow {
     id: window
@@ -884,10 +885,6 @@ Kirigami.ApplicationWindow {
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Shuffle: ") + (mpdClient.random ? qsTr("On") : qsTr("Off"))
 
-                        background: Rectangle {
-                            color: "transparent"
-                        }
-
                     }
 
                     Button {
@@ -987,10 +984,6 @@ Kirigami.ApplicationWindow {
                         ToolTip.visible: hovered
                         ToolTip.text: mode === 0 ? qsTr("Repeat: Off") : (mode === 1 ? qsTr("Repeat: All") : qsTr("Repeat: One"))
 
-                        background: Rectangle {
-                            color: "transparent"
-                        }
-
                     }
 
                 }
@@ -1043,7 +1036,6 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.previous()
                         flat: true
-                        background: Rectangle { color: "transparent" }
                     }
 
                     Button {
@@ -1053,7 +1045,6 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.togglePlayPause()
                         flat: true
-                        background: Rectangle { color: "transparent" }
                     }
 
                     Button {
@@ -1063,7 +1054,6 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.next()
                         flat: true
-                        background: Rectangle { color: "transparent" }
                     }
                 }
 
@@ -1076,7 +1066,6 @@ Kirigami.ApplicationWindow {
                     icon.color: window.themeTextColor
                     onClicked: coverFlow.state = "libraryView"
                     flat: true
-                    background: Rectangle { color: "transparent" }
                     contentItem: RowLayout {
                         spacing: 5
                         Kirigami.Icon {

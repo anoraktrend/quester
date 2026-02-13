@@ -26,8 +26,8 @@ constexpr int DECAY_TIMER_FAST_MS = 20;
 constexpr double MAX_PCM_VALUE = 32768.0;
 constexpr double MONSTERCAT_FACTOR = 1.5;
 constexpr double MONSTERCAT_SCALE = 1.25;
-constexpr int MIN_BIN_INDEX = 16;
-constexpr int MAX_BIN_INDEX = 3072;
+constexpr int MIN_BIN_INDEX = 4;
+constexpr int MAX_BIN_INDEX = 768;
 constexpr double HANN_MULTIPLIER = 0.5;
 constexpr double CIRCLE_RAD = 2.0;
 constexpr double PEAK_DECAY_RATE = 0.995;
@@ -54,31 +54,34 @@ struct MonstercatParams {
 static void monstercat_filter(
     QList<double> &bars, const MonstercatParams &params)
 {
-    int z = 0;
-    int m_y = 0, de = 0;
     int number_of_bars = static_cast<int>(bars.size());
+
     if (params.waves > 0) {
+        int z = 0;
+        int m_y = 0, de = 0;
         for (z = 0; z < number_of_bars; z++) { // waves
             bars[z] = bars[z] / MONSTERCAT_SCALE;
             for (m_y = z - 1; m_y >= 0; m_y--) {
                 de = z - m_y;
-                bars[m_y] = max(bars[z] - pow(de, 2), bars[m_y]);
+                bars[m_y] = max(bars[z] - (double)de * de, bars[m_y]);
             }
             for (m_y = z + 1; m_y < number_of_bars; m_y++) {
                 de = m_y - z;
-                bars[m_y] = max(bars[z] - pow(de, 2), bars[m_y]);
+                bars[m_y] = max(bars[z] - (double)de * de, bars[m_y]);
             }
         }
     } else if (params.monstercat > 0) {
-        for (z = 0; z < number_of_bars; z++) {
-            for (m_y = z - 1; m_y >= 0; m_y--) {
-                de = z - m_y;
-                bars[m_y] = max(bars[z] / pow(params.monstercat, de), bars[m_y]);
-            }
-            for (m_y = z + 1; m_y < number_of_bars; m_y++) {
-                de = m_y - z;
-                bars[m_y] = max(bars[z] / pow(params.monstercat, de), bars[m_y]);
-            }
+        // Optimized O(N) implementation for exponential decay
+        double decay = 1.0 / params.monstercat;
+
+        // Pass 1: Left to Right
+        for (int i = 1; i < number_of_bars; i++) {
+            bars[i] = max(bars[i], bars[i - 1] * decay);
+        }
+
+        // Pass 2: Right to Left
+        for (int i = number_of_bars - 2; i >= 0; i--) {
+            bars[i] = max(bars[i], bars[i + 1] * decay);
         }
     }
 }
@@ -743,6 +746,7 @@ void AudioVisualizer::start()
     // Initialize Gist for audio analysis
     m_gist = std::make_unique<Gist<double>>(m_fft_size, SAMPLE_RATE);
     
+    m_monoFrame.resize(m_fft_size);
     computeBarRanges();
 
     m_buffer.clear();
@@ -843,8 +847,9 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     // Get the magnitude spectrum from Gist
     const std::vector<double> &magnitudeSpectrum = m_gist->getMagnitudeSpectrum();
 
-    QList<double> bars;
-    bars.fill(0.0, m_numBars);
+    if (m_bars.size() != m_numBars) {
+        m_bars.resize(m_numBars);
+    }
 
     double currentFrameMax = 0.0;
 
@@ -871,14 +876,16 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
                     maxMag = mag;
             }
 
-            maxMag *= std::log2(i + 2);
+            if (i < static_cast<int>(m_logScaleFactors.size())) {
+                maxMag *= m_logScaleFactors[i];
+            }
 
             if (maxMag > currentFrameMax) {
                 currentFrameMax = maxMag;
             }
 
             int targetIdx = reverse ? (offset + barCount - 1 - i) : (offset + i);
-            bars[targetIdx] = maxMag;
+            m_bars[targetIdx] = maxMag;
         }
     }
 
@@ -889,20 +896,20 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     // Normalize
     for (int i = 0; i < m_numBars; i++) {
-        bars[i] /= m_maxPeak;
+        m_bars[i] /= m_maxPeak;
     }
 
     auto h = (double)m_height;
     if (h < 1.0) h = 1.0;
 
     for (int i = 0; i < m_numBars; i++) {
-        bars[i] *= h;
+        m_bars[i] *= h;
     }
 
-    monstercat_filter(bars, {.waves=0, .monstercat=MONSTERCAT_FACTOR, .height=(int)h});
+    monstercat_filter(m_bars, {.waves=0, .monstercat=MONSTERCAT_FACTOR, .height=(int)h});
 
     for (int i = 0; i < m_numBars; i++) {
-        bars[i] /= h;
+        m_bars[i] /= h;
     }
 
     m_magnitudes.clear();
@@ -911,7 +918,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     }
 
     for (int i = 0; i < m_numBars; i++) {
-        double val = bars[i];
+        double val = m_bars[i];
         double &smoothVal = m_smoothBuffer[i];
 
         // Apply smoothing: Fast attack (0.4), Slow decay (0.85)
@@ -1183,6 +1190,12 @@ void AudioVisualizer::computeBarRanges()
     int minBin = MIN_BIN_INDEX;
     int maxBin = MAX_BIN_INDEX;
     int numBins = m_fft_size / 2 + 1;
+
+    int maxBars = std::max(leftBarsCount, rightBarsCount);
+    m_logScaleFactors.resize(maxBars);
+    for (int i = 0; i < maxBars; ++i) {
+        m_logScaleFactors[i] = std::log2(i + 2);
+    }
 
     auto computeRanges = [&](QList<BarRange> &ranges, int barCount) -> void {
         ranges.clear();
