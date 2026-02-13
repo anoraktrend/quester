@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quester 1.0
+import org.kde.kirigami as Kirigami
+
 
 Item {
     id: gridViewMode
@@ -11,8 +13,14 @@ Item {
     property string currentArtist: ""
     property bool selectionMode: false
     property var selectedAlbums: []
+    property real fontScale: 1.0
+    property bool updatingArtist: false
 
-    SystemPalette { id: palette }
+    property color themeAlternateBackgroundColor: Kirigami.Theme.alternateBackgroundColor
+    property color themeTextColor: Kirigami.Theme.textColor
+    property color themeViewBackgroundColor: Kirigami.Theme.viewBackgroundColor
+    property color themeHighlightColor: Kirigami.Theme.highlightColor
+    property color themeBackgroundColor: Kirigami.Theme.backgroundColor
 
     // Filtered album model for artist-focused view
     ListModel {
@@ -75,9 +83,11 @@ Item {
 
     // Load albums for specific artist
     function loadArtistAlbums(artistName) {
-        viewMode = "albums"
-        currentArtist = artistName
+        updatingArtist = true
         filterAlbumsByArtist(artistName)
+        currentArtist = artistName
+        viewMode = "albums"
+        updatingArtist = false
     }
 
     // Header for artist-focused view
@@ -87,13 +97,13 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 50
-        color: palette.mid
+        color: themeAlternateBackgroundColor
         visible: viewMode === "albums"
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: Kirigami.Theme.mediumSpacing
-            spacing: Kirigami.Theme.mediumSpacing
+            anchors.margins: Kirigami.Units.mediumSpacing
+            spacing: Kirigami.Units.mediumSpacing
 
             ToolButton {
                 icon.name: "go-previous"
@@ -103,7 +113,7 @@ Item {
 
             Label {
                 text: currentArtist
-                color: palette.windowText
+                color: themeTextColor
                 font.bold: true
                 font.pixelSize: 16
                 Layout.fillWidth: true
@@ -116,11 +126,11 @@ Item {
     GridView {
         id: artistGridView
         anchors.top: artistHeader.visible ? artistHeader.bottom : parent.top
-        anchors.topMargin: artistHeader.visible ? Kirigami.Theme.mediumSpacing : 0
+        anchors.topMargin: artistHeader.visible ? Kirigami.Units.mediumSpacing : 0
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: Kirigami.Theme.mediumSpacing
+        anchors.margins: Kirigami.Units.mediumSpacing
         clip: true
         visible: viewMode === "artists"
 
@@ -146,10 +156,10 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Theme.smallSpacing
-                color: palette.base
+                anchors.margins: Kirigami.Units.smallSpacing
+                color: themeViewBackgroundColor
                 radius: 5
-                border.color: palette.accent
+                border.color: themeHighlightColor
                 clip: true
 
                 Image {
@@ -164,7 +174,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: model.name.substring(0, 1)
-                        color: palette.text
+                        color: themeTextColor
                         font.pixelSize: 48
                         font.bold: true
                         visible: artistImage.status === Image.Null || artistImage.status === Image.Error
@@ -176,13 +186,13 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     height: 40
-                    color: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 0.5)
+                    color: Qt.alpha(themeBackgroundColor, 0.5)
 
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 10
                         text: model.name
-                        color: palette.windowText
+                        color: themeTextColor
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
@@ -205,17 +215,17 @@ Item {
     GridView {
         id: albumGridView
         anchors.top: artistHeader.visible ? artistHeader.bottom : parent.top
-        anchors.topMargin: artistHeader.visible ? Kirigami.Theme.mediumSpacing : 0
+        anchors.topMargin: artistHeader.visible ? Kirigami.Units.mediumSpacing : 0
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: Kirigami.Theme.mediumSpacing
+        anchors.margins: Kirigami.Units.mediumSpacing
         clip: true
         visible: viewMode === "albums"
 
         cellWidth: 180
         cellHeight: 220
-        model: currentArtist ? filteredAlbumModel : mpdClient.albumModel
+        model: updatingArtist ? null : (currentArtist ? filteredAlbumModel : mpdClient.albumModel)
 
         delegate: Item {
             width: albumGridView.cellWidth
@@ -237,7 +247,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Theme.mediumSpacing
+                anchors.margins: Kirigami.Units.mediumSpacing
                 color: "transparent"
 
                 Rectangle {
@@ -246,10 +256,10 @@ Item {
                     width: parent.width
                     anchors.top: parent.top
                     anchors.horizontalCenter: parent.horizontalCenter
-                    color: palette.base
+                    color: themeViewBackgroundColor
                     radius: 5
                     border.width: model.art ? 2 : 0
-                    border.color: palette.accent
+                    border.color: themeHighlightColor
 
                     Image {
                         anchors.fill: parent
@@ -262,7 +272,7 @@ Item {
                         anchors.centerIn: parent
                         width: parent.width - 10
                         text: model.name
-                        color: palette.text
+                        color: themeTextColor
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                         visible: !model.art
@@ -348,17 +358,17 @@ Item {
                     font.bold: true
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignHCenter
-                    color: palette.text
+                    color: themeTextColor
                 }
 
                 Text {
                     y: artContainer.y + artContainer.height + 22
                     width: parent.width
                     text: model.artist
-                    font.pixelSize: 12 * window.fontScale
+                    font.pixelSize: 12 * fontScale
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignHCenter
-                    color: palette.windowText
+                    color: themeTextColor
                 }
             }
         }
