@@ -159,7 +159,7 @@ auto DBusService::getMetadataForTrack(const QueueItem &item) const -> QVariantMa
     QString artist = item.artist;
     QString album = item.album;
     QString albumArt = m_mpdClient->albumArt();
-    qint64 duration = item.duration.toLongLong();
+    qint64 duration = item.durationSecs;
 
     // Only include metadata if we have a valid track
     if (uri.isEmpty() && title.isEmpty() && artist.isEmpty()) {
@@ -373,9 +373,9 @@ void DBusService::seek(double offset)
         return;
     }
 
-    qint64 newPosSec = newPosition / MICROSECONDS_PER_SECOND;
+    double newPosSec = static_cast<double>(newPosition) / MICROSECONDS_PER_SECOND;
     m_mpdClient->seekTo(newPosSec);
-    emit seeked(newPosSec * MICROSECONDS_PER_SECOND);
+    emit seeked(newPosition);
 }
 
 void DBusService::setPosition(const QString &trackId, double position)
@@ -401,9 +401,9 @@ void DBusService::setPosition(const QString &trackId, double position)
         newPosition = duration;
     }
 
-    qint64 newPosSec = newPosition / MICROSECONDS_PER_SECOND;
+    double newPosSec = static_cast<double>(newPosition) / MICROSECONDS_PER_SECOND;
     m_mpdClient->seekTo(newPosSec);
-    emit seeked(newPosSec * MICROSECONDS_PER_SECOND);
+    emit seeked(newPosition);
 }
 
 void DBusService::openUri(const QString &uri)

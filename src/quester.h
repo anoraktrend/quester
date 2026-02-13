@@ -65,6 +65,7 @@ struct QueueItem {
     QString album;
     QString duration;
     QString uri;
+    unsigned durationSecs = 0;
 };
 
 class AlbumModel : public QAbstractListModel
@@ -363,8 +364,8 @@ public Q_SLOTS:
     void stop();
     void next();
     void previous();
-    void seek(qint64 time);
-    void seekTo(qint64 time);
+    void seek(double time);
+    void seekTo(double time);
 
     // Library
     void refreshLibrary(); // Existing

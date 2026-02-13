@@ -766,7 +766,7 @@ void MpdClient::play() {
     if (m_connection) { leaveIdle(); mpd_run_play(m_connection); sendIdle(); }
 }
 
-void MpdClient::seek(qint64 time)
+void MpdClient::seek(double time)
 {
     if (m_connection) {
         leaveIdle();
@@ -776,7 +776,7 @@ void MpdClient::seek(qint64 time)
     }
 }
 
-void MpdClient::seekTo(qint64 time)
+void MpdClient::seekTo(double time)
 {
     if (m_connection) {
         leaveIdle();
@@ -945,7 +945,8 @@ void MpdClient::refreshQueue()
                         .artist=artist ? QString::fromUtf8(artist) : tr("Unknown Artist"),
                         .album=album ? QString::fromUtf8(album) : tr("Unknown Album"),
                         .duration=QString("%1:%2").arg(duration / SECONDS_PER_MINUTE).arg(duration % SECONDS_PER_MINUTE, 2, DECIMAL_BASE, QChar('0')),
-                        .uri=QString::fromUtf8(uri)
+                        .uri=QString::fromUtf8(uri),
+                        .durationSecs=duration
                     });
                 }
                 mpd_entity_free(entity);
