@@ -184,8 +184,12 @@ auto DBusService::getMetadataForTrack(const QueueItem &item) const -> QVariantMa
     }
 
     // Add album art if available
-    if (!albumArt.isEmpty()) { // NOLINT
-        metadata["mpris:artUrl"] = QUrl::fromLocalFile(albumArt).toString(); // NOLINT
+    if (!albumArt.isEmpty()) {
+        if (albumArt.startsWith("file://") || albumArt.startsWith("http://") || albumArt.startsWith("https://")) {
+            metadata["mpris:artUrl"] = albumArt;
+        } else {
+            metadata["mpris:artUrl"] = QUrl::fromLocalFile(albumArt).toString();
+        }
     }
 
     // Add URI
@@ -321,8 +325,13 @@ void DBusService::pause()
 
 void DBusService::playPause()
 {
-    if (m_mpdClient)
-        m_mpdClient->togglePlayPause();
+    if (m_mpdClient) {
+        if (m_mpdClient->state() == "play") {
+            m_mpdClient->pause();
+        } else {
+            m_mpdClient->play();
+        }
+    }
 }
 
 void DBusService::stop()
