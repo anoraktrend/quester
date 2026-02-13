@@ -889,56 +889,35 @@ Kirigami.ApplicationWindow {
 
                     Button {
                         icon.name: "media-skip-backward"
+                        icon.width: 32 * window.fontScale
+                        icon.height: 32 * window.fontScale
                         icon.color: window.themeTextColor
-                        icon.width: 24 * window.fontScale
-                        icon.height: 24 * window.fontScale
                         onClicked: mpdClient.previous()
                         flat: true
-
-                        background: Rectangle {
-                            radius: 20
-                            color: "transparent"
-                            border.color: window.themeHighlightColor
-                            border.width: 1
-                        }
-
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Previous Track")
                     }
 
                     Button {
-                        id: playPauseButton
-
                         icon.name: mpdClient.state === "play" ? "media-playback-pause" : "media-playback-start"
+                        icon.width: 48 * window.fontScale
+                        icon.height: 48 * window.fontScale
                         icon.color: window.themeTextColor
-                        icon.width: 24 * window.fontScale
-                        icon.height: 24 * window.fontScale
                         onClicked: mpdClient.togglePlayPause()
-                        width: 100
-                        height: 40
-
-                        background: Rectangle {
-                            radius: 20
-                            color: parent.down ? Qt.darker(window.themeButtonBackgroundColor, 1.1) : window.themeButtonBackgroundColor
-                            border.color: window.themeHighlightColor
-                            border.width: 1
-                        }
-
+                        flat: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Play/Pause")
                     }
 
                     Button {
                         icon.name: "media-skip-forward"
+                        icon.width: 32 * window.fontScale
+                        icon.height: 32 * window.fontScale
                         icon.color: window.themeTextColor
-                        icon.width: 24 * window.fontScale
-                        icon.height: 24 * window.fontScale
                         onClicked: mpdClient.next()
                         flat: true
-
-                        background: Rectangle {
-                            radius: 20
-                            color: "transparent"
-                            border.color: window.themeHighlightColor
-                            border.width: 1
-                        }
-
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Next Track")
                     }
 
                     Button {
@@ -1036,6 +1015,8 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.previous()
                         flat: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Previous Track")
                     }
 
                     Button {
@@ -1045,6 +1026,8 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.togglePlayPause()
                         flat: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Play/Pause")
                     }
 
                     Button {
@@ -1054,6 +1037,8 @@ Kirigami.ApplicationWindow {
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.next()
                         flat: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Next Track")
                     }
                 }
 
