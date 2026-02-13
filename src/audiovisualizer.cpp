@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -17,7 +18,7 @@
 #include <unistd.h>
 
 constexpr int SAMPLE_RATE = 44100;
-constexpr int LATENCY_USEC = 20000;
+constexpr int LATENCY_USEC = 50000;
 constexpr int BUFFER_SIZE = 1024;
 constexpr int FIFO_BUFFER_SIZE = 4096;
 constexpr int FIFO_SLEEP_USEC = 10000;
@@ -681,7 +682,7 @@ void AudioVisualizer::setWidth(int width)
         return;
 
     m_width = width;
-    int newNumBars = std::max(1, m_width / 4); // 4 pixels per bar
+    int newNumBars = std::max(1, m_width / 10); // 10 pixels per bar
     if (m_numBars != newNumBars) {
         m_numBars = newNumBars;
 
@@ -930,6 +931,12 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
     }
 
     Q_EMIT magnitudesChanged();
+    static qint64 lastEmit = 0;
+    static qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - lastEmit > 30) {
+        Q_EMIT magnitudesChanged();
+        lastEmit = now;
+    }
     m_decayTimer->start(DECAY_TIMER_MS);
 }
 

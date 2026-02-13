@@ -138,10 +138,10 @@ Item {
             visible: !root.useProjectM || visualizerSettings.projectMShowBars
 
             Rectangle {
-                width: 2
+                width: Math.max(1, (root.width / (root.magnitudes.length || 1)) - 2)
                 height: root.height * (modelData || 0) * 0.6
                 visible: !root.useProjectM || visualizerSettings.projectMShowBars
-                x: index * 4
+                x: index * (root.width / (root.magnitudes.length || 1))
                 anchors.bottom: visualizerSettings.visualizerMode === 0 ? parent.bottom : undefined
                 anchors.top: visualizerSettings.visualizerMode === 1 ? parent.top : undefined
                 anchors.verticalCenter: visualizerSettings.visualizerMode === 2 ? parent.verticalCenter : undefined
