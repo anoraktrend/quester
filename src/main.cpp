@@ -316,7 +316,7 @@ auto main(int argc, char *argv[]) -> int
     }
 
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
-        QQuickStyle::setStyle("Fusion");
+        QQuickStyle::setStyle("org.kde.desktop");
     }
 
     QString iconPath;

@@ -138,21 +138,21 @@ Item {
         cellHeight: 100
         model: artistModel
 
-        delegate: Item {
-            width: artistGridView.cellWidth
-            height: artistGridView.cellHeight
+delegate: Item {
+    width: artistGridView.cellWidth
+    height: artistGridView.cellHeight
 
-            property string artistName: model.name
-            property string imageUrl: ""
+    property string artistName: model.name
+    property string imageUrl: ""
 
-            onArtistNameChanged: {
-                imageUrl = "" // Reset image
-                mpdClient.fetchArtistImage(artistName, function(artUrl) {
-                    if (artUrl) {
-                        imageUrl = artUrl;
-                    }
-                });
+    onArtistNameChanged: {
+        imageUrl = "" // Reset image
+        mpdClient.fetchArtistImage(artistName, function(artUrl) {
+            if (artUrl) {
+                imageUrl = artUrl;
             }
+        });
+    }
 
             Rectangle {
                 anchors.fill: parent

@@ -875,7 +875,7 @@ Kirigami.ApplicationWindow {
                     Button {
                         id: randomButton
 
-                        icon.source: "image://theme/media-playlist-shuffle"
+                        icon.name: "media-playlist-shuffle"
                         icon.color: mpdClient.random ? window.themeHighlightColor : window.themeTextColor
                         icon.width: 20 * window.fontScale
                         icon.height: 20 * window.fontScale
@@ -888,7 +888,7 @@ Kirigami.ApplicationWindow {
                     }
 
                     Button {
-                        icon.source: "image://theme/media-skip-backward"
+                        icon.name: "media-skip-backward"
                         icon.color: window.themeTextColor
                         icon.width: 24 * window.fontScale
                         icon.height: 24 * window.fontScale
@@ -907,7 +907,7 @@ Kirigami.ApplicationWindow {
                     Button {
                         id: playPauseButton
 
-                        icon.source: mpdClient.state === "play" ? "image://theme/media-playback-pause" : "image://theme/media-playback-start"
+                        icon.name: mpdClient.state === "play" ? "media-playback-pause" : "media-playback-start"
                         icon.color: window.themeTextColor
                         icon.width: 24 * window.fontScale
                         icon.height: 24 * window.fontScale
@@ -925,7 +925,7 @@ Kirigami.ApplicationWindow {
                     }
 
                     Button {
-                        icon.source: "image://theme/media-skip-forward"
+                        icon.name: "media-skip-forward"
                         icon.color: window.themeTextColor
                         icon.width: 24 * window.fontScale
                         icon.height: 24 * window.fontScale
@@ -954,14 +954,14 @@ Kirigami.ApplicationWindow {
                             return 0;
                         }
 
-                        icon.source: {
+                        icon.name: {
                             switch (mode) {
                             case 1:
-                                return "image://theme/media-playlist-repeat";
+                                return "media-playlist-repeat";
                             case 2:
-                                return "image://theme/media-playlist-repeat-song";
+                                return "media-playlist-repeat-song";
                             default:
-                                return "image://theme/media-playlist-repeat";
+                                return "media-playlist-repeat";
                             }
                         }
                         icon.color: mode === 0 ? window.themeTextColor : window.themeHighlightColor
@@ -1542,7 +1542,7 @@ Kirigami.ApplicationWindow {
                     width: ListView.view.width
                     height: 50
                     text: model.name
-                    icon.source: model.isDir ? "image://theme/folder" : "image://theme/audio-x-generic"
+                    icon.name: model.isDir ? "folder" : "audio-x-generic"
                     icon.width: 24
                     icon.height: 24
                     onClicked: {
