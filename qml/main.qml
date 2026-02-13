@@ -889,8 +889,8 @@ Kirigami.ApplicationWindow {
 
                     Button {
                         icon.name: "media-skip-backward"
-                        icon.width: 32 * window.fontScale
-                        icon.height: 32 * window.fontScale
+                        icon.width: 22 * window.fontScale
+                        icon.height: 22 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.previous()
                         flat: true
@@ -900,19 +900,19 @@ Kirigami.ApplicationWindow {
 
                     Button {
                         icon.name: mpdClient.state === "play" ? "media-playback-pause" : "media-playback-start"
-                        icon.width: 48 * window.fontScale
-                        icon.height: 48 * window.fontScale
+                        icon.width: 24 * window.fontScale
+                        icon.height: 24 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.togglePlayPause()
-                        flat: true
+                        flat: false
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Play/Pause")
                     }
 
                     Button {
                         icon.name: "media-skip-forward"
-                        icon.width: 32 * window.fontScale
-                        icon.height: 32 * window.fontScale
+                        icon.width: 22 * window.fontScale
+                        icon.height: 22 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.next()
                         flat: true
