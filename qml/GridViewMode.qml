@@ -26,7 +26,13 @@ Item {
 
     Component.onCompleted: {
         updateArtistModel()
-        // TODO: Connect to a signal like mpdClient.albumModel.modelReset to automatically call updateArtistModel()
+    }
+
+    Connections {
+        target: mpdClient.albumModel
+        function onModelReset() {
+            updateArtistModel()
+        }
     }
 
     function updateArtistModel() {
@@ -145,41 +151,45 @@ Item {
                 color: palette.base
                 radius: 5
                 border.color: palette.accent
+                clip: true
 
                 Image {
                     id: artistImage
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: parent.height * 0.7
-                    fillMode: Image.PreserveAspectFit
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
                     source: imageUrl
-                    sourceSize: Qt.size(100, 100)
                     smooth: true
                     mipmap: true
 
                     // Placeholder if no image
                     Text {
                         anchors.centerIn: parent
-                        text: "?"
+                        text: model.name.substring(0, 1)
                         color: palette.text
-                        font.pixelSize: 24
+                        font.pixelSize: 48
+                        font.bold: true
                         visible: artistImage.status === Image.Null || artistImage.status === Image.Error
                     }
                 }
 
-                Text {
-                    anchors.top: artistImage.bottom
+                Rectangle {
+                    anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    text: model.name
-                    color: palette.text
-                    font.pixelSize: 12
-                    wrapMode: Text.Wrap
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    maximumLineCount: 2
+                    height: 40
+                    color: "#80000000"
+
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width - 10
+                        text: model.name
+                        color: "white"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        maximumLineCount: 2
+                    }
                 }
 
                 MouseArea {

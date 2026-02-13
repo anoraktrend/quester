@@ -71,6 +71,21 @@ ToolBar {
             Layout.fillWidth: true
         }
 
+        ComboBox {
+            id: gridModeSwitcher
+            visible: (root.viewMode === 'grid' || root.viewMode === 'artists') && root.viewState === "libraryView"
+            model: [qsTr("Albums"), qsTr("Artists")]
+            currentIndex: root.viewMode === 'grid' ? 0 : 1
+
+            onActivated: (index) => {
+                if (index === 0) {
+                    root.setViewMode('grid')
+                } else {
+                    root.setViewMode('artists')
+                }
+            }
+        }
+
         ToolButton {
             text: qsTr("Add All")
             onClicked: root.requestAddAllToQueue()
