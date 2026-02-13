@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Effects
+import org.kde.kirigami as Kirigami
 
 
 
@@ -10,14 +11,13 @@ import Quester 1.0
 import Qt.labs.platform 1.1 as Platform
 import QtCore
 
-ApplicationWindow {
+Kirigami.ApplicationWindow {
     id: window
     width: 800
     height: 600
     visible: !startMinimized
-    title: qsTr("Quester")
     color: palette.window
-    visibility: startFullscreen ? ApplicationWindow.FullScreen : (startMinimized ? ApplicationWindow.Minimized : ApplicationWindow.Windowed)
+    visibility: startFullscreen ? Kirigami.ApplicationWindow.FullScreen : (startMinimized ? Kirigami.ApplicationWindow.Minimized : Kirigami.ApplicationWindow.Windowed)
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
     property bool useProjectM: false
@@ -26,44 +26,51 @@ ApplicationWindow {
     property var selectedAlbums: []
     SystemPalette { id: palette }
 
-    // A HeaderBar provides Client-Side Decorations, which is the standard on
-    // many Wayland desktops like GNOME. It also provides a place for window controls.
-    HeaderBar {
-        id: headerBar
-        z: 100
-        height: implicitHeight
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        transparentBackground: coverFlow.state === "visualizerView"
-        fontScale: window.fontScale
+    pageStack.initialPage: Kirigami.Page {
+        title: qsTr("Quester")
         
-        viewState: coverFlow.state
-        viewMode: coverFlow.viewMode
-        useProjectM: window.useProjectM
+        actions {
+            main: Kirigami.Action {
+                icon.name: "view-refresh"
+                text: qsTr("Refresh Library")
+                onTriggered: mpdClient.refreshLibrary()
+            }
+            left: [
+                Kirigami.Action {
+                    icon.name: "document-open-folder"
+                    text: qsTr("Library")
+                    onTriggered: coverFlow.state = "libraryView"
+                },
+                Kirigami.Action {
+                    icon.name: "view-media-playlist"
+                    text: qsTr("Queue")
+                    onTriggered: coverFlow.state = "queueView"
+                },
+                Kirigami.Action {
+                    icon.name: "playlist-editor"
+                    text: qsTr("Playlists")
+                    onTriggered: coverFlow.state = "playlistsView"
+                },
+                Kirigami.Action {
+                    icon.name: "applications-multimedia"
+                    text: qsTr("Visualizer")
+                    onTriggered: goToVisualizer()
+                },
+                Kirigami.Action {
+                    icon.name: "view-statistics"
+                    text: qsTr("Wrapped")
+                    onTriggered: coverFlow.state = "wrappedView"
+                }
+            ]
+            right: [
+                Kirigami.Action {
+                    icon.name: "configure"
+                    text: qsTr("Settings")
+                    onTriggered: settingsWindow.show()
+                }
+            ]
+        }
 
-        onOpenSettings: settingsWindow.show()
-        onOpenVisualizerSettings: {
-            settingsWindow.defaultTab = 1
-            settingsWindow.show()
-        }
-        onRequestVisualizer: goToVisualizer()
-        onRequestQueue: coverFlow.state = "queueView"
-        onRequestPlaylists: coverFlow.state = "playlistsView"
-        onRequestLibrary: coverFlow.state = "libraryView"
-        onRequestWrapped: coverFlow.state = "wrappedView"
-        onRequestRefresh: mpdClient.refreshLibrary()
-        onRequestAddAllToQueue: mpdClient.addAll()
-        onToggleSelectionMode: {
-            selectionMode = !selectionMode;
-            if (!selectionMode) selectedAlbums = [];
-        }
-        onToggleProjectM: {
-            window.useProjectM = !window.useProjectM
-        }
-        onSetViewMode: (mode) => { coverFlow.viewMode = mode; if (mode === "browser") mpdClient.browsePath(mpdClient.currentPath) }
-    }
-    
     Component.onCompleted: {
         mpdClient.consume = true
     }
@@ -99,7 +106,6 @@ ApplicationWindow {
             id: pathView
             visible: coverFlow.viewMode === "flow" && coverFlow.state === "libraryView"
             anchors.top: parent.top
-            anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
             anchors.right: parent.right
             height: 320
@@ -245,7 +251,6 @@ ApplicationWindow {
             GridViewMode {
                 id: gridViewMode
                 anchors.top: parent.top
-                anchors.topMargin: headerBar.height + 10
                 anchors.bottom: bottomControls.top
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -279,7 +284,6 @@ ApplicationWindow {
             ListView {
                 id: browserListView
                 anchors.top: parent.top
-                anchors.topMargin: headerBar.height + 10
                 anchors.bottom: bottomControls.top
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -344,7 +348,6 @@ ApplicationWindow {
         ListView {
             id: queueListView
             anchors.top: parent.top
-            anchors.topMargin: headerBar.height + 10
             anchors.bottom: bottomControls.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -692,7 +695,6 @@ ApplicationWindow {
         RowLayout {
             id: playlistHeader
             anchors.top: parent.top
-            anchors.topMargin: headerBar.height + 10
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.margins: 10
@@ -820,7 +822,7 @@ ApplicationWindow {
             }
         ]
     }
-
+}
     SettingsWindow { id: settingsWindow; lastfmAuthToken: lastfmAuthToken }
 
     Dialog {

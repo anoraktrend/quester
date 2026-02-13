@@ -92,13 +92,12 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 10
-            spacing: 10
+            anchors.margins: Kirigami.Theme.mediumSpacing
+            spacing: Kirigami.Theme.mediumSpacing
 
-            Button {
-                text: qsTr("← All Artists")
+            ToolButton {
+                icon.name: "go-previous"
                 onClicked: resetToArtistsView()
-                ToolTip.visible: hovered
                 ToolTip.text: qsTr("Return to artists view")
             }
 
@@ -117,11 +116,11 @@ Item {
     GridView {
         id: artistGridView
         anchors.top: artistHeader.visible ? artistHeader.bottom : parent.top
-        anchors.topMargin: artistHeader.visible ? 10 : 0
+        anchors.topMargin: artistHeader.visible ? Kirigami.Theme.mediumSpacing : 0
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: 10
+        anchors.margins: Kirigami.Theme.mediumSpacing
         clip: true
         visible: viewMode === "artists"
 
@@ -147,7 +146,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: 5
+                anchors.margins: Kirigami.Theme.smallSpacing
                 color: palette.base
                 radius: 5
                 border.color: palette.accent
@@ -177,13 +176,13 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     height: 40
-                    color: "#80000000"
+                    color: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 0.5)
 
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 10
                         text: model.name
-                        color: "white"
+                        color: palette.windowText
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
@@ -206,11 +205,11 @@ Item {
     GridView {
         id: albumGridView
         anchors.top: artistHeader.visible ? artistHeader.bottom : parent.top
-        anchors.topMargin: artistHeader.visible ? 10 : 0
+        anchors.topMargin: artistHeader.visible ? Kirigami.Theme.mediumSpacing : 0
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: 10
+        anchors.margins: Kirigami.Theme.mediumSpacing
         clip: true
         visible: viewMode === "albums"
 
@@ -238,7 +237,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: 10
+                anchors.margins: Kirigami.Theme.mediumSpacing
                 color: "transparent"
 
                 Rectangle {

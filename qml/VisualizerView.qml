@@ -11,7 +11,7 @@ Item {
     property var barColors: AudioVisualizer.barColors
     property string albumArt: ""
     property bool useProjectM: false
-    property color fallbackColor: "white"
+    property color fallbackColor: palette.text
     property real barOpacity: 1.0
 
     property alias settings: visualizerSettings

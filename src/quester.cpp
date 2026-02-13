@@ -1348,6 +1348,7 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         
         QNetworkRequest request(url);
         request.setRawHeader("User-Agent", "Quester/1.0");
+        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
         
         QNetworkReply *reply = m_networkManager->get(request);
         AlbumModel::connect(reply, &QNetworkReply::finished, this, [reply, onArtFound]() -> void {
@@ -1369,6 +1370,7 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         
         QNetworkRequest request(url);
         request.setRawHeader("User-Agent", "Quester/1.0");
+        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
         
         QNetworkReply *reply = m_networkManager->get(request);
         AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound, tryMusicHoarders]() -> void {
@@ -1399,6 +1401,7 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
             
             QNetworkRequest imgReq((QUrl(imageUrl)));
             imgReq.setRawHeader("User-Agent", "Quester/1.0");
+            imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             QNetworkReply *imgReply = m_networkManager->get(imgReq);
             AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound, tryMusicHoarders]() -> void {
                 imgReply->deleteLater();
@@ -1417,6 +1420,7 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         QUrl url("https://coverartarchive.org/release/" + params.mbid + "/front");
         QNetworkRequest request(url);
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
         
         QNetworkReply *reply = m_networkManager->get(request);
         AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, tryAudioDb, onArtFound]() -> void {
@@ -1630,6 +1634,7 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
     // Fetch the JSPF playlist from ListenBrainz API
     QUrl url(QString("https://api.listenbrainz.org/1/playlist/%1").arg(playlistId));
     QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
     if (!m_lbToken.isEmpty()) {
         request.setRawHeader("Authorization", QString("Token %1").arg(m_lbToken).toUtf8());
     }
@@ -2337,6 +2342,7 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
 
         QNetworkRequest request(url);
         request.setRawHeader("User-Agent", "Quester/1.0");
+        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 
         QNetworkReply *reply = m_networkManager->get(request);
         QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, artistName, cachePath, callback]() -> void {
@@ -2372,6 +2378,7 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
             // Fetch the image
             QNetworkRequest imgReq((QUrl(imageUrl)));
             imgReq.setRawHeader("User-Agent", "Quester/1.0");
+            imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             QNetworkReply *imgReply = m_networkManager->get(imgReq);
             QObject::connect(imgReply, &QNetworkReply::finished, this, [imgReply, cachePath, callback]() -> void {
                 imgReply->deleteLater();

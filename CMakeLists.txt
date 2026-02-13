@@ -38,6 +38,8 @@ find_package(ECM ${REQUIRED_KF_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 # set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${ECM_MODULE_PATH})
 
+find_package(KF6 REQUIRED COMPONENTS Kirigami)
+
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     include(KDEInstallDirs)
     include(KDECMakeSettings)
@@ -218,7 +220,6 @@ qt_add_qml_module(quester
     VERSION 1.0
     QML_FILES
         qml/main.qml
-        qml/HeaderBar.qml
         qml/VisualizerView.qml
         qml/WrappedView.qml
         qml/SettingsWindow.qml
@@ -228,6 +229,7 @@ qt_add_qml_module(quester
 
 target_link_libraries(quester
     PRIVATE
+    KF6::Kirigami
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
