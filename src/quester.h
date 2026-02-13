@@ -406,6 +406,7 @@ Q_SIGNALS:
     void durationChanged();
     void elapsedChanged();
     void currentAlbumIndexChanged();
+    void currentSongChanged();
     void currentPathChanged();
     void repeatChanged();
     void randomChanged();

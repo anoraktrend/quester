@@ -117,6 +117,7 @@ DBusService::DBusService(MpdClient *mpdClient, QObject *parent)
         connect(mpdClient, &MpdClient::repeatChanged, this, &DBusService::broadcastProperties);
         connect(mpdClient, &MpdClient::randomChanged, this, &DBusService::broadcastProperties);
         connect(mpdClient, &MpdClient::singleChanged, this, &DBusService::broadcastProperties);
+        connect(mpdClient, &MpdClient::currentSongChanged, this, &DBusService::broadcastProperties);
         mpdClient->refreshPlaylists();
 
         // Populate initial tracklist
@@ -131,22 +132,22 @@ DBusService::~DBusService()
 
 auto DBusService::canGoNext() const -> bool
 {
-    return m_mpdClient && m_mpdClient->state() != "stop";
+    return m_mpdClient != nullptr;
 }
 
 auto DBusService::canGoPrevious() const -> bool
 {
-    return m_mpdClient && m_mpdClient->state() != "stop";
+    return m_mpdClient != nullptr;
 }
 
 auto DBusService::canPlay() const -> bool
 {
-    return m_mpdClient && m_mpdClient->state() != "play";
+    return m_mpdClient != nullptr;
 }
 
 auto DBusService::canPause() const -> bool
 {
-    return m_mpdClient && m_mpdClient->state() == "play";
+    return m_mpdClient != nullptr;
 }
 
 auto DBusService::getMetadataForTrack(const QueueItem &item) const -> QVariantMap
@@ -354,24 +355,55 @@ void DBusService::setRate(double rate)
 
 void DBusService::seek(double offset)
 {
-    if (m_mpdClient) {
-        double offset_sec = offset / static_cast<double>(MICROSECONDS_PER_SECOND);
-        auto current_pos_sec = static_cast<double>(m_mpdClient->elapsed());
-        double new_pos_sec = current_pos_sec + offset_sec;
+    if (!m_mpdClient) return;
 
-        // Seek to the new absolute position, not by the offset
-        m_mpdClient->seekTo(static_cast<qint64>(new_pos_sec));
-        emit seeked(static_cast<qlonglong>(new_pos_sec * static_cast<double>(MICROSECONDS_PER_SECOND)));
+    QVariantMap meta = metadata();
+    qlonglong duration = 0;
+    if (meta.contains("mpris:length")) {
+        duration = meta["mpris:length"].toLongLong();
     }
+
+    qlonglong currentPosition = position();
+    qlonglong newPosition = currentPosition + static_cast<qlonglong>(offset);
+
+    if (newPosition < 0) newPosition = 0;
+
+    if (duration > 0 && newPosition >= duration) {
+        next();
+        return;
+    }
+
+    qint64 newPosSec = newPosition / MICROSECONDS_PER_SECOND;
+    m_mpdClient->seekTo(newPosSec);
+    emit seeked(newPosSec * MICROSECONDS_PER_SECOND);
 }
 
 void DBusService::setPosition(const QString &trackId, double position)
 {
-    Q_UNUSED(trackId);
-    if (m_mpdClient) {
-        m_mpdClient->seekTo(static_cast<qint64>(position / static_cast<double>(MICROSECONDS_PER_SECOND)));
-        emit seeked(static_cast<qlonglong>(position));
+    if (!m_mpdClient) return;
+
+    QVariantMap meta = metadata();
+    if (meta.contains("mpris:trackid")) {
+        QDBusObjectPath currentTrackId = meta["mpris:trackid"].value<QDBusObjectPath>();
+        if (currentTrackId.path() != trackId) {
+            return;
+        }
     }
+
+    auto newPosition = static_cast<qlonglong>(position);
+    if (newPosition < 0) newPosition = 0;
+
+    qlonglong duration = 0;
+    if (meta.contains("mpris:length")) {
+        duration = meta["mpris:length"].toLongLong();
+    }
+    if (duration > 0 && newPosition > duration) {
+        newPosition = duration;
+    }
+
+    qint64 newPosSec = newPosition / MICROSECONDS_PER_SECOND;
+    m_mpdClient->seekTo(newPosSec);
+    emit seeked(newPosSec * MICROSECONDS_PER_SECOND);
 }
 
 void DBusService::openUri(const QString &uri)

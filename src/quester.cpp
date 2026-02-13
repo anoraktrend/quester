@@ -599,6 +599,7 @@ void MpdClient::updateStatus()
                     m_queueModel->setCurrentSongId(m_currentSongId);
                 }
                 fetchAlbumArt(m_album);
+                emit currentSongChanged();
             }
 
             mpd_song_free(song);
