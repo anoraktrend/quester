@@ -112,7 +112,7 @@ if(NOT PROJECTM_FOUND)
             "${CMAKE_CURRENT_BINARY_DIR}/libprojectm/include"
         )
         
-        set(PROJECTM_LIBRARIES projectM::projectM)
+        set(PROJECTM_LIBRARIES projectM)
     else()
         message(FATAL_ERROR "libprojectM not found on system and submodule not initialized. Please run 'git submodule update --init'")
     endif()
