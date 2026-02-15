@@ -67,7 +67,8 @@ public:
         QImage img;
         if (id.startsWith(QStringLiteral("data:"))) {
             QString base64 = id.mid(id.indexOf(u',') + 1);
-            img.loadFromData(QByteArray::fromBase64(base64.toLatin1()));
+            // Use UTF-8 for proper handling of international characters in base64 data
+            img.loadFromData(QByteArray::fromBase64(base64.toUtf8()));
         } else {
             QUrl url(id);
             img.load(url.isLocalFile() ? url.toLocalFile() : id);

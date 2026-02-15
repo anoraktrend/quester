@@ -39,6 +39,7 @@ constexpr int MPD_PORT = 6600;
 constexpr int MPD_TIMEOUT_MS = 30000;
 constexpr int SECONDS_PER_MINUTE = 60;
 constexpr int DECIMAL_BASE = 10;
+constexpr int INITIAL_COVER_FETCH_LIMIT = 20; // Limit initial cover fetches for faster startup
 
 const int PLAY_LOG_THRESHOLD_MS = 5000;
 const int MS_PER_SECOND = 1000;
@@ -387,10 +388,20 @@ MpdClient::MpdClient(QObject *parent)
     });
 
     QObject::connect(m_timer, &QTimer::timeout, this, &MpdClient::updateStatus);
-    m_timer->start(TIMER_INTERVAL);
-    refreshLibrary();
 
-    connectToMpd();
+    // KISS: Defer MPD connection and library refresh to allow UI to load first.
+    // This significantly improves startup time by not blocking on MPD connection.
+    QTimer::singleShot(100, this, [this]() -> void {
+        // Load library from cache first for instant display
+        QList<AlbumItem> cachedAlbums = loadLibraryFromCacheInternal();
+        if (!cachedAlbums.isEmpty()) {
+            handleLibraryUpdate(cachedAlbums);
+        }
+        
+        // Then connect to MPD and refresh in background
+        connectToMpd();
+        m_timer->start(TIMER_INTERVAL);
+    });
 }
 
 MpdClient::~MpdClient()
@@ -1649,7 +1660,8 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
         }
 
         QByteArray data = reply->readAll();
-        qDebug().noquote() << "JSPF Playlist response:" << QString::fromLatin1(data);
+        // Use fromUtf8 for proper UTF-8 handling of international characters
+        qDebug().noquote() << "JSPF Playlist response:" << QString::fromUtf8(data);
         
         QJsonParseError error;
         QJsonDocument doc = QJsonDocument::fromJson(data, &error);
@@ -1674,7 +1686,8 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
         playlistData["identifier"] = identifier;
         playlistData["date"] = date;
         playlistData["annotation"] = playlist["annotation"].toString();
-        playlistData["original_data"] = QString::fromLatin1(data);
+        // Use fromUtf8 for proper UTF-8 handling of international characters
+        playlistData["original_data"] = QString::fromUtf8(data);
         
         // Parse tracks
         QJsonArray trackArray = playlist["track"].toArray();
@@ -1908,9 +1921,18 @@ void MpdClient::handleLibraryUpdate(const QList<AlbumItem> &albums)
     sortAlbums(sortedAlbums);
     m_albumModel->setAlbums(sortedAlbums);
 
+    // OPTIMIZATION: Only fetch covers for the first N albums on initial load
+    // This significantly improves startup time by avoiding hundreds of concurrent API calls
+    // Remaining covers will be fetched on-demand when users browse to them
+    int fetchCount = 0;
     for (int i = 0; i < sortedAlbums.count(); ++i) {
         if (sortedAlbums[i].artUrl.isEmpty()) {
             fetchCoverForModel(i, sortedAlbums[i].name);
+            fetchCount++;
+            if (fetchCount >= INITIAL_COVER_FETCH_LIMIT) {
+                qInfo() << "Startup optimization: Limited initial cover fetch to" << fetchCount << "albums";
+                break;
+            }
         }
     }
 }
@@ -2041,7 +2063,8 @@ auto MpdClient::mpdMusicDirectory() -> QString
         // Fallback to common locations
         QByteArray envPath = qgetenv("HOME");
         if (!envPath.isEmpty()) {
-            musicDir = QString::fromLatin1(envPath) + "/Music";
+            // Use fromUtf8 for proper handling of paths with international characters
+            musicDir = QString::fromUtf8(envPath) + "/Music";
         }
         
         QString musicDir2 = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);

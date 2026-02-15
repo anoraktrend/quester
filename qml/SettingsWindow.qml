@@ -11,15 +11,71 @@ Window {
     property int defaultTab: 0
     property string lastfmAuthToken: ""
 
+    // Store initial values for cancel functionality
+    property var initialValues: ({})
+
     title: qsTr("Settings")
     width: 500
     height: 500
     visible: false
     color: Kirigami.Theme.backgroundColor
     onVisibleChanged: {
-        if (visible)
+        if (visible) {
             settingsTabBar.currentIndex = defaultTab;
+            storeInitialValues();
+        }
+    }
 
+    function storeInitialValues() {
+        initialValues = {
+            // General settings
+            "sortMode": mpdClient.sortMode,
+            "consume": mpdClient.consume,
+            "listenBrainzUsername": mpdClient.listenBrainzUsername,
+            "listenBrainzToken": mpdClient.listenBrainzToken,
+            // Visualizer settings
+            "visualizerMode": visualizerView.settings.visualizerMode,
+            "visualizerBarSize": visualizerView.settings.visualizerBarSize,
+            "visualizerBarOpacity": visualizerView.settings.visualizerBarOpacity,
+            // ProjectM settings
+            "projectMPresetPath": visualizerView.settings.projectMPresetPath,
+            "projectMTextureSize": visualizerView.settings.projectMTextureSize,
+            "projectMMeshX": visualizerView.settings.projectMMeshX,
+            "projectMMeshY": visualizerView.settings.projectMMeshY,
+            "projectMFPS": visualizerView.settings.projectMFPS,
+            "projectMSmoothPresetDuration": visualizerView.settings.projectMSmoothPresetDuration,
+            "projectMPresetDuration": visualizerView.settings.projectMPresetDuration,
+            "projectMBeatSensitivity": visualizerView.settings.projectMBeatSensitivity,
+            "projectMShuffleEnabled": visualizerView.settings.projectMShuffleEnabled,
+            "projectMSelectedPreset": visualizerView.settings.projectMSelectedPreset,
+            "projectMShowBars": visualizerView.settings.projectMShowBars,
+            "projectMBarOpacity": visualizerView.settings.projectMBarOpacity
+        };
+    }
+
+    function restoreInitialValues() {
+        // General settings
+        mpdClient.sortMode = initialValues.sortMode;
+        mpdClient.consume = initialValues.consume;
+        mpdClient.listenBrainzUsername = initialValues.listenBrainzUsername;
+        mpdClient.listenBrainzToken = initialValues.listenBrainzToken;
+        // Visualizer settings
+        visualizerView.settings.visualizerMode = initialValues.visualizerMode;
+        visualizerView.settings.visualizerBarSize = initialValues.visualizerBarSize;
+        visualizerView.settings.visualizerBarOpacity = initialValues.visualizerBarOpacity;
+        // ProjectM settings
+        visualizerView.settings.projectMPresetPath = initialValues.projectMPresetPath;
+        visualizerView.settings.projectMTextureSize = initialValues.projectMTextureSize;
+        visualizerView.settings.projectMMeshX = initialValues.projectMMeshX;
+        visualizerView.settings.projectMMeshY = initialValues.projectMMeshY;
+        visualizerView.settings.projectMFPS = initialValues.projectMFPS;
+        visualizerView.settings.projectMSmoothPresetDuration = initialValues.projectMSmoothPresetDuration;
+        visualizerView.settings.projectMPresetDuration = initialValues.projectMPresetDuration;
+        visualizerView.settings.projectMBeatSensitivity = initialValues.projectMBeatSensitivity;
+        visualizerView.settings.projectMShuffleEnabled = initialValues.projectMShuffleEnabled;
+        visualizerView.settings.projectMSelectedPreset = initialValues.projectMSelectedPreset;
+        visualizerView.settings.projectMShowBars = initialValues.projectMShowBars;
+        visualizerView.settings.projectMBarOpacity = initialValues.projectMBarOpacity;
     }
 
     Settings {
@@ -175,6 +231,28 @@ Window {
                     model: [qsTr("Bottom Up"), qsTr("Top Down"), qsTr("Centered")]
                     currentIndex: visualizerView.settings.visualizerMode
                     onActivated: visualizerView.settings.visualizerMode = currentIndex
+                }
+
+                Label {
+                    text: qsTr("Bar Size:")
+                }
+
+                SpinBox {
+                    from: 1
+                    to: 100
+                    value: visualizerView.settings.visualizerBarSize
+                    onValueChanged: visualizerView.settings.visualizerBarSize = value
+                }
+
+                Label {
+                    text: qsTr("Bar Opacity:")
+                }
+
+                Slider {
+                    from: 0.1
+                    to: 1
+                    value: visualizerView.settings.visualizerBarOpacity
+                    onValueChanged: visualizerView.settings.visualizerBarOpacity = value
                 }
 
             }
@@ -335,6 +413,41 @@ Window {
                     }
                 }
 
+            }
+
+        }
+
+        // Action buttons at the bottom
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.mediumSpacing
+
+            Button {
+                text: qsTr("Cancel")
+                onClicked: {
+                    restoreInitialValues();
+                    settingsWindow.visible = false;
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            Button {
+                text: qsTr("Apply")
+                onClicked: {
+                    // Settings are applied immediately, just store the new initial values
+                    storeInitialValues();
+                }
+            }
+
+            Button {
+                text: qsTr("OK")
+                onClicked: {
+                    storeInitialValues();
+                    settingsWindow.visible = false;
+                }
             }
 
         }

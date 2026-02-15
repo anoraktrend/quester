@@ -72,6 +72,8 @@ Item {
         property int visualizerMode: 0
         property bool projectMShowBars: false
         property real projectMBarOpacity: 0.8
+        property int visualizerBarSize: 20
+        property real visualizerBarOpacity: 1.0
 
         category: "Quester"
         onProjectMPresetPathChanged: root.loadPresetList()
@@ -138,7 +140,9 @@ Item {
             visible: !root.useProjectM || visualizerSettings.projectMShowBars
 
             Rectangle {
-                width: Math.max(1, (root.width / (root.magnitudes.length || 1)) - 2)
+                width: visualizerSettings.visualizerBarSize > 0 
+                    ? Math.min(visualizerSettings.visualizerBarSize, root.width / (root.magnitudes.length || 1))
+                    : Math.max(1, (root.width / (root.magnitudes.length || 1)) - 2)
                 height: root.height * (modelData || 0) * 0.6
                 visible: !root.useProjectM || visualizerSettings.projectMShowBars
                 x: index * (root.width / (root.magnitudes.length || 1))
@@ -148,7 +152,9 @@ Item {
                 anchors.bottomMargin: visualizerSettings.visualizerMode === 0 ? 100 : 0
                 anchors.topMargin: visualizerSettings.visualizerMode === 1 ? 100 : 0
                 color: root.barColors && root.barColors.length > index ? root.barColors[index] : root.fallbackColor
-                opacity: root.barOpacity * (root.useProjectM ? visualizerSettings.projectMBarOpacity : 1)
+                opacity: root.useProjectM 
+                    ? visualizerSettings.projectMBarOpacity 
+                    : (root.barOpacity * visualizerSettings.visualizerBarOpacity)
                 radius: 1
             }
 

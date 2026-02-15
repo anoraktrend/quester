@@ -87,13 +87,15 @@ Kirigami.ScrollablePage {
                 Layout.fillWidth: true
 
                 contentItem: ColumnLayout {
-                    Text {
+                    Kirigami.Heading {
+                        level: 1
                         text: qsTr("Total Playtime")
+                        font.bold: true
                         Layout.alignment: Qt.AlignHCenter
                     }
 
                     Kirigami.Heading {
-                        level: 1
+                        level: 2
                         text: {
                             var ms = root.stats.totalMs || 0;
                             var mins = Math.floor(ms / 60000);
@@ -111,13 +113,14 @@ Kirigami.ScrollablePage {
                 Layout.fillWidth: true
 
                 contentItem: ColumnLayout {
-                    Text {
+                    Kirigami.Heading {
+                        level: 1 
                         text: qsTr("Total Plays")
                         Layout.alignment: Qt.AlignHCenter
                     }
 
                     Kirigami.Heading {
-                        level: 1
+                        level: 2
                         text: root.stats.totalPlays || 0
                         Layout.alignment: Qt.AlignHCenter
                     }
@@ -175,7 +178,8 @@ Kirigami.ScrollablePage {
                         }
 
                         ColumnLayout {
-                            Text {
+                            Kirigami.Heading {
+                                level: 4
                                 text: modelData.name || ""
                                 font.bold: true
                             }

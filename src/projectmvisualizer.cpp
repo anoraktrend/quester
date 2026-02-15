@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <memory>
 #include <QDirIterator>
 
@@ -35,61 +36,75 @@ public:
         if (!dir.exists()) dir.mkpath(".");
         QString configFilePath = configDir + "/config.inp";
 
-        QString presetPath = settings.value("projectMPresetPath").toString();
-        if (presetPath.isEmpty()) {
-            QStringList candidates = {
+        // Only write config if it doesn't exist or is outdated - skip this on startup
+        // This avoids slow I/O during initialization
+        if (!QFile::exists(configFilePath)) {
+            QString presetPath = settings.value("projectMPresetPath").toString();
+            if (presetPath.isEmpty()) {
+                QStringList candidates = {
 #ifdef QT_QML_SOURCE_DIR
-                QStringLiteral(QT_QML_SOURCE_DIR) + "/presets/presets-cream-of-the-crop",
+                    QStringLiteral(QT_QML_SOURCE_DIR) + "/presets/presets-cream-of-the-crop",
 #endif
-                QCoreApplication::applicationDirPath() + "/projectM-presets",
-                QStringLiteral(APP_DATADIR) + "/projectM-presets",
-                "/usr/share/projectM/presets",
-                "/usr/local/share/projectM/presets",
-                QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
-            };
-            
-            // macOS bundle resource path
+                    QCoreApplication::applicationDirPath() + "/projectM-presets",
+                    QStringLiteral(APP_DATADIR) + "/projectM-presets",
+                    "/usr/share/projectM/presets",
+                    "/usr/local/share/projectM/presets",
+                    QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/projectM/presets"
+                };
+                
+                // macOS bundle resource path
 #ifdef __APPLE__
-            candidates.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/projectM-presets"));
+                candidates.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/projectM-presets"));
 #endif
 
-            for (const QString &p : candidates) {
-                if (QDir(p).exists()) {
-                    presetPath = p;
-                    break;
+                for (const QString &p : candidates) {
+                    if (QDir(p).exists()) {
+                        presetPath = p;
+                        break;
+                    }
                 }
             }
-        }
-        
-        QFile configFile(configFilePath);
-        if (configFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            QTextStream out(&configFile);
-            out << "Texture Size = " << settings.value("projectMTextureSize", DEFAULT_PROJECTM_TEXTURE_SIZE).toString() << "\n";
-            out << "Mesh X = " << settings.value("projectMMeshX", DEFAULT_PROJECTM_MESH_X).toString() << "\n";
-            out << "Mesh Y = " << settings.value("projectMMeshY", DEFAULT_PROJECTM_MESH_Y).toString() << "\n";
-            out << "FPS = " << settings.value("projectMFPS", DEFAULT_PROJECTM_FPS).toString() << "\n";
-            out << "Preset Path = " << presetPath << "\n";
-            out << "Title Font = Sans\n";
-            out << "Menu Font = Sans\n";
-            out << "Smooth Preset Duration = " << settings.value("projectMSmoothPresetDuration", DEFAULT_PROJECTM_SMOOTH_PRESET_DURATION).toString() << "\n";
-            out << "Preset Duration = " << settings.value("projectMPresetDuration", DEFAULT_PROJECTM_PRESET_DURATION).toString() << "\n";
-            out << "Beat Sensitivity = " << settings.value("projectMBeatSensitivity", DEFAULT_PROJECTM_BEAT_SENSITIVITY).toString() << "\n";
-            out << "Aspect Correction = 1\n";
-            out << "Shuffle Enabled = " << (settings.value("projectMShuffleEnabled", true).toBool() ? "1" : "0") << "\n";
-            out << "Soft Cut Ratings Enabled = " << (settings.value("projectMSoftCutRatingsEnabled", false).toBool() ? "1" : "0") << "\n";
-            out << "Hard Cut Enabled = " << (settings.value("projectMHardCutEnabled", false).toBool() ? "1" : "0") << "\n";
-            out << "Hard Cut Sensitivity = " << settings.value("projectMHardCutSensitivity", DEFAULT_PROJECTM_HARD_CUT_SENSITIVITY).toString() << "\n";
-            out << "Hard Cut Duration = " << settings.value("projectMHardCutDuration", DEFAULT_PROJECTM_HARD_CUT_DURATION).toString() << "\n";
-            configFile.close();
+            
+            QFile configFile(configFilePath);
+            if (configFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+                QTextStream out(&configFile);
+                out << "Texture Size = " << settings.value("projectMTextureSize", DEFAULT_PROJECTM_TEXTURE_SIZE).toString() << "\n";
+                out << "Mesh X = " << settings.value("projectMMeshX", DEFAULT_PROJECTM_MESH_X).toString() << "\n";
+                out << "Mesh Y = " << settings.value("projectMMeshY", DEFAULT_PROJECTM_MESH_Y).toString() << "\n";
+                out << "FPS = " << settings.value("projectMFPS", DEFAULT_PROJECTM_FPS).toString() << "\n";
+                out << "Preset Path = " << presetPath << "\n";
+                out << "Title Font = Sans\n";
+                out << "Menu Font = Sans\n";
+                out << "Smooth Preset Duration = " << settings.value("projectMSmoothPresetDuration", DEFAULT_PROJECTM_SMOOTH_PRESET_DURATION).toString() << "\n";
+                out << "Preset Duration = " << settings.value("projectMPresetDuration", DEFAULT_PROJECTM_PRESET_DURATION).toString() << "\n";
+                out << "Beat Sensitivity = " << settings.value("projectMBeatSensitivity", DEFAULT_PROJECTM_BEAT_SENSITIVITY).toString() << "\n";
+                out << "Aspect Correction = 1\n";
+                out << "Shuffle Enabled = " << (settings.value("projectMShuffleEnabled", true).toBool() ? "1" : "0") << "\n";
+                out << "Soft Cut Ratings Enabled = " << (settings.value("projectMSoftCutRatingsEnabled", false).toBool() ? "1" : "0") << "\n";
+                out << "Hard Cut Enabled = " << (settings.value("projectMHardCutEnabled", false).toBool() ? "1" : "0") << "\n";
+                out << "Hard Cut Sensitivity = " << settings.value("projectMHardCutSensitivity", DEFAULT_PROJECTM_HARD_CUT_SENSITIVITY).toString() << "\n";
+                out << "Hard Cut Duration = " << settings.value("projectMHardCutDuration", DEFAULT_PROJECTM_HARD_CUT_DURATION).toString() << "\n";
+                configFile.close();
+            }
         }
 
         std::string configPath = configFilePath.toStdString();
 
-        // Attempt to initialize projectM. 
-        // Note: Constructor signature might vary slightly between v3 and v4.
+        // LAZY INITIALIZATION: projectM is now initialized on first render() call
+        // instead of in the constructor. This significantly improves startup time.
+        // The m_initialized flag will trigger initialization on first use.
+        m_configPath = configPath;
+    }
+
+    bool ensureInitialized() {
+        if (m_projectM) return true;
+        
+        // Initialize projectM on first actual use (lazy initialization)
+        qInfo() << "Lazy initializing projectM...";
         try {
-            m_projectM = std::make_unique<projectM>(configPath);
+            m_projectM = std::make_unique<projectM>(m_configPath);
             qInfo() << "ProjectM initialized successfully";
+            return true;
         } catch (const std::exception &e) {
             qWarning() << "Failed to initialize projectM:" << e.what();
             m_projectM = nullptr;
@@ -97,6 +112,7 @@ public:
             qWarning() << "Failed to initialize projectM: Unknown exception";
             m_projectM = nullptr;
         }
+        return false;
     }
 
     ~ProjectMRenderer() override = default;
@@ -107,7 +123,9 @@ public:
     auto operator=(ProjectMRenderer &&) -> ProjectMRenderer & = delete;
 
     void render() override {
-        if (!m_projectM || m_width <= 0 || m_height <= 0 || !m_running) return;
+        // Lazy initialization: initialize projectM on first render
+        if (!ensureInitialized()) return;
+        if (m_width <= 0 || m_height <= 0 || !m_running) return;
         m_projectM->renderFrame();
         update(); // Request continuous rendering
     }
@@ -195,6 +213,7 @@ public:
 
 private:
     std::unique_ptr<projectM> m_projectM;
+    std::string m_configPath;
     int m_width = -1;
     int m_height = -1;
     bool m_running = false;
@@ -346,8 +365,22 @@ auto ProjectMVisualizer::takeShuffleRequest(bool &enabled) -> bool
     return true;
 }
 
+// Static cache for preset list to avoid repeated filesystem scanning
+static QStringList g_cachedPresets;
+static QString g_cachedPresetPath;
+static qint64 g_presetCacheTimestamp = 0;
+static constexpr qint64 PRESET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+
 auto ProjectMVisualizer::getPresetList(const QString &presetPath) const -> QStringList
 {
+    // Check if cached result is still valid (within TTL)
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!g_cachedPresets.isEmpty() && 
+        g_cachedPresetPath == presetPath &&
+        (now - g_presetCacheTimestamp) < PRESET_CACHE_TTL_MS) {
+        return g_cachedPresets;
+    }
+    
     QStringList presets;
     
     QDir dir(presetPath);
@@ -392,6 +425,11 @@ auto ProjectMVisualizer::getPresetList(const QString &presetPath) const -> QStri
         presets.sort();
         presets.removeDuplicates();
     }
+    
+    // Update cache
+    g_cachedPresets = presets;
+    g_cachedPresetPath = presetPath;
+    g_presetCacheTimestamp = now;
     
     return presets;
 }

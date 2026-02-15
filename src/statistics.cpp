@@ -546,7 +546,7 @@ void StatisticsManager::validateListenBrainzCredentials()
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[ListenBrainz] Token validation response:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[ListenBrainz] Token validation response:" << QString::fromUtf8(response);
             // Parse response to check if token is valid
             QJsonParseError error;
             QJsonDocument doc = QJsonDocument::fromJson(response, &error);
@@ -585,18 +585,18 @@ void StatisticsManager::sendListenBrainzRequest(const QString &listenType, const
 
     QByteArray requestBody = QJsonDocument(root).toJson();
     
-    qDebug().noquote() << "[ListenBrainz] API Call:" << listenType << "|" << QString::fromLatin1(requestBody);
+    qDebug().noquote() << "[ListenBrainz] API Call:" << listenType << "|" << QString::fromUtf8(requestBody);
     
     QNetworkReply *reply = m_nam->post(request, requestBody);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[ListenBrainz] API Response:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[ListenBrainz] API Response:" << QString::fromUtf8(response);
             // Valid credentials if we got a successful response
             setCredentialsValid(true);
         } else {
-            qWarning().noquote() << "[ListenBrainz] API Error:" << reply->errorString() << "|" << QString::fromLatin1(response);
+            qWarning().noquote() << "[ListenBrainz] API Error:" << reply->errorString() << "|" << QString::fromUtf8(response);
             // Invalid credentials if we got an error
             setCredentialsValid(false);
         }
@@ -655,14 +655,14 @@ void StatisticsManager::sendQueueAsPlaylist(const QString &playlistName, const Q
 
     QByteArray requestBody = QJsonDocument(root).toJson();
     
-    qDebug().noquote() << "[ListenBrainz] Creating playlist:" << QString::fromLatin1(requestBody);
+    qDebug().noquote() << "[ListenBrainz] Creating playlist:" << QString::fromUtf8(requestBody);
     
     QNetworkReply *reply = m_nam->post(request, requestBody);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() -> void {
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[ListenBrainz] Playlist created:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[ListenBrainz] Playlist created:" << QString::fromUtf8(response);
             QJsonParseError error;
             QJsonDocument doc = QJsonDocument::fromJson(response, &error);
             if (error.error == QJsonParseError::NoError && doc.isObject()) {
@@ -677,7 +677,7 @@ void StatisticsManager::sendQueueAsPlaylist(const QString &playlistName, const Q
             setPlaylistSaved(true);
             emit playlistSaved(true, "Playlist created successfully!");
         } else {
-            qWarning().noquote() << "[ListenBrainz] Playlist error:" << reply->errorString() << "|" << QString::fromLatin1(response);
+            qWarning().noquote() << "[ListenBrainz] Playlist error:" << reply->errorString() << "|" << QString::fromUtf8(response);
             emit playlistSaved(false, QString("Failed to create playlist: %1").arg(reply->errorString()));
         }
     });
@@ -705,7 +705,7 @@ void StatisticsManager::fetchUserPlaylists()
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[ListenBrainz] Playlists loaded:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[ListenBrainz] Playlists loaded:" << QString::fromUtf8(response);
             QJsonParseError error;
             QJsonDocument doc = QJsonDocument::fromJson(response, &error);
             QVariantList playlists;
@@ -820,9 +820,9 @@ void StatisticsManager::sendLastfmRequest(const QString &method, const QMap<QStr
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[Last.fm] API Response:" << QString::fromLatin1(response);
+            qDebug().noquote() << "[Last.fm] API Response:" << QString::fromUtf8(response);
         } else {
-            qWarning().noquote() << "[Last.fm] API Error:" << reply->errorString() << "|" << QString::fromLatin1(response);
+            qWarning().noquote() << "[Last.fm] API Error:" << reply->errorString() << "|" << QString::fromUtf8(response);
         }
     });
 }
@@ -901,9 +901,9 @@ void StatisticsManager::getLastfmToken()
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[Last.fm] API Response: auth.gettoken |" << QString::fromLatin1(response);
+            qDebug().noquote() << "[Last.fm] API Response: auth.gettoken |" << QString::fromUtf8(response);
         } else {
-            qWarning().noquote() << "[Last.fm] API Error: auth.gettoken |" << reply->errorString() << "|" << QString::fromLatin1(response);
+            qWarning().noquote() << "[Last.fm] API Error: auth.gettoken |" << reply->errorString() << "|" << QString::fromUtf8(response);
         }
         
         if (reply->error() == QNetworkReply::NoError) {
@@ -1011,9 +1011,9 @@ void StatisticsManager::getLastfmSessionKey(const QString &token)
         reply->deleteLater();
         QByteArray response = reply->readAll();
         if (reply->error() == QNetworkReply::NoError) {
-            qDebug().noquote() << "[Last.fm] API Response: auth.getsession |" << QString::fromLatin1(response);
+            qDebug().noquote() << "[Last.fm] API Response: auth.getsession |" << QString::fromUtf8(response);
         } else {
-            qWarning().noquote() << "[Last.fm] API Error: auth.getsession |" << reply->errorString() << "|" << QString::fromLatin1(response);
+            qWarning().noquote() << "[Last.fm] API Error: auth.getsession |" << reply->errorString() << "|" << QString::fromUtf8(response);
         }
 
         if (reply->error() == QNetworkReply::NoError) {
@@ -1254,7 +1254,7 @@ void StatisticsManager::fetchLastfmStats(const QString &period)
         }
         
         QByteArray response = reply->readAll();
-        qDebug().noquote() << "[Last.fm] API Response: user.getRecentTracks |" << QString::fromLatin1(response);
+        qDebug().noquote() << "[Last.fm] API Response: user.getRecentTracks |" << QString::fromUtf8(response);
         
         // Parse XML response
         QXmlStreamReader reader(response);

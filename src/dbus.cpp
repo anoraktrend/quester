@@ -40,14 +40,17 @@ const QDBusArgument & operator>>(const QDBusArgument &argument, MprisActivePlayl
 }
 
 static auto encodePlaylistId(const QString &name) -> QString {
-    return QStringLiteral("/org/mpris/MediaPlayer2/Playlists/") + QString::fromLatin1(name.toUtf8().toHex());
+    // Encode UTF-8 playlist name to a D-Bus compatible path
+    // First convert to UTF-8, then to hex for safe path characters
+    return QStringLiteral("/org/mpris/MediaPlayer2/Playlists/") + QString::fromUtf8(name.toUtf8().toHex());
 }
 
 static auto decodePlaylistId(const QDBusObjectPath &path) -> QString {
     QString p = path.path();
     if (p.startsWith("/org/mpris/MediaPlayer2/Playlists/")) {
         QString hex = p.mid(PLAYLIST_PATH_PREFIX_LENGTH);
-        return QString::fromUtf8(QByteArray::fromHex(hex.toLatin1()));
+        // Decode from hex back to UTF-8 string
+        return QString::fromUtf8(QByteArray::fromHex(hex.toUtf8()));
     }
     return {};
 }
