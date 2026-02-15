@@ -1,5 +1,4 @@
 #include "audiovisualizer.h"
-#include "projectmvisualizer.h" // NOLINT
 #include "quester.h"
 #include "dbus.h"
 #include <QFileInfo>
@@ -385,7 +384,6 @@ auto main(int argc, char *argv[]) -> int
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
     qmlRegisterUncreatableType<DBusService>("Quester", 1, 0, "DBusService", "Enums");
     qmlRegisterUncreatableType<StatisticsManager>("Quester", 1, 0, "StatisticsManager", "Managed by MpdClient");
-    qmlRegisterType<ProjectMVisualizer>("Quester", 1, 0, "ProjectMVisualizer");
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)

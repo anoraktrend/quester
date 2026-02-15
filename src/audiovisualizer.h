@@ -190,6 +190,8 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QVariantList barColors READ barColors NOTIFY barColorsChanged)
     Q_PROPERTY(bool topDownMode READ topDownMode WRITE setTopDownMode NOTIFY topDownModeChanged)
     Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
+    Q_PROPERTY(int visualizerBarSize READ visualizerBarSize WRITE setVisualizerBarSize NOTIFY visualizerBarSizeChanged)
+    Q_PROPERTY(int visualizerBarGap READ visualizerBarGap WRITE setVisualizerBarGap NOTIFY visualizerBarGapChanged)
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
@@ -214,10 +216,15 @@ public:
     void setTopDownMode(bool topDownMode);
     [[nodiscard]] auto audioSource() const -> QString;
     void setAudioSource(const QString &source);
+    [[nodiscard]] auto visualizerBarSize() const -> int;
+    void setVisualizerBarSize(int size);
+    [[nodiscard]] auto visualizerBarGap() const -> int;
+    void setVisualizerBarGap(int gap);
 
 public slots:
     void start();
     void stop();
+
 
 private slots:
     void onDataReady(const QByteArray &data);
@@ -234,6 +241,8 @@ signals:
     void barColorsChanged();
     void topDownModeChanged();
     void audioSourceChanged();
+    void visualizerBarSizeChanged();
+    void visualizerBarGapChanged();
 
 private:
     // Gist audio analysis instance
@@ -257,6 +266,8 @@ private:
     // Use the constants for initialization
     int m_height = DefaultHeight;
     int m_numBars = DefaultNumBars;
+    int m_visualizerBarSize = 20;
+    int m_visualizerBarGap = 2;
     double m_maxPeak = 100.0;
     bool m_topDown = false;
     QString m_audioSource;

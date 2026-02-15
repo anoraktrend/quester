@@ -35,6 +35,7 @@ Window {
             "listenBrainzToken": mpdClient.listenBrainzToken,
             // Visualizer settings
             "visualizerMode": visualizerView.settings.visualizerMode,
+            "visualizerStyle": visualizerView.settings.visualizerStyle,
             "visualizerBarSize": visualizerView.settings.visualizerBarSize,
             "visualizerBarGap": visualizerView.settings.visualizerBarGap,
             "visualizerBarOpacity": visualizerView.settings.visualizerBarOpacity,
@@ -62,6 +63,7 @@ Window {
         mpdClient.listenBrainzToken = initialValues.listenBrainzToken;
         // Visualizer settings
         visualizerView.settings.visualizerMode = initialValues.visualizerMode;
+        visualizerView.settings.visualizerStyle = initialValues.visualizerStyle;
         visualizerView.settings.visualizerBarSize = initialValues.visualizerBarSize;
         visualizerView.settings.visualizerBarGap = initialValues.visualizerBarGap;
         visualizerView.settings.visualizerBarOpacity = initialValues.visualizerBarOpacity;
@@ -233,6 +235,16 @@ Window {
                     model: [qsTr("Bottom Up"), qsTr("Top Down"), qsTr("Centered")]
                     currentIndex: visualizerView.settings.visualizerMode
                     onActivated: visualizerView.settings.visualizerMode = currentIndex
+                }
+
+                Label {
+                    text: qsTr("Style:")
+                }
+
+                ComboBox {
+                    model: [qsTr("Bars"), qsTr("Wave Circle")]
+                    currentIndex: visualizerView.settings.visualizerStyle
+                    onActivated: visualizerView.settings.visualizerStyle = currentIndex
                 }
 
                 Label {

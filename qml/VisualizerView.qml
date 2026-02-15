@@ -23,22 +23,11 @@ Item {
     property var magnitudes: AudioVisualizer.magnitudes
     property var barColors: AudioVisualizer.barColors
     property string albumArt: ""
-    property bool useProjectM: false
     property color fallbackColor: palette.text
     property real barOpacity: 1
     property alias settings: visualizerSettings
-    property var presetModel: []
 
     signal clicked()
-
-    function loadPresetList() {
-        var presetPath = visualizerSettings.projectMPresetPath;
-        if (!presetPath)
-            presetPath = "/usr/share/projectM/presets";
-
-        var presets = projectM.getPresetList(presetPath);
-        root.presetModel = presets.length > 0 ? presets : ["Preset 1", "Preset 2", "Preset 3"];
-    }
 
     // Debounced viewport size update
     function _updateViewportSize() {
@@ -88,7 +77,10 @@ Item {
             AudioVisualizer.height = finalHeight;
 
         AudioVisualizer.updateSystemColors(Kirigami.Theme.highlightColor, Kirigami.Theme.textColor);
-        loadPresetList();
+        
+        // Pass settings to C++ backend
+        AudioVisualizer.visualizerBarSize = visualizerSettings.visualizerBarSize;
+        AudioVisualizer.visualizerBarGap = visualizerSettings.visualizerBarGap;
     }
     Component.onDestruction: {
         if (_resizeTimer) {
@@ -106,40 +98,16 @@ Item {
     Settings {
         id: visualizerSettings
 
-        property string projectMPresetPath: ""
-        property int projectMTextureSize: 2048
-        property int projectMMeshX: 64
-        property int projectMMeshY: 48
-        property int projectMFPS: 60
-        property int projectMSmoothPresetDuration: 5
-        property int projectMPresetDuration: 15
-        property real projectMBeatSensitivity: 10
-        property bool projectMShuffleEnabled: true
-        property string projectMSelectedPreset: ""
         property int visualizerMode: 0
-        property bool projectMShowBars: false
-        property real projectMBarOpacity: 0.8
+        property int visualizerStyle: 0 // 0: Bars, 1: Wave Circle
         property int visualizerBarSize: 20
         property int visualizerBarGap: 2
         property real visualizerBarOpacity: 1.0
 
         category: "Quester"
-        onProjectMPresetPathChanged: root.loadPresetList()
-        onProjectMSelectedPresetChanged: {
-            if (root.useProjectM && projectMSelectedPreset !== "")
-                projectM.selectPresetByName(projectMSelectedPreset, true);
 
-        }
-    }
-
-    ProjectMVisualizer {
-        id: projectM
-
-        anchors.fill: parent
-        visible: root.useProjectM && root.visible
-        active: visible
-        z: 5
-        shuffleEnabled: visualizerSettings.projectMShuffleEnabled
+        onVisualizerBarSizeChanged: AudioVisualizer.visualizerBarSize = visualizerBarSize
+        onVisualizerBarGapChanged: AudioVisualizer.visualizerBarGap = visualizerBarGap
     }
 
     Image {
@@ -169,75 +137,84 @@ Item {
         blur: 1
         saturation: 0.8
         brightness: -0.5
-        visible: !root.useProjectM
     }
 
     MultiEffect {
         anchors.fill: parent
         source: bg
         brightness: -0.3
-        visible: !root.useProjectM
+    }
+
+    Canvas {
+        id: circleCanvas
+        anchors.fill: parent
+        visible: visualizerSettings.visualizerStyle === 1
+        z: 6
+
+        onPaint: {
+            var ctx = getContext("2d");
+            ctx.reset();
+
+            var centerX = width / 2;
+            var centerY = height / 2;
+            var radius = Math.min(width, height) / 4;
+            var numMagnitudes = root.magnitudes.length;
+
+            if (numMagnitudes === 0) return;
+
+            ctx.beginPath();
+            ctx.lineWidth = 2;
+            
+            var waveColor = root.barColors && root.barColors.length > 0 ? root.barColors[0] : root.fallbackColor;
+            ctx.strokeStyle = waveColor;
+
+            for (var i = 0; i < numMagnitudes; i++) {
+                var angle = (i / numMagnitudes) * 2 * Math.PI;
+                var magnitude = root.magnitudes[i] * radius * 0.8;
+
+                var x = centerX + Math.cos(angle) * (radius + magnitude);
+                var y = centerY + Math.sin(angle) * (radius + magnitude);
+
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        Connections {
+            target: AudioVisualizer
+            function onMagnitudesChanged() {
+                circleCanvas.requestPaint();
+            }
+        }
     }
 
     Item {
         anchors.fill: parent
         z: 6
-
-        // Calculate dynamic bar dimensions based on window width, bar size, and gap
-        property real barSlotWidth: {
-            var gap = visualizerSettings.visualizerBarGap;
-            var targetBarWidth = visualizerSettings.visualizerBarSize;
-            var numMagnitudes = root.magnitudes.length || 1;
-            
-            // If user set a specific bar size, use it but also adjust number of bars
-            if (targetBarWidth > 0) {
-                // Calculate how many bars can fit: floor(width / (barWidth + gap))
-                var slots = Math.floor(root.width / (targetBarWidth + gap));
-                // But ensure at least 1 bar and at most the available magnitudes
-                slots = Math.max(1, Math.min(slots, numMagnitudes));
-                // Calculate actual slot width to fill the window
-                return root.width / slots;
-            } else {
-                // Auto mode: use available magnitudes with gap
-                return (root.width / numMagnitudes);
-            }
-        }
+        visible: visualizerSettings.visualizerStyle === 0
 
         Repeater {
             model: root.magnitudes
-            visible: !root.useProjectM || visualizerSettings.projectMShowBars
 
             Rectangle {
-                width: {
-                    var gap = visualizerSettings.visualizerBarGap;
-                    var targetBarWidth = visualizerSettings.visualizerBarSize;
-                    var slotWidth = parent.barSlotWidth;
-                    
-                    if (targetBarWidth > 0) {
-                        // Fixed bar width mode - bars have user-specified width
-                        return Math.max(1, targetBarWidth);
-                    } else {
-                        // Auto mode - bars fill the space
-                        return Math.max(1, slotWidth - gap);
-                    }
-                }
+                width: visualizerSettings.visualizerBarSize
                 height: root.height * (modelData || 0) * 0.6
-                visible: !root.useProjectM || visualizerSettings.projectMShowBars
-                x: index * parent.barSlotWidth + (visualizerSettings.visualizerBarGap / 2)
+                x: index * (visualizerSettings.visualizerBarSize + visualizerSettings.visualizerBarGap)
                 anchors.bottom: visualizerSettings.visualizerMode === 0 ? parent.bottom : undefined
                 anchors.top: visualizerSettings.visualizerMode === 1 ? parent.top : undefined
                 anchors.verticalCenter: visualizerSettings.visualizerMode === 2 ? parent.verticalCenter : undefined
                 anchors.bottomMargin: visualizerSettings.visualizerMode === 0 ? 100 : 0
                 anchors.topMargin: visualizerSettings.visualizerMode === 1 ? 100 : 0
                 color: root.barColors && root.barColors.length > index ? root.barColors[index] : root.fallbackColor
-                opacity: root.useProjectM 
-                    ? visualizerSettings.projectMBarOpacity 
-                    : (root.barOpacity * visualizerSettings.visualizerBarOpacity)
+                opacity: root.barOpacity * visualizerSettings.visualizerBarOpacity
                 radius: 1
             }
-
         }
-
     }
 
     MouseArea {

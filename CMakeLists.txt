@@ -86,40 +86,6 @@ if(NOT APPLE)
     pkg_check_modules(SPA REQUIRED IMPORTED_TARGET libspa-0.2)
 endif()
 
-# Try to find system-wide libprojectM, fallback to building from submodule if not found
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
-    pkg_check_modules(PROJECTM QUIET libprojectM)
-endif()
-
-# If system-wide libprojectM not found, build from submodule
-if(NOT PROJECTM_FOUND)
-    message(STATUS "libprojectM not found on system, will build from submodule")
-    
-    # Check if submodule exists
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libprojectm/CMakeLists.txt")
-        # Build libprojectM from submodule
-        set(PROJECTM_BUILD_EXAMPLES OFF CACHE BOOL "Disable projectM examples")
-        set(PROJECTM_BUILD_TESTING OFF CACHE BOOL "Disable projectM testing")
-        set(PROJECTM_BUILD_PLAYER OFF CACHE BOOL "Disable projectM player")
-        set(PROJECTM_BUILD_PUBLIC_HEADERS ON CACHE BOOL "Enable projectM public headers")
-        
-        add_subdirectory(libprojectm)
-        
-        # Set PROJECTM_INCLUDE_DIRS and PROJECTM_LIBRARIES to point to the built submodule
-        set(PROJECTM_INCLUDE_DIRS 
-            "${CMAKE_CURRENT_SOURCE_DIR}/libprojectm/include"
-            "${CMAKE_CURRENT_BINARY_DIR}/libprojectm/include"
-        )
-        
-        set(PROJECTM_LIBRARIES projectM)
-    else()
-        message(FATAL_ERROR "libprojectM not found on system and submodule not initialized. Please run 'git submodule update --init'")
-    endif()
-else()
-    message(STATUS "Found libprojectM: ${PROJECTM_VERSION}")
-endif()
-
 # FFT Library Detection and Selection
 # Priority: Accelerate FFT (macOS) > FFTW (Linux if available) > Kiss FFT (fallback)
 option(USE_SYSTEM_FFTW "Prefer system FFTW library over Kiss FFT" OFF)
@@ -180,8 +146,6 @@ qt_add_executable(quester
     src/quester.h
     src/audiovisualizer.cpp
     src/audiovisualizer.h
-    src/projectmvisualizer.cpp
-    src/projectmvisualizer.h
     src/statistics.cpp
     src/statistics.h
     ${quester_resources}
@@ -206,7 +170,6 @@ endif()
 
 target_include_directories(quester PRIVATE
     src/
-    ${PROJECTM_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/gist/src
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/gist/libs/kiss_fft130
 )
@@ -243,7 +206,6 @@ target_link_libraries(quester
     Qt6::Concurrent
     Qt6::Xml
     PkgConfig::MPDCLIENT
-    ${PROJECTM_LIBRARIES}
     Gist
 )
 

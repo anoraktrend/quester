@@ -1,4 +1,3 @@
-import Qt.labs.platform 1.1 as Platform
 import QtCore
 import QtQuick
 import QtQuick.Controls
@@ -13,7 +12,6 @@ Kirigami.ApplicationWindow {
     id: window
 
     property real fontScale: Math.max(0.8, Math.min(width, height) / 600)
-    property bool useProjectM: false
     property string lastfmAuthToken
     property bool selectionMode: false
     property var selectedAlbums: []
@@ -206,19 +204,6 @@ Kirigami.ApplicationWindow {
 
         }
 
-    }
-
-    Platform.FolderDialog {
-        id: folderDialog
-
-        title: qsTr("Select ProjectM Presets Folder")
-        onAccepted: {
-            var path = folder.toString();
-            if (path.startsWith("file://"))
-                path = path.substring(7);
-
-            visualizerView.settings.projectMPresetPath = path;
-        }
     }
 
     // Dialog for viewing JSPF playlist details with save button
@@ -734,14 +719,6 @@ Kirigami.ApplicationWindow {
                 visible: coverFlow.state === "libraryView"
                 checked: coverFlow.viewMode === "browser"
                 onTriggered: coverFlow.viewMode = "browser"
-            },
-            Kirigami.Action {
-                text: qsTr("Use ProjectM")
-                icon.name: "applications-multimedia"
-                visible: coverFlow.state === "visualizerView"
-                checkable: true
-                checked: window.useProjectM
-                onTriggered: window.useProjectM = checked
             }
         ]
 
@@ -1574,7 +1551,6 @@ Kirigami.ApplicationWindow {
                 visible: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
                 opacity: visible ? 1 : 0
                 albumArt: mpdClient.albumArt
-                useProjectM: window.useProjectM
                 barOpacity: coverFlow.state !== "visualizerView" ? 0.2 : 1
                 fallbackColor: window.themeTextColor
                 onClicked: coverFlow.state = "libraryView"

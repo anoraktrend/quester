@@ -693,7 +693,10 @@ void AudioVisualizer::setWidth(int width, bool forceUpdate)
         return;
 
     m_width = width;
-    int newNumBars = std::max(1, m_width / 10); // 10 pixels per bar
+    
+    int barPlusGap = m_visualizerBarSize + m_visualizerBarGap;
+    if (barPlusGap <= 0) return; // Avoid division by zero
+    int newNumBars = std::max(1, m_width / barPlusGap);
     
     bool barsChanged = (m_numBars != newNumBars);
     if (barsChanged) {
@@ -765,6 +768,34 @@ void AudioVisualizer::setAudioSource(const QString &source)
         start();
     }
     Q_EMIT audioSourceChanged();
+}
+
+auto AudioVisualizer::visualizerBarSize() const -> int
+{
+    return m_visualizerBarSize;
+}
+
+void AudioVisualizer::setVisualizerBarSize(int size)
+{
+    if (m_visualizerBarSize == size) return;
+    m_visualizerBarSize = size;
+    Q_EMIT visualizerBarSizeChanged();
+    // Force a recalculation of bars
+    setWidth(m_width, true);
+}
+
+auto AudioVisualizer::visualizerBarGap() const -> int
+{
+    return m_visualizerBarGap;
+}
+
+void AudioVisualizer::setVisualizerBarGap(int gap)
+{
+    if (m_visualizerBarGap == gap) return;
+    m_visualizerBarGap = gap;
+    Q_EMIT visualizerBarGapChanged();
+    // Force a recalculation of bars
+    setWidth(m_width, true);
 }
 
 void AudioVisualizer::start()
