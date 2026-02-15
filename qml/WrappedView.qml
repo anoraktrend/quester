@@ -226,6 +226,7 @@ Kirigami.ScrollablePage {
                             Text {
                                 text: modelData.title || ""
                                 font.bold: true
+                                color: Kirigami.Theme.textColor
                             }
 
                             Text {
@@ -238,6 +239,7 @@ Kirigami.ScrollablePage {
 
                         Text {
                             text: (modelData.play_count || 0) + " plays"
+                            color: Kirigami.Theme.textColor
                         }
 
                     }
@@ -269,10 +271,12 @@ Kirigami.ScrollablePage {
                             text: modelData.name
                             Layout.fillWidth: true
                             font.bold: true
+                            color: Kirigami.Theme.textColor
                         }
 
                         Text {
                             text: Math.floor(modelData.ms / 60000) + "m"
+                            color: Kirigami.Theme.textColor
                         }
 
                     }
@@ -308,6 +312,7 @@ Kirigami.ScrollablePage {
                             Text {
                                 text: modelData.title
                                 font.bold: true
+                                color: Kirigami.Theme.textColor
                             }
 
                             Text {
@@ -320,6 +325,7 @@ Kirigami.ScrollablePage {
 
                         Text {
                             text: Math.floor(modelData.ms / 60000) + "m"
+                            color: Kirigami.Theme.textColor
                         }
 
                     }
@@ -352,10 +358,12 @@ Kirigami.ScrollablePage {
                             text: modelData.name
                             Layout.fillWidth: true
                             font.bold: true
+                            color: Kirigami.Theme.textColor
                         }
 
                         Text {
                             text: Math.floor(modelData.ms / 60000) + "m"
+                            color: Kirigami.Theme.textColor
                         }
 
                     }

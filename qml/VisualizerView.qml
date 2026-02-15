@@ -176,10 +176,12 @@ Item {
             var centerY = height / 2;
             var baseRadius = Math.min(width, height) / 4;
             var numMagnitudes = root.magnitudes.length;
+            var colors = root.barColors;
 
-            if (numMagnitudes === 0) return;
+            if (numMagnitudes === 0 || colors.length === 0) return;
 
-            var colors = gradientColors[visualizerSettings.visualizerGradient] || ["#FFFFFF"];
+            // Use barColors from AudioVisualizer (interpolated preset colors)
+            var presetColors = colors;
 
             // Calculate the maximum extent for the gradient based on magnitudes
             var maxMagnitude = 0;
@@ -190,16 +192,18 @@ Item {
             }
             var maxRadius = baseRadius + (maxMagnitude * baseRadius * 0.8);
 
-            // Create gradient for fill - from center outward
+            // Create gradient for fill - from center outward using preset colors
             var fillGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
-            for (var j = 0; j < colors.length; j++) {
-                fillGradient.addColorStop(j / (colors.length - 1), colors[j]);
+            for (var j = 0; j < presetColors.length; j++) {
+                var color = presetColors[j];
+                fillGradient.addColorStop(j / (presetColors.length - 1), color);
             }
 
             // Create gradient for stroke - along the circle path
             var strokeGradient = ctx.createRadialGradient(centerX, centerY, baseRadius, centerX, centerY, maxRadius);
-            for (var k = 0; k < colors.length; k++) {
-                strokeGradient.addColorStop(k / (colors.length - 1), colors[k]);
+            for (var k = 0; k < presetColors.length; k++) {
+                var strokeColor = presetColors[k];
+                strokeGradient.addColorStop(k / (presetColors.length - 1), strokeColor);
             }
 
             ctx.beginPath();

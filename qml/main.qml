@@ -1028,19 +1028,6 @@ Kirigami.ApplicationWindow {
                     icon.color: window.themeTextColor
                     onClicked: coverFlow.state = "libraryView"
                     flat: true
-                    contentItem: RowLayout {
-                        spacing: 5
-                        Kirigami.Icon {
-                            source: parent.parent.icon.name
-                            width: 16
-                            height: 16
-                            color: parent.parent.icon.color
-                        }
-                        Text {
-                            text: parent.parent.text
-                            color: window.themeTextColor
-                        }
-                    }
                 }
             }
 
