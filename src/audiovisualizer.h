@@ -212,6 +212,7 @@ public:
     void setCurrentPreset(const QString &name);
     [[nodiscard]] auto barColors() const -> QVariantList;
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
+    Q_INVOKABLE QString loadVisualizerGradients();
     [[nodiscard]] auto topDownMode() const -> bool;
     void setTopDownMode(bool topDownMode);
     [[nodiscard]] auto audioSource() const -> QString;

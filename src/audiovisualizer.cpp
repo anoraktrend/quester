@@ -1172,6 +1172,35 @@ auto AudioVisualizer::barColors() const -> QVariantList
     return m_barColors;
 }
 
+QString AudioVisualizer::loadVisualizerGradients()
+{
+    QStringList paths
+        = {
+#ifdef QT_QML_SOURCE_DIR
+            QStringLiteral(QT_QML_SOURCE_DIR) + "/presets/visualizerGradients/presets.json",
+#endif
+            QCoreApplication::applicationDirPath() + QStringLiteral("/presets/visualizerGradients/presets.json"),
+            QCoreApplication::applicationDirPath() + QStringLiteral("/../presets/visualizerGradients/presets.json"),
+            QStringLiteral("presets/visualizerGradients/presets.json")};
+    
+    // macOS bundle resource path
+#ifdef __APPLE__
+    paths.prepend(QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/presets/visualizerGradients/presets.json"));
+#endif
+
+    for (const QString &path : paths) {
+        if (QFile::exists(path)) {
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly)) {
+                return file.readAll();
+            }
+        }
+    }
+
+    return QString();
+}
+
+
 void AudioVisualizer::updateBarColors()
 {
     m_barColors.clear();

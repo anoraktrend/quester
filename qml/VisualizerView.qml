@@ -27,6 +27,8 @@ Item {
     property real barOpacity: 1
     property alias settings: visualizerSettings
 
+    property var gradientColors: ({})
+
     signal clicked()
 
     // Debounced viewport size update
@@ -81,6 +83,20 @@ Item {
         // Pass settings to C++ backend
         AudioVisualizer.visualizerBarSize = visualizerSettings.visualizerBarSize;
         AudioVisualizer.visualizerBarGap = visualizerSettings.visualizerBarGap;
+
+        var presets = JSON.parse(AudioVisualizer.loadVisualizerGradients());
+        var tempColors = {};
+        for (var key in presets) {
+            if (presets.hasOwnProperty(key)) {
+                var value = presets[key];
+                if (Array.isArray(value)) {
+                    tempColors[key] = value;
+                } else if (typeof value === 'object' && value !== null && Array.isArray(value.colors)) {
+                    tempColors[key] = value.colors;
+                }
+            }
+        }
+        gradientColors = tempColors;
     }
     Component.onDestruction: {
         if (_resizeTimer) {
@@ -103,6 +119,7 @@ Item {
         property int visualizerBarSize: 20
         property int visualizerBarGap: 2
         property real visualizerBarOpacity: 1.0
+        property string visualizerGradient: "rainbow"
 
         category: "Quester"
 
@@ -157,23 +174,46 @@ Item {
 
             var centerX = width / 2;
             var centerY = height / 2;
-            var radius = Math.min(width, height) / 4;
+            var baseRadius = Math.min(width, height) / 4;
             var numMagnitudes = root.magnitudes.length;
 
             if (numMagnitudes === 0) return;
 
-            ctx.beginPath();
-            ctx.lineWidth = 2;
-            
-            var waveColor = root.barColors && root.barColors.length > 0 ? root.barColors[0] : root.fallbackColor;
-            ctx.strokeStyle = waveColor;
+            var colors = gradientColors[visualizerSettings.visualizerGradient] || ["#FFFFFF"];
 
+            // Calculate the maximum extent for the gradient based on magnitudes
+            var maxMagnitude = 0;
+            for (var m = 0; m < numMagnitudes; m++) {
+                if (root.magnitudes[m] > maxMagnitude) {
+                    maxMagnitude = root.magnitudes[m];
+                }
+            }
+            var maxRadius = baseRadius + (maxMagnitude * baseRadius * 0.8);
+
+            // Create gradient for fill - from center outward
+            var fillGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
+            for (var j = 0; j < colors.length; j++) {
+                fillGradient.addColorStop(j / (colors.length - 1), colors[j]);
+            }
+
+            // Create gradient for stroke - along the circle path
+            var strokeGradient = ctx.createRadialGradient(centerX, centerY, baseRadius, centerX, centerY, maxRadius);
+            for (var k = 0; k < colors.length; k++) {
+                strokeGradient.addColorStop(k / (colors.length - 1), colors[k]);
+            }
+
+            ctx.beginPath();
+            ctx.lineWidth = 3;
+            ctx.fillStyle = fillGradient;
+            ctx.strokeStyle = strokeGradient;
+
+            // Draw the circular visualizer path
             for (var i = 0; i < numMagnitudes; i++) {
                 var angle = (i / numMagnitudes) * 2 * Math.PI;
-                var magnitude = root.magnitudes[i] * radius * 0.8;
+                var magnitude = root.magnitudes[i] * baseRadius * 0.8;
 
-                var x = centerX + Math.cos(angle) * (radius + magnitude);
-                var y = centerY + Math.sin(angle) * (radius + magnitude);
+                var x = centerX + Math.cos(angle) * (baseRadius + magnitude);
+                var y = centerY + Math.sin(angle) * (baseRadius + magnitude);
 
                 if (i === 0) {
                     ctx.moveTo(x, y);
@@ -182,6 +222,10 @@ Item {
                 }
             }
             ctx.closePath();
+            
+            // Fill the shape with gradient
+            ctx.fill();
+            // Stroke the shape with gradient
             ctx.stroke();
         }
 
