@@ -36,6 +36,7 @@ Window {
             // Visualizer settings
             "visualizerMode": visualizerView.settings.visualizerMode,
             "visualizerBarSize": visualizerView.settings.visualizerBarSize,
+            "visualizerBarGap": visualizerView.settings.visualizerBarGap,
             "visualizerBarOpacity": visualizerView.settings.visualizerBarOpacity,
             // ProjectM settings
             "projectMPresetPath": visualizerView.settings.projectMPresetPath,
@@ -62,6 +63,7 @@ Window {
         // Visualizer settings
         visualizerView.settings.visualizerMode = initialValues.visualizerMode;
         visualizerView.settings.visualizerBarSize = initialValues.visualizerBarSize;
+        visualizerView.settings.visualizerBarGap = initialValues.visualizerBarGap;
         visualizerView.settings.visualizerBarOpacity = initialValues.visualizerBarOpacity;
         // ProjectM settings
         visualizerView.settings.projectMPresetPath = initialValues.projectMPresetPath;
@@ -242,6 +244,17 @@ Window {
                     to: 100
                     value: visualizerView.settings.visualizerBarSize
                     onValueChanged: visualizerView.settings.visualizerBarSize = value
+                }
+
+                Label {
+                    text: qsTr("Bar Gap:")
+                }
+
+                SpinBox {
+                    from: 0
+                    to: 50
+                    value: visualizerView.settings.visualizerBarGap
+                    onValueChanged: visualizerView.settings.visualizerBarGap = value
                 }
 
                 Label {

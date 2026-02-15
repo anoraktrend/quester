@@ -136,6 +136,11 @@ public:
         return new QOpenGLFramebufferObject(size, format); // NOLINT(cppcoreguidelines-owning-memory)
     }
 
+    // Minimum size threshold to avoid handling very small/zero sizes
+    static constexpr int MIN_DIMENSION = 32;
+    // Minimum change threshold to trigger GL reset (pixels)
+    static constexpr int MIN_SIZE_CHANGE = 10;
+
     void synchronize(QQuickFramebufferObject *item) override {
         auto *viz = dynamic_cast<ProjectMVisualizer *>(item);
         m_running = viz->active();
@@ -143,10 +148,21 @@ public:
 
         if (!m_projectM) return;
 
-        // Handle resizing
+        // Handle resizing with debouncing - only reset GL for significant size changes
         int newWidth = static_cast<int>(viz->width());
         int newHeight = static_cast<int>(viz->height());
-        if (newWidth > 0 && newHeight > 0 && (m_width != newWidth || m_height != newHeight)) {
+        
+        // Validate dimensions
+        if (newWidth < MIN_DIMENSION || newHeight < MIN_DIMENSION) {
+            return; // Skip invalid dimensions
+        }
+        
+        // Check if size change is significant enough to warrant a GL reset
+        int widthDelta = std::abs(newWidth - m_width);
+        int heightDelta = std::abs(newHeight - m_height);
+        bool sizeChanged = (widthDelta >= MIN_SIZE_CHANGE || heightDelta >= MIN_SIZE_CHANGE);
+        
+        if (sizeChanged || m_width <= 0 || m_height <= 0) {
             m_width = newWidth;
             m_height = newHeight;
             m_projectM->projectM_resetGL(m_width, m_height);

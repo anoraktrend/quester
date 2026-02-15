@@ -202,9 +202,9 @@ public:
     [[nodiscard]] auto magnitudes() const -> QList<qreal>;
     [[nodiscard]] auto active() const -> bool;
     [[nodiscard]] auto width() const -> int;
-    void setWidth(int width);
+    void setWidth(int width, bool forceUpdate = false);
     [[nodiscard]] auto height() const -> int;
-    void setHeight(int height);
+    void setHeight(int height, bool forceUpdate = false);
     [[nodiscard]] auto presetNames() const -> QStringList;
     [[nodiscard]] auto currentPreset() const -> QString;
     void setCurrentPreset(const QString &name);

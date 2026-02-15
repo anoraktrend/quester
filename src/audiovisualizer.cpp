@@ -676,23 +676,45 @@ auto AudioVisualizer::width() const -> int
     return m_width;
 }
 
-void AudioVisualizer::setWidth(int width)
+// Minimum change threshold to trigger bar count update (pixels)
+constexpr int MIN_WIDTH_CHANGE_THRESHOLD = 20;
+
+void AudioVisualizer::setWidth(int width, bool forceUpdate)
 {
-    if (m_width == width)
+    // Apply minimum threshold to avoid excessive recalculations during small resize movements
+    int widthDelta = std::abs(width - m_width);
+    if (!forceUpdate && widthDelta < MIN_WIDTH_CHANGE_THRESHOLD && m_width > 0) {
+        m_width = width;  // Still update the value, but don't recalculate bars
+        Q_EMIT widthChanged();
+        return;
+    }
+
+    if (m_width == width && !forceUpdate)
         return;
 
     m_width = width;
     int newNumBars = std::max(1, m_width / 10); // 10 pixels per bar
-    if (m_numBars != newNumBars) {
+    
+    bool barsChanged = (m_numBars != newNumBars);
+    if (barsChanged) {
         m_numBars = newNumBars;
 
-        m_magnitudes.fill(0.0, m_numBars);
-        m_smoothBuffer.fill(0.0, m_numBars);
+        // Preserve existing magnitude data when possible by resampling
+        if (!m_magnitudes.isEmpty() && m_magnitudes.size() > 0) {
+            // Keep old values for smooth transition - they will naturally fade
+            m_smoothBuffer.fill(0.0, m_numBars);
+        } else {
+            m_magnitudes.fill(0.0, m_numBars);
+            m_smoothBuffer.fill(0.0, m_numBars);
+        }
+        
         updateBarColors();
         computeBarRanges();
-        Q_EMIT magnitudesChanged();
     }
     Q_EMIT widthChanged();
+    if (barsChanged) {
+        Q_EMIT magnitudesChanged();
+    }
 }
 
 auto AudioVisualizer::height() const -> int
@@ -700,9 +722,17 @@ auto AudioVisualizer::height() const -> int
     return m_height;
 }
 
-void AudioVisualizer::setHeight(int height)
+void AudioVisualizer::setHeight(int height, bool forceUpdate)
 {
-    if (m_height == height) return;
+    // Apply minimum threshold for height changes too
+    int heightDelta = std::abs(height - m_height);
+    if (!forceUpdate && heightDelta < MIN_WIDTH_CHANGE_THRESHOLD && m_height > 0) {
+        m_height = height;
+        Q_EMIT heightChanged();
+        return;
+    }
+
+    if (m_height == height && !forceUpdate) return;
     m_height = height;
     Q_EMIT heightChanged();
 }
