@@ -16,11 +16,11 @@ Item {
     property real fontScale: 1.0
     property bool updatingArtist: false
 
-    property color themeAlternateBackgroundColor: Kirigami.Theme.alternateBackgroundColor
-    property color themeTextColor: Kirigami.Theme.textColor
-    property color themeViewBackgroundColor: Kirigami.Theme.viewBackgroundColor
-    property color themeHighlightColor: Kirigami.Theme.highlightColor
-    property color themeBackgroundColor: Kirigami.Theme.backgroundColor
+    property color themeAlternateBackgroundColor: Kirigami.Theme.alternateBackgroundColor || "#333333"
+    property color themeTextColor: Kirigami.Theme.textColor || "#ffffff"
+    property color themeViewBackgroundColor: Kirigami.Theme.viewBackgroundColor || "#2a2a2a"
+    property color themeHighlightColor: Kirigami.Theme.highlightColor || "#0078d4"
+    property color themeBackgroundColor: Kirigami.Theme.backgroundColor || "#1a1a1a"
 
     // Filtered album model for artist-focused view
     ListModel {

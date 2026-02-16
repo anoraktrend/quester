@@ -256,8 +256,8 @@ Item {
                 anchors.bottom: visualizerSettings.visualizerMode === 0 ? parent.bottom : undefined
                 anchors.top: visualizerSettings.visualizerMode === 1 ? parent.top : undefined
                 anchors.verticalCenter: visualizerSettings.visualizerMode === 2 ? parent.verticalCenter : undefined
-                anchors.bottomMargin: visualizerSettings.visualizerMode === 0 ? 100 : 0
-                anchors.topMargin: visualizerSettings.visualizerMode === 1 ? 100 : 0
+                anchors.bottomMargin: 0
+                anchors.topMargin: 0
                 color: root.barColors && root.barColors.length > index ? root.barColors[index] : root.fallbackColor
                 opacity: root.barOpacity * visualizerSettings.visualizerBarOpacity
                 radius: 1

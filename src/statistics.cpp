@@ -126,12 +126,11 @@ void StatisticsManager::logPlay(const QString &artist, const QString &title, con
         sendListenBrainzRequest("single", payload);
     }
 
-    // Submit to Last.fm (Now Playing)
-    if (!m_lastfmSessionKey.isEmpty()) {
-        qDebug() << "[Last.fm] Scrobbling now playing:" << artist << "-" << title << "(" << album << ")";
-        submitLastfmNowPlayingInternal(artist, title, album);
-    } else {
-        qDebug() << "[Last.fm] No session key, skipping scrobble";
+    // Submit to Last.fm (Scrobble) - only if played for at least 30 seconds
+    if (!m_lastfmSessionKey.isEmpty() && durationMs >= 30000) {
+        qDebug() << "[Last.fm] Scrobbling:" << artist << "-" << title << "(" << album << ")";
+        qint64 timestamp = QDateTime::currentSecsSinceEpoch() - (durationMs / 1000);
+        scrobbleToLastfmInternal(artist, title, album, timestamp);
     }
 
     // Log to Local DB (Worker Thread)
@@ -508,24 +507,31 @@ void StatisticsManager::setListenBrainzCredentials(const QString &token, const Q
 
 void StatisticsManager::submitPlayingNow(const QString &artist, const QString &title, const QString &album, qint64 durationMs)
 {
-    if (m_lbToken.isEmpty()) return;
-
-    QVariantMap payload;
-    QVariantMap metadata;
-    metadata["artist_name"] = artist;
-    metadata["track_name"] = title;
-    metadata["release_name"] = album;
-    QVariantMap additional;
-    // Ensure duration_ms is a positive integer (minimum 1 second if 0 or negative)
-    if (durationMs <= 0) {
-        durationMs = 1000; // Default to 1 second if invalid duration
+    // Submit to ListenBrainz
+    if (!m_lbToken.isEmpty()) {
+        QVariantMap payload;
+        QVariantMap metadata;
+        metadata["artist_name"] = artist;
+        metadata["track_name"] = title;
+        metadata["release_name"] = album;
+        QVariantMap additional;
+        // Ensure duration_ms is a positive integer (minimum 1 second if 0 or negative)
+        if (durationMs <= 0) {
+            durationMs = 1000; // Default to 1 second if invalid duration
+        }
+        additional["duration_ms"] = durationMs;
+        metadata["additional_info"] = additional;
+        
+        payload["track_metadata"] = metadata;
+        
+        sendListenBrainzRequest("playing_now", payload);
     }
-    additional["duration_ms"] = durationMs;
-    metadata["additional_info"] = additional;
-    
-    payload["track_metadata"] = metadata;
-    
-    sendListenBrainzRequest("playing_now", payload);
+
+    // Submit to Last.fm (Now Playing)
+    if (!m_lastfmSessionKey.isEmpty()) {
+        qDebug() << "[Last.fm] Now Playing:" << artist << "-" << title << "(" << album << ")";
+        submitLastfmNowPlayingInternal(artist, title, album);
+    }
 }
 
 void StatisticsManager::validateListenBrainzCredentials()

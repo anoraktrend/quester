@@ -15,13 +15,13 @@ Kirigami.ApplicationWindow {
     property string lastfmAuthToken
     property bool selectionMode: false
     property var selectedAlbums: []
-    property color themeBackgroundColor: Kirigami.Theme.backgroundColor
-    property color themeViewBackgroundColor: Kirigami.Theme.viewBackgroundColor
-    property color themeAlternateBackgroundColor: Kirigami.Theme.alternateBackgroundColor
-    property color themeHighlightColor: Kirigami.Theme.highlightColor
-    property color themeTextColor: Kirigami.Theme.textColor
-    property color themeHighlightedTextColor: Kirigami.Theme.highlightedTextColor
-    property color themeButtonBackgroundColor: Kirigami.Theme.buttonBackgroundColor
+    property color themeBackgroundColor: Kirigami.Theme.backgroundColor || "#1a1a1a"
+    property color themeViewBackgroundColor: Kirigami.Theme.viewBackgroundColor || "#2a2a2a"
+    property color themeAlternateBackgroundColor: Kirigami.Theme.alternateBackgroundColor || "#333333"
+    property color themeHighlightColor: Kirigami.Theme.highlightColor || "#0078d4"
+    property color themeTextColor: Kirigami.Theme.textColor || "#ffffff"
+    property color themeHighlightedTextColor: Kirigami.Theme.highlightedTextColor || "#ffffff"
+    property color themeButtonBackgroundColor: Kirigami.Theme.buttonBackgroundColor || "#404040"
 
     width: 800
     height: 600
