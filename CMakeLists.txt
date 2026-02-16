@@ -274,12 +274,6 @@ else()
         DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources/presets
     )
     
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop")
-        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop/
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources/projectM-presets
-        )
-    endif()
-    
     # Install application icon
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/Quester512.png
         DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources
