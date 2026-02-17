@@ -253,11 +253,6 @@ if(NOT APPLE)
         DESTINATION /etc/config/Quester/presets
     )
 
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop")
-        install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/presets-cream-of-the-crop/
-            DESTINATION ${KDE_INSTALL_DATADIR}/Quester/projectM-presets
-        )
-    endif()
 else()
     # Install on macOS
     set(MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})

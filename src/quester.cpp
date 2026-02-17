@@ -820,9 +820,10 @@ void MpdClient::refreshLibrary()
         QSet<QString> addedMbids;
         QSet<QString> addedArtistAlbums;
 
-        if (mpd_send_command(conn, "list", "album", "group", "artist", "group", "date", "group", "musicbrainz_albumid", nullptr)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
+        if (mpd_send_command(conn, "list", "album", "group", "artist", "group", "artist_sort_name", "group", "date", "group", "musicbrainz_albumid", nullptr)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
             struct mpd_pair *pair = nullptr;
             QString currentArtist = tr("Unknown Artist");
+            QString currentArtistSortName;
             QString currentMbid;
             int currentYear = 0;
 
@@ -832,6 +833,8 @@ void MpdClient::refreshLibrary()
 
                 if (tagName == "Artist") {
                     currentArtist = tagValue;
+                } else if (tagName == "ArtistSortName" || tagName == "ARTIST_SORT_NAME") {
+                    currentArtistSortName = tagValue;
                 } else if (tagName == "Date") {
                     currentYear = tagValue.left(4).toInt();
                 } else if (tagName == "MusicBrainzAlbumId" || tagName == "MUSICBRAINZ_ALBUMID") {
@@ -859,7 +862,9 @@ void MpdClient::refreshLibrary()
                         if (shouldAdd) {
                             QString cachePath = getCachePath(currentArtist, albumName, currentMbid);
                             QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
-                            albums.append(AlbumItem{.artist=currentArtist, .name=albumName, .artUrl=art, .mbid=currentMbid, .uri="", .artLoading=false, .year=currentYear});
+                            // Use artist sort name if available, otherwise fall back to artist
+                            QString sortName = currentArtistSortName.isEmpty() ? currentArtist : currentArtistSortName;
+                            albums.append(AlbumItem{.artist=currentArtist, .artistSortName=sortName, .name=albumName, .artUrl=art, .mbid=currentMbid, .uri="", .artLoading=false, .year=currentYear});
                         }
                     }
                 }
@@ -1469,13 +1474,19 @@ void MpdClient::sortAlbums(QList<AlbumItem> &albums)
 
     if (m_sortMode == SortMode::Artist) {
         std::ranges::sort(albums, [&](const AlbumItem &a, const AlbumItem &b) -> bool {
-            int res = collator.compare(a.artist, b.artist);
+            // Use artistSortName for proper sorting (e.g., "Beatles, The" instead of "The Beatles")
+            QString aSortName = a.artistSortName.isEmpty() ? a.artist : a.artistSortName;
+            QString bSortName = b.artistSortName.isEmpty() ? b.artist : b.artistSortName;
+            int res = collator.compare(aSortName, bSortName);
             if (res != 0) return res < 0;
             return collator.compare(a.name, b.name) < 0;
         });
     } else if (m_sortMode == SortMode::ArtistYear) {
         std::ranges::sort(albums, [&](const AlbumItem &a, const AlbumItem &b) -> bool {
-            int res = collator.compare(a.artist, b.artist);
+            // Use artistSortName for proper sorting
+            QString aSortName = a.artistSortName.isEmpty() ? a.artist : a.artistSortName;
+            QString bSortName = b.artistSortName.isEmpty() ? b.artist : b.artistSortName;
+            int res = collator.compare(aSortName, bSortName);
             if (res != 0) return res < 0;
             if (a.year != b.year) return a.year < b.year;
             return collator.compare(a.name, b.name) < 0;

@@ -155,6 +155,7 @@ Quester automatically tracks your listening habits and stores them locally in a 
 ### Wrapped Feature
 
 At the end of each year, Quester can generate a "Wrapped" summary - a visual recap of your listening habits including:
+
 - Top artists, albums, and songs
 - Total listening time
 - Activity graphs showing when you listen to music

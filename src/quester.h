@@ -22,6 +22,7 @@
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches
+    QString artistSortName; // Artist sort name for proper sorting (e.g., "Beatles, The" instead of "The Beatles")
     QString name;
     QString artUrl;
     QString mbid; // MusicBrainz ID for precise album identification
