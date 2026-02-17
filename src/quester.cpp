@@ -336,6 +336,19 @@ void PlaylistTrackModel::setTracks(const QList<PlaylistTrackItem> &tracks)
     endResetModel();
 }
 
+QDataStream &operator<<(QDataStream &out, const AlbumItem &item)
+{
+    out << item.artist << item.artistSortName << item.name << item.artUrl << item.mbid << item.uri << item.year;
+    return out;
+}
+
+QDataStream &operator>>(QDataStream &in, AlbumItem &item)
+{
+    in >> item.artist >> item.artistSortName >> item.name >> item.artUrl >> item.mbid >> item.uri >> item.year;
+    item.artLoading = false;
+    return in;
+}
+
 MpdClient::MpdClient(QObject *parent)
     : QObject(parent)
     , 
@@ -401,6 +414,9 @@ MpdClient::MpdClient(QObject *parent)
         // Then connect to MPD and refresh in background
         connectToMpd();
         m_timer->start(TIMER_INTERVAL);
+        
+        // Refresh library from MPD after connection
+        refreshLibrary();
     });
 }
 
@@ -471,6 +487,10 @@ void MpdClient::handleMpdEvent()
     }
     if (events & MPD_IDLE_QUEUE) {
         refreshQueue();
+    }
+    if (events & MPD_IDLE_DATABASE) {
+        qInfo() << "MPD database changed, refreshing library...";
+        refreshLibrary();
     }
 
     sendIdle();
@@ -800,15 +820,6 @@ void MpdClient::seekTo(double time)
 void MpdClient::refreshLibrary()
 {
     QThreadPool::globalInstance()->start([this]() -> void {
-        // First, load from cache and update the UI
-        QList<AlbumItem> cachedAlbums = loadLibraryFromCacheInternal();
-        if (!cachedAlbums.isEmpty()) {
-            QMetaObject::invokeMethod(this, [this, cachedAlbums]() -> void {
-                handleLibraryUpdate(cachedAlbums);
-            }, Qt::QueuedConnection);
-        }
-
-        // Now, refresh from MPD in the background
         struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
@@ -816,75 +827,72 @@ void MpdClient::refreshLibrary()
             return;
         }
 
-        QList<AlbumItem> albums;
-        QSet<QString> addedMbids;
-        QSet<QString> addedArtistAlbums;
+        QMap<QString, AlbumItem> albumsMap;
 
-        if (mpd_send_command(conn, "list", "album", "group", "artist", "group", "artist_sort_name", "group", "date", "group", "musicbrainz_albumid", nullptr)) { // NOLINT(cppcoreguidelines-pro-type-vararg)
-            struct mpd_pair *pair = nullptr;
-            QString currentArtist = tr("Unknown Artist");
-            QString currentArtistSortName;
-            QString currentMbid;
-            int currentYear = 0;
-
-            while ((pair = mpd_recv_pair(conn)) != nullptr) {
-                QString tagName = QString::fromUtf8(pair->name);
-                QString tagValue = QString::fromUtf8(pair->value);
-
-                if (tagName == "Artist") {
-                    currentArtist = tagValue;
-                } else if (tagName == "ArtistSortName" || tagName == "ARTIST_SORT_NAME") {
-                    currentArtistSortName = tagValue;
-                } else if (tagName == "Date") {
-                    currentYear = tagValue.left(4).toInt();
-                } else if (tagName == "MusicBrainzAlbumId" || tagName == "MUSICBRAINZ_ALBUMID") {
-                    currentMbid = tagValue;
-                } else if (tagName == "Album") {
-                    QString albumName = tagValue;
-                    if (!albumName.isEmpty()) {
-                        bool shouldAdd = false;
-                        QString groupKey;
-
-                        if (!currentMbid.isEmpty()) {
-                            groupKey = currentMbid;
-                            if (!addedMbids.contains(groupKey)) {
-                                shouldAdd = true;
-                                addedMbids.insert(groupKey);
-                            }
-                        } else {
-                            groupKey = currentArtist + "|" + albumName;
-                            if (!addedArtistAlbums.contains(groupKey)) {
-                                shouldAdd = true;
-                                addedArtistAlbums.insert(groupKey);
-                            }
-                        }
-
-                        if (shouldAdd) {
-                            QString cachePath = getCachePath(currentArtist, albumName, currentMbid);
-                            QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
-                            // Use artist sort name if available, otherwise fall back to artist
-                            QString sortName = currentArtistSortName.isEmpty() ? currentArtist : currentArtistSortName;
-                            albums.append(AlbumItem{.artist=currentArtist, .artistSortName=sortName, .name=albumName, .artUrl=art, .mbid=currentMbid, .uri="", .artLoading=false, .year=currentYear});
-                        }
+        if (mpd_search_db_songs(conn, false)) { // case-insensitive search
+            mpd_search_add_any_tag_constraint(conn, MPD_OPERATOR_DEFAULT, "");
+            if (mpd_search_commit(conn)) {
+                struct mpd_song *song;
+                while ((song = mpd_recv_song(conn)) != nullptr) {
+                    const char *album_tag = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
+                    if (!album_tag || !*album_tag) {
+                        mpd_song_free(song);
+                        continue;
                     }
+                    QString albumName = QString::fromUtf8(album_tag);
+
+                    const char *artist_tag = mpd_song_get_tag(song, MPD_TAG_ALBUM_ARTIST, 0);
+                    if (!artist_tag || !*artist_tag) {
+                        artist_tag = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
+                    }
+                    QString artistName = (artist_tag && *artist_tag) ? QString::fromUtf8(artist_tag) : tr("Unknown Artist");
+
+                    const char *mbid_tag = mpd_song_get_tag(song, MPD_TAG_MUSICBRAINZ_ALBUMID, 0);
+                    QString mbid = mbid_tag ? QString::fromUtf8(mbid_tag) : "";
+
+                    QString key = mbid.isEmpty() ? (artistName + "|" + albumName) : mbid;
+
+                    if (!albumsMap.contains(key)) {
+                        const char *artist_sort_tag = mpd_song_get_tag(song, MPD_TAG_ARTIST_SORT, 0);
+                        QString artistSortName = artist_sort_tag ? QString::fromUtf8(artist_sort_tag) : artistName;
+
+                        const char *date_tag = mpd_song_get_tag(song, MPD_TAG_DATE, 0);
+                        int year = date_tag ? QString::fromUtf8(date_tag).left(4).toInt() : 0;
+                        
+                        QString cachePath = getCachePath(artistName, albumName, mbid);
+                        QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
+
+                        albumsMap.insert(key, AlbumItem{
+                            .artist = artistName,
+                            .artistSortName = artistSortName,
+                            .name = albumName,
+                            .artUrl = art,
+                            .mbid = mbid,
+                            .uri = "", // URI is per-track, not per-album
+                            .artLoading = false,
+                            .year = year
+                        });
+                    }
+                    mpd_song_free(song);
                 }
-                mpd_return_pair(conn, pair);
+                if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
+                    qWarning() << "Error reading library response:" << mpd_connection_get_error_message(conn);
+                    mpd_connection_clear_error(conn);
+                }
+                mpd_response_finish(conn);
+            } else {
+                 qWarning() << "Failed to commit search command:" << mpd_connection_get_error_message(conn);
+                 mpd_connection_clear_error(conn);
             }
-
-            if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
-                qWarning() << "Error reading library response:" << mpd_connection_get_error_message(conn);
-                mpd_connection_clear_error(conn);
-            }
-
-            mpd_response_finish(conn);
         } else {
-            qWarning() << "Failed to send list command:" << mpd_connection_get_error_message(conn);
+            qWarning() << "Failed to start search command:" << mpd_connection_get_error_message(conn);
             mpd_connection_clear_error(conn);
         }
 
         mpd_connection_free(conn);
 
-        if (!albums.isEmpty()) {
+        if (!albumsMap.isEmpty()) {
+            QList<AlbumItem> albums = albumsMap.values();
             saveLibraryToCache(albums);
             QMetaObject::invokeMethod(this, [this, albums]() -> void {
                 handleLibraryUpdate(albums);
@@ -1574,65 +1582,83 @@ void MpdClient::saveLibraryToCache(const QList<AlbumItem> &albums)
     if (!dir.exists()) {
         dir.mkpath(".");
     }
-    QString cachePath = cacheDir + "/library.cache";
+    QString cachePath = cacheDir + "/library.cache.bin";
     QFile file(cachePath);
     if (!file.open(QIODevice::WriteOnly)) {
         qWarning() << "Could not open library cache for writing:" << file.errorString();
         return;
     }
 
-    QJsonArray jsonArray;
-    for (const AlbumItem &album : albums) {
-        QJsonObject albumObject;
-        albumObject["musicbrainz_albumid"] = album.mbid;
-        albumObject["artist"] = album.artist;
-        albumObject["name"] = album.name;
-        albumObject["artUrl"] = album.artUrl;
-        albumObject["uri"] = album.uri;
-        albumObject["year"] = album.year;
-        jsonArray.append(albumObject);
-    }
+    QDataStream out(&file);
+    out.setVersion(QDataStream::Qt_6_2);
+    out << albums;
 
-    QJsonDocument doc(jsonArray);
-    file.write(doc.toJson());
     file.close();
+    
+    // Clean up old cache file
+    QFile oldCache(cacheDir + "/library.cache");
+    if (oldCache.exists()) {
+        oldCache.remove();
+    }
 }
 
 auto MpdClient::loadLibraryFromCacheInternal() -> QList<AlbumItem>
 {
-    QString cachePath = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-                        + "/library.cache";
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QString cachePath = cacheDir + "/library.cache.bin";
     QFile file(cachePath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+
+    if (!file.exists()) {
+        // Fallback to old json cache for migration
+        QString oldCachePath = cacheDir + "/library.cache";
+        QFile oldFile(oldCachePath);
+        if (!oldFile.exists() || !oldFile.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+
+        QByteArray data = oldFile.readAll();
+        oldFile.close();
+
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isArray()) {
+            qWarning() << "Library cache is corrupted or not a JSON array.";
+            return {};
+        }
+
+        QJsonArray jsonArray = doc.array();
+        QList<AlbumItem> albums;
+        albums.reserve(jsonArray.size());
+
+        for (const auto &value : jsonArray) {
+            if (!value.isObject())
+                continue;
+            QJsonObject obj = value.toObject();
+            albums.append(
+                {.artist = obj.value("artist").toString(),
+                 .artistSortName = obj.value("artistSortName").toString(),
+                 .name = obj.value("name").toString(),
+                 .artUrl = obj.value("artUrl").toString(),
+                 .mbid = obj.value("musicbrainz_albumid").toString(),
+                 .uri = obj.value("uri").toString(),
+                 .artLoading = false,
+                 .year = obj.value("year").toInt()});
+        }
+        return albums;
+    }
+
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Could not open library cache for reading:" << file.errorString();
         return {};
     }
 
-    QByteArray data = file.readAll();
+    QDataStream in(&file);
+    in.setVersion(QDataStream::Qt_6_2);
+    QList<AlbumItem> albums;
+    in >> albums;
+
     file.close();
 
-    QJsonDocument doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) {
-        qWarning() << "Library cache is corrupted or not a JSON array.";
-        return {};
-    }
-
-    QJsonArray jsonArray = doc.array();
-    QList<AlbumItem> albums;
-    albums.reserve(jsonArray.size());
-
-    for (const auto &value : jsonArray) {
-        if (!value.isObject())
-            continue;
-        QJsonObject obj = value.toObject();
-        albums.append(
-            {.artist=obj.value("artist").toString(),
-             .name=obj.value("name").toString(),
-             .artUrl=obj.value("artUrl").toString(),
-             .mbid=obj.value("musicbrainz_albumid").toString(),
-             .uri=obj.value("uri").toString(),
-             .artLoading=false,
-             .year=obj.value("year").toInt()});
-    }
     return albums;
 }
 
@@ -1705,8 +1731,7 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
         QList<PlaylistTrackItem> tracks;
         
         for (const auto &trackValue : trackArray) {
-            QJsonObject trackObj = trackValue.toObject();
-            QJsonObject track = trackObj["track"].toObject();
+            QJsonObject track = trackValue.toObject();
             
             // Get track metadata from extension
             QJsonObject extension = track["extension"].toObject();

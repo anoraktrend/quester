@@ -18,7 +18,9 @@
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QFutureWatcher>
+#include <QJSValue>
 #include "statistics.h"
+#include <QDataStream>
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches
@@ -30,6 +32,9 @@ struct AlbumItem {
     bool artLoading = false;
     int year = 0;
 };
+
+QDataStream &operator<<(QDataStream &out, const AlbumItem &item);
+QDataStream &operator>>(QDataStream &in, AlbumItem &item);
 
 struct TrackItem {
     QString title;
@@ -301,8 +306,8 @@ private:
     [[nodiscard]] PlaylistTrackModel* playlistTrackModel() const;
 
     // Artist image fetching
-    Q_INVOKABLE void fetchArtistImage(const QString &artistName, QJSValue callback);
     QString getArtistImageCachePath(const QString &artistName);
+
 
     // ListenBrainz JSPF playlist methods
     Q_INVOKABLE void fetchJspfPlaylist(const QString &playlistIdentifier);
@@ -398,6 +403,9 @@ public Q_SLOTS:
     Q_INVOKABLE void toggleFullscreen();
     Q_INVOKABLE void toggleWindow();
     Q_INVOKABLE void loadMostPlayedPlaylist();
+
+    // Artist image fetching
+    Q_INVOKABLE void fetchArtistImage(const QString &artistName, QJSValue callback);
 
 Q_SIGNALS:
     void artistChanged();

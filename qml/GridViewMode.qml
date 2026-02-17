@@ -98,7 +98,7 @@ Item {
         anchors.right: parent.right
         height: 50
         color: themeAlternateBackgroundColor
-        visible: viewMode === "albums"
+        visible: viewMode === "albums" && currentArtist !== ""
 
         RowLayout {
             anchors.fill: parent
