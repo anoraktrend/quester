@@ -70,7 +70,7 @@ sudo apt install build-essential cmake \
 1. Clone the repository and initialize submodules:
 
    ```bash
-   git clone https://github.com/your_username/Quester.git
+   git clone https://codeberg.org/anoraktrend/Quester.git
    cd Quester
    git submodule update --init --recursive
    ```
