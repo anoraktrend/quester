@@ -134,25 +134,25 @@ Item {
         clip: true
         visible: viewMode === "artists"
 
-        cellWidth: 200
-        cellHeight: 100
+        cellWidth: 160
+        cellHeight: 200
         model: artistModel
 
-delegate: Item {
-    width: artistGridView.cellWidth
-    height: artistGridView.cellHeight
+        delegate: Item {
+            width: artistGridView.cellWidth
+            height: artistGridView.cellHeight
 
-    property string artistName: model.name
-    property string imageUrl: ""
+            property string artistName: model.name
+            property string imageUrl: ""
 
-    onArtistNameChanged: {
-        imageUrl = "" // Reset image
-        mpdClient.fetchArtistImage(artistName, function(artUrl) {
-            if (artUrl) {
-                imageUrl = artUrl;
+            onArtistNameChanged: {
+                imageUrl = "" // Reset image
+                mpdClient.fetchArtistImage(artistName, function(artUrl) {
+                    if (artUrl) {
+                        imageUrl = artUrl;
+                    }
+                });
             }
-        });
-    }
 
             Rectangle {
                 anchors.fill: parent
@@ -162,43 +162,50 @@ delegate: Item {
                 border.color: themeHighlightColor
                 clip: true
 
-                Image {
-                    id: artistImage
-                    anchors.fill: parent
-                    fillMode: Image.PreserveAspectCrop
-                    source: imageUrl
-                    smooth: true
-                    mipmap: true
+                // Square artist image at top
+                Rectangle {
+                    id: artistImageContainer
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: width // Square aspect ratio
+                    color: themeBackgroundColor
 
-                    // Placeholder if no image
-                    Text {
-                        anchors.centerIn: parent
-                        text: model.name.substring(0, 1)
-                        color: themeTextColor
-                        font.pixelSize: 48
-                        font.bold: true
-                        visible: artistImage.status === Image.Null || artistImage.status === Image.Error
+                    Image {
+                        id: artistImage
+                        anchors.fill: parent
+                        fillMode: Image.PreserveAspectCrop
+                        source: imageUrl
+                        smooth: true
+                        mipmap: true
+
+                        // Placeholder if no image - show first letter
+                        Text {
+                            anchors.centerIn: parent
+                            text: model.name.substring(0, 1).toUpperCase()
+                            color: themeTextColor
+                            font.pixelSize: parent.height * 0.5
+                            font.bold: true
+                            visible: artistImage.status === Image.Null || artistImage.status === Image.Error || artistImage.status === Image.Loading
+                        }
                     }
                 }
 
-                Rectangle {
-                    anchors.bottom: parent.bottom
+                // Artist name below the image
+                Text {
+                    anchors.top: artistImageContainer.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    height: 40
-                    color: Qt.alpha(themeBackgroundColor, 0.5)
-
-                    Text {
-                        anchors.centerIn: parent
-                        width: parent.width - 10
-                        text: model.name
-                        color: themeTextColor
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                        maximumLineCount: 2
-                    }
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 5
+                    text: model.name
+                    color: themeTextColor
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    maximumLineCount: 2
                 }
 
                 MouseArea {
@@ -207,7 +214,6 @@ delegate: Item {
                 }
             }
         }
-
         ScrollBar.vertical: ScrollBar { }
     }
 
@@ -236,7 +242,7 @@ delegate: Item {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 checked: selectedAlbums.indexOf(model.mbid) !== -1
-                onCheckedChanged: function(checked) {
+                onCheckedChanged: {
                     if (checked && selectedAlbums.indexOf(model.mbid) === -1) {
                         selectedAlbums.push(model.mbid);
                     } else if (!checked) {

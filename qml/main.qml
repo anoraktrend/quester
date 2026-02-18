@@ -32,7 +32,7 @@ Kirigami.ApplicationWindow {
     SettingsWindow {
         id: settingsWindow
 
-        lastfmAuthToken: lastfmAuthToken
+        lastfmAuthToken: window.lastfmAuthToken
     }
 
     Dialog {
@@ -1464,10 +1464,12 @@ Kirigami.ApplicationWindow {
                 // Update view mode when coverFlow.viewMode changes
                 Connections {
                     function onViewModeChanged() {
-                        if (coverFlow.viewMode === "artists")
+                        if (coverFlow.viewMode === "artists") {
                             gridViewMode.viewMode = "artists";
-                        else if (coverFlow.viewMode === "grid")
+                            gridViewMode.updateArtistModel();
+                        } else if (coverFlow.viewMode === "grid") {
                             gridViewMode.viewMode = "albums";
+                        }
                     }
 
                     target: coverFlow
@@ -1535,8 +1537,8 @@ Kirigami.ApplicationWindow {
 
                 anchors.fill: parent
                 z: 10
-                visible: (coverFlow.state === "visualizerView" || coverFlow.state === "queueView") && mpdClient.state === "play"
-                opacity: visible ? 1 : 0
+                visible: coverFlow.state === "visualizerView" || coverFlow.state === "queueView"
+                opacity: mpdClient.state === "play" ? 1 : 0
                 albumArt: mpdClient.albumArt
                 barOpacity: coverFlow.state !== "visualizerView" ? 0.2 : 1
                 fallbackColor: window.themeTextColor
@@ -1561,7 +1563,7 @@ Kirigami.ApplicationWindow {
                 anchors.margins: 10
                 clip: true
                 visible: false
-                opacity: 0.5
+                opacity: 1
                 z: 15 // Above visualizer
                 model: mpdClient.queueModel
 
@@ -1584,11 +1586,6 @@ Kirigami.ApplicationWindow {
 
                     contentItem: RowLayout {
                         spacing: 10
-
-                        Rectangle {
-                            color: parent.highlighted ? Qt.alpha(window.themeHighlightColor, 0.4) : (parent.down ? Qt.alpha(window.themeHighlightColor, 0.2) : "transparent")
-                            radius: 4
-                        }
 
                         Text {
                             text: model.title
