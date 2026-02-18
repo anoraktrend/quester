@@ -37,6 +37,40 @@ Kirigami.ScrollablePage {
         return qsTr("Your All Time Music");
     }
 
+    // Reusable square art thumbnail with rounded corners and a fallback icon
+    component ArtThumbnail: Rectangle {
+        id: artThumb
+        property string artUrl: ""
+        property int size: 48
+        property bool circle: false
+
+        width: size
+        height: size
+        radius: circle ? size / 2 : 6
+        color: Kirigami.Theme.alternateBackgroundColor
+        clip: true
+
+        Image {
+            anchors.fill: parent
+            source: artThumb.artUrl
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            visible: artThumb.artUrl !== ""
+
+            layer.enabled: true
+            layer.effect: null // clip handled by parent Rectangle
+        }
+
+        Kirigami.Icon {
+            anchors.centerIn: parent
+            width: parent.width * 0.5
+            height: width
+            source: "audio-x-generic"
+            visible: artThumb.artUrl === ""
+            opacity: 0.4
+        }
+    }
+
     Item {
         width: parent.width
         implicitHeight: mainLayout.implicitHeight
@@ -114,7 +148,7 @@ Kirigami.ScrollablePage {
 
                 contentItem: ColumnLayout {
                     Kirigami.Heading {
-                        level: 1 
+                        level: 1
                         text: qsTr("Total Plays")
                         Layout.alignment: Qt.AlignHCenter
                     }
@@ -177,6 +211,23 @@ Kirigami.ScrollablePage {
                             Layout.alignment: Qt.AlignTop
                         }
 
+                        // Artist image with lazy fetch
+                        ArtThumbnail {
+                            id: lbArtistThumb
+                            size: 40
+                            circle: true
+                            artUrl: statistics.artistImageUrl(modelData.name || "")
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Component.onCompleted: {
+                                if (artUrl === "" && modelData.name) {
+                                    mpdClient.fetchArtistImage(modelData.name, function(url) {
+                                        if (url) lbArtistThumb.artUrl = url;
+                                    });
+                                }
+                            }
+                        }
+
                         ColumnLayout {
                             Kirigami.Heading {
                                 level: 4
@@ -218,6 +269,22 @@ Kirigami.ScrollablePage {
                             level: 4
                             text: (index + 1) + "."
                             Layout.alignment: Qt.AlignTop
+                        }
+
+                        // Artist image as track thumbnail proxy
+                        ArtThumbnail {
+                            id: lfmTrackThumb
+                            size: 40
+                            artUrl: statistics.artistImageUrl(modelData.artist || "")
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Component.onCompleted: {
+                                if (artUrl === "" && modelData.artist) {
+                                    mpdClient.fetchArtistImage(modelData.artist, function(url) {
+                                        if (url) lfmTrackThumb.artUrl = url;
+                                    });
+                                }
+                            }
                         }
 
                         ColumnLayout {
@@ -265,6 +332,24 @@ Kirigami.ScrollablePage {
                         Kirigami.Heading {
                             level: 4
                             text: (index + 1) + "."
+                            Layout.minimumWidth: 28
+                        }
+
+                        // Artist portrait (circle) with lazy fetch
+                        ArtThumbnail {
+                            id: artistThumb
+                            size: 48
+                            circle: true
+                            artUrl: statistics.artistImageUrl(modelData.name || "")
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Component.onCompleted: {
+                                if (artUrl === "" && modelData.name) {
+                                    mpdClient.fetchArtistImage(modelData.name, function(url) {
+                                        if (url) artistThumb.artUrl = url;
+                                    });
+                                }
+                            }
                         }
 
                         Text {
@@ -304,6 +389,23 @@ Kirigami.ScrollablePage {
                             level: 4
                             text: (index + 1) + "."
                             Layout.alignment: Qt.AlignTop
+                            Layout.minimumWidth: 28
+                        }
+
+                        // Artist image used as track thumbnail proxy
+                        ArtThumbnail {
+                            id: trackThumb
+                            size: 48
+                            artUrl: statistics.artistImageUrl(modelData.artist || "")
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Component.onCompleted: {
+                                if (artUrl === "" && modelData.artist) {
+                                    mpdClient.fetchArtistImage(modelData.artist, function(url) {
+                                        if (url) trackThumb.artUrl = url;
+                                    });
+                                }
+                            }
                         }
 
                         ColumnLayout {
@@ -352,13 +454,32 @@ Kirigami.ScrollablePage {
                         Kirigami.Heading {
                             level: 4
                             text: (index + 1) + "."
+                            Layout.minimumWidth: 28
                         }
 
-                        Text {
-                            text: modelData.name
+                        // Album art thumbnail
+                        ArtThumbnail {
+                            id: albumThumb
+                            size: 48
+                            artUrl: statistics.albumArtUrl(modelData.artist || "", modelData.name || "")
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            font.bold: true
-                            color: Kirigami.Theme.textColor
+
+                            Text {
+                                text: modelData.name
+                                font.bold: true
+                                color: Kirigami.Theme.textColor
+                            }
+
+                            Text {
+                                text: modelData.artist || ""
+                                font.pixelSize: 12
+                                color: Kirigami.Theme.disabledTextColor
+                                visible: modelData.artist !== undefined && modelData.artist !== ""
+                            }
                         }
 
                         Text {

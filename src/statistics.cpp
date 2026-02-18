@@ -5,6 +5,7 @@
 #include <QSqlError>
 #include <QDateTime>
 #include <QPainter>
+#include <QPainterPath>
 #include <QImage>
 #include <QCryptographicHash>
 #include <QDebug>
@@ -278,6 +279,52 @@ auto StatisticsManager::getAllTimeStats() -> QVariantMap
     return getStatsForPeriod(0);
 }
 
+// Helper: draw a rounded-rect clipped image (album art tile)
+static void drawArtTile(QPainter &p, const QImage &art, const QRect &rect, int radius = 16)
+{
+    if (art.isNull()) return;
+    QImage scaled = art.scaled(rect.size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    // Centre-crop to exact rect size
+    QRect src((scaled.width() - rect.width()) / 2, (scaled.height() - rect.height()) / 2,
+              rect.width(), rect.height());
+
+    // Draw into a temp image so we can apply a round-rect clip
+    QImage tile(rect.size(), QImage::Format_ARGB32_Premultiplied);
+    tile.fill(Qt::transparent);
+    QPainter tp(&tile);
+    tp.setRenderHint(QPainter::Antialiasing);
+    tp.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath clip;
+    clip.addRoundedRect(tile.rect(), radius, radius);
+    tp.setClipPath(clip);
+    tp.drawImage(QPoint(0, 0), scaled, src);
+    tp.end();
+
+    p.drawImage(rect, tile);
+}
+
+// Helper: draw a circle-clipped image (artist portrait)
+static void drawCircleArt(QPainter &p, const QImage &art, const QPoint &center, int diameter)
+{
+    if (art.isNull()) return;
+    QSize sz(diameter, diameter);
+    QImage scaled = art.scaled(sz, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QRect src((scaled.width() - diameter) / 2, (scaled.height() - diameter) / 2, diameter, diameter);
+
+    QImage tile(sz, QImage::Format_ARGB32_Premultiplied);
+    tile.fill(Qt::transparent);
+    QPainter tp(&tile);
+    tp.setRenderHint(QPainter::Antialiasing);
+    tp.setRenderHint(QPainter::SmoothPixmapTransform);
+    QPainterPath clip;
+    clip.addEllipse(tile.rect());
+    tp.setClipPath(clip);
+    tp.drawImage(QPoint(0, 0), scaled, src);
+    tp.end();
+
+    p.drawImage(center.x() - diameter / 2, center.y() - diameter / 2, tile);
+}
+
 auto StatisticsManager::generateWrappedImage(const QString &period) -> QString
 {
     QVariantMap stats;
@@ -303,112 +350,301 @@ auto StatisticsManager::generateWrappedImage(const QString &period) -> QString
     }
 
     // Canvas setup (Story format 9:16)
-    int w = 1080;
-    int h = 1920;
+    const int w = 1080;
+    const int h = 1920;
     QImage img(w, h, QImage::Format_ARGB32);
     img.fill(QColor("#121212")); // Dark background
 
     QPainter p(&img);
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::TextAntialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    QColor accentColor("#BB86FC");
-    QColor textColor("#FFFFFF");
-    QColor dimColor("#B0B0B0");
+    const QColor accentColor("#BB86FC");
+    const QColor accentDim("#7C4DFF");
+    const QColor textColor("#FFFFFF");
+    const QColor dimColor("#B0B0B0");
+    const QColor cardBg("#1E1E1E");
 
-    // Header
+    // ── Header ────────────────────────────────────────────────────────────────
     p.setPen(textColor);
-    p.setFont(QFont("Sans Serif", 80, QFont::Bold));
-    p.drawText(QRect(50, 100, w-100, 150), Qt::AlignCenter, titleText);
+    p.setFont(QFont("Sans Serif", 72, QFont::Bold));
+    p.drawText(QRect(50, 80, w - 100, 140), Qt::AlignCenter, titleText);
 
     p.setPen(accentColor);
-    p.setFont(QFont("Sans Serif", 40, QFont::Medium));
-    p.drawText(QRect(50, 250, w-100, 80), Qt::AlignCenter, subTitle);
+    p.setFont(QFont("Sans Serif", 36));
+    p.drawText(QRect(50, 220, w - 100, 70), Qt::AlignCenter, subTitle);
 
-    int y = 450;
+    int y = 340;
 
-    // Total Time
-    long long totalMs = stats["totalMs"].toLongLong();
-    double hours = totalMs / 1000.0 / 3600.0;
-    QString timePhrase = hours > 100 ? "Do you ever sleep?" : (hours > 10 ? "Music is life." : "Warming up.");
+    // ── Total Time card ───────────────────────────────────────────────────────
+    {
+        long long totalMs = stats["totalMs"].toLongLong();
+        double hours = totalMs / 1000.0 / 3600.0;
+        QString timePhrase = hours > 100 ? "Do you even sleep?" : (hours > 10 ? "Music is life." : "Just getting started.");
 
-    p.setPen(textColor);
-    p.setFont(QFont("Sans Serif", 30));
-    p.drawText(QRect(50, y, w-100, 50), Qt::AlignCenter, "You listened for");
-    p.setPen(accentColor);
-    p.setFont(QFont("Sans Serif", 70, QFont::Bold));
-    p.drawText(QRect(50, y + 60, w-100, 100), Qt::AlignCenter, QString::number(hours, 'f', 1) + " Hours");
-    p.setPen(dimColor);
-    p.setFont(QFont("Sans Serif", 30, -1, true));
-    p.drawText(QRect(50, y + 170, w-100, 50), Qt::AlignCenter, timePhrase);
+        QRect cardRect(50, y, w - 100, 160);
+        p.setBrush(cardBg);
+        p.setPen(Qt::NoPen);
+        p.drawRoundedRect(cardRect, 20, 20);
 
-    y += 350;
-
-    // Top Artist
-    QVariantList artists = stats["topArtists"].toList();
-    if (!artists.isEmpty()) {
-        QString artistName = artists.first().toMap()["name"].toString();
-        p.setPen(textColor);
-        p.setFont(QFont("Sans Serif", 30));
-        p.drawText(QRect(50, y, w-100, 50), Qt::AlignCenter, "Top Artist");
-        p.setPen(accentColor);
-        p.setFont(QFont("Sans Serif", 50, QFont::Bold));
-        p.drawText(QRect(50, y + 60, w-100, 80), Qt::AlignCenter, artistName);
         p.setPen(dimColor);
-        p.setFont(QFont("Sans Serif", 25));
-        p.drawText(QRect(50, y + 140, w-100, 40), Qt::AlignCenter, "We get it, you're a fan.");
+        p.setFont(QFont("Sans Serif", 26));
+        p.drawText(QRect(70, y + 18, cardRect.width() - 40, 40), Qt::AlignLeft | Qt::AlignVCenter, "You listened for");
+
+        p.setPen(accentColor);
+        p.setFont(QFont("Sans Serif", 60, QFont::Bold));
+        p.drawText(QRect(70, y + 55, cardRect.width() - 40, 80), Qt::AlignLeft | Qt::AlignVCenter,
+                   QString::number(hours, 'f', 1) + " hrs");
+
+        p.setPen(dimColor);
+        p.setFont(QFont("Sans Serif", 22, -1, true));
+        p.drawText(QRect(70, y + 125, cardRect.width() - 40, 32), Qt::AlignLeft | Qt::AlignVCenter, timePhrase);
+
+        y += 185;
     }
 
-    y += 250;
+    // ── Top Artist section ────────────────────────────────────────────────────
+    {
+        QVariantList artists = stats["topArtists"].toList();
+        if (!artists.isEmpty()) {
+            // Section label
+            p.setPen(dimColor);
+            p.setFont(QFont("Sans Serif", 26, QFont::Bold));
+            p.drawText(QRect(50, y, w - 100, 44), Qt::AlignLeft, "TOP ARTIST");
+            y += 54;
 
-    // Top Album Art
-    QVariantList albums = stats["topAlbums"].toList();
-    if (!albums.isEmpty()) {
-        QVariantMap albumMap = albums.first().toMap();
-        QString albumName = albumMap["name"].toString();
-        QString artistName = albumMap["artist"].toString();
+            QRect cardRect(50, y, w - 100, 200);
+            p.setBrush(cardBg);
+            p.setPen(Qt::NoPen);
+            p.drawRoundedRect(cardRect, 20, 20);
 
-        if (!artistName.isEmpty()) {
-            QImage art(getCachePath(artistName, albumName));
-            if (!art.isNull()) {
-                int artSize = 500;
-                p.drawImage(QRect((w - artSize) / 2, y, artSize, artSize), art);
+            // Artist image (circle)
+            QString topArtistName = artists.first().toMap()["name"].toString();
+            QString artistImgPath;
+            {
+                QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/artist_images/";
+                QByteArray hash = QCryptographicHash::hash(topArtistName.toUtf8(), QCryptographicHash::Md5).toHex();
+                QString candidate = cacheDir + hash + ".jpg";
+                if (QFile::exists(candidate)) artistImgPath = candidate;
+            }
+
+            const int circleDia = 160;
+            const int circleCx = 50 + circleDia / 2 + 20; // left padding inside card
+            const int circleCy = y + cardRect.height() / 2;
+
+            if (!artistImgPath.isEmpty()) {
+                QImage art(artistImgPath);
+                drawCircleArt(p, art, QPoint(circleCx, circleCy), circleDia);
+            } else {
+                // Placeholder circle
+                p.setBrush(accentDim);
+                p.setPen(Qt::NoPen);
+                p.drawEllipse(QPoint(circleCx, circleCy), circleDia / 2, circleDia / 2);
+            }
+
+            // Artist name & listen time
+            int textX = circleCx + circleDia / 2 + 30;
+            int textW = cardRect.right() - textX - 20;
+
+            p.setPen(textColor);
+            p.setFont(QFont("Sans Serif", 40, QFont::Bold));
+            // Elide if too long
+            QFontMetrics fm(p.font());
+            QString elided = fm.elidedText(topArtistName, Qt::ElideRight, textW);
+            p.drawText(QRect(textX, y + 50, textW, 60), Qt::AlignLeft | Qt::AlignVCenter, elided);
+
+            long long artistMs = artists.first().toMap()["ms"].toLongLong();
+            p.setPen(accentColor);
+            p.setFont(QFont("Sans Serif", 28));
+            p.drawText(QRect(textX, y + 118, textW, 44), Qt::AlignLeft | Qt::AlignVCenter,
+                       QString::number(artistMs / 60000) + " min played");
+
+            y += cardRect.height() + 30;
+        }
+    }
+
+    // ── Top Albums collage ────────────────────────────────────────────────────
+    {
+        QVariantList albums = stats["topAlbums"].toList();
+        if (!albums.isEmpty()) {
+            p.setPen(dimColor);
+            p.setFont(QFont("Sans Serif", 26, QFont::Bold));
+            p.drawText(QRect(50, y, w - 100, 44), Qt::AlignLeft, "TOP ALBUMS");
+            y += 54;
+
+            // Up to 3 album tiles in a row, then album name + time below #1
+            const int maxAlbums = qMin(3, albums.size());
+            const int gap = 20;
+            const int tileW = (w - 100 - gap * (maxAlbums - 1)) / maxAlbums;
+            const int tileH = tileW; // square
+
+            for (int i = 0; i < maxAlbums; ++i) {
+                QVariantMap albumMap = albums[i].toMap();
+                QString albumName = albumMap["name"].toString();
+                QString artistName = albumMap["artist"].toString();
+
+                QRect tileRect(50 + i * (tileW + gap), y, tileW, tileH);
+
+                // Try to load cached art
+                QString artPath = getCachePath(artistName, albumName);
+                QImage art(artPath);
+
+                if (!art.isNull()) {
+                    drawArtTile(p, art, tileRect, 14);
+                } else {
+                    // Placeholder
+                    p.setBrush(cardBg);
+                    p.setPen(Qt::NoPen);
+                    p.drawRoundedRect(tileRect, 14, 14);
+                    // Draw a music note placeholder text
+                    p.setPen(dimColor);
+                    p.setFont(QFont("Sans Serif", 48));
+                    p.drawText(tileRect, Qt::AlignCenter, "♪");
+                }
+
+                // Rank badge
+                p.setBrush(QColor(0, 0, 0, 180));
+                p.setPen(Qt::NoPen);
+                QRect badge(tileRect.x() + 8, tileRect.y() + 8, 40, 40);
+                p.drawRoundedRect(badge, 8, 8);
+                p.setPen(accentColor);
+                p.setFont(QFont("Sans Serif", 22, QFont::Bold));
+                p.drawText(badge, Qt::AlignCenter, QString::number(i + 1));
+            }
+
+            y += tileH + 16;
+
+            // Album name and artist below the first tile
+            if (!albums.isEmpty()) {
+                QVariantMap topAlbum = albums.first().toMap();
+                p.setPen(textColor);
+                p.setFont(QFont("Sans Serif", 30, QFont::Bold));
+                QFontMetrics fm(p.font());
+                QString elided = fm.elidedText(topAlbum["name"].toString(), Qt::ElideRight, w - 100);
+                p.drawText(QRect(50, y, w - 100, 46), Qt::AlignLeft, elided);
+                y += 46;
+                p.setPen(dimColor);
+                p.setFont(QFont("Sans Serif", 24));
+                p.drawText(QRect(50, y, w - 100, 36), Qt::AlignLeft,
+                           topAlbum["artist"].toString() + " · " +
+                           QString::number(topAlbum["ms"].toLongLong() / 60000) + " min");
+                y += 50;
             }
         }
     }
 
-    // Activity Graph
-    int maxVal = 0;
-    QList<int> graphData = getActivityGraphData(period, maxVal);
-    
-    if (maxVal > 0 && !graphData.isEmpty()) {
-        int graphH = 200;
-        int graphW = w - 140;
-        int graphX = 70;
-        int graphY = h - graphH - 150;
-        
-        p.setPen(Qt::NoPen);
-        p.setBrush(accentColor);
-        
-        int step = graphW / graphData.size();
-        int barWidth = step - 4;
-        if (barWidth < 2) barWidth = 2;
-        
-        for (int i = 0; i < graphData.size(); ++i) {
-            int val = graphData[i];
-            if (val == 0) continue;
-            int barH = (int)((double)val / maxVal * graphH);
-            if (barH < 5) barH = 5;
-            
-            p.drawRoundedRect(graphX + i * step, graphY + (graphH - barH), barWidth, barH, 4, 4);
+    // ── Top Tracks list ───────────────────────────────────────────────────────
+    {
+        QVariantList tracks = stats["topTracks"].toList();
+        if (!tracks.isEmpty()) {
+            p.setPen(dimColor);
+            p.setFont(QFont("Sans Serif", 26, QFont::Bold));
+            p.drawText(QRect(50, y, w - 100, 44), Qt::AlignLeft, "TOP TRACKS");
+            y += 54;
+
+            const int maxTracks = qMin(3, tracks.size());
+            const int rowH = 90;
+            const int thumbSz = 70;
+
+            for (int i = 0; i < maxTracks; ++i) {
+                QVariantMap track = tracks[i].toMap();
+                QString title = track["title"].toString();
+                QString artist = track["artist"].toString();
+
+                QRect rowRect(50, y, w - 100, rowH);
+                p.setBrush(cardBg);
+                p.setPen(Qt::NoPen);
+                p.drawRoundedRect(rowRect, 14, 14);
+
+                // Rank number
+                p.setPen(accentColor);
+                p.setFont(QFont("Sans Serif", 28, QFont::Bold));
+                p.drawText(QRect(rowRect.x() + 12, y, 44, rowH), Qt::AlignCenter, QString::number(i + 1));
+
+                // Try to find album art for the artist (artist image as proxy)
+                QString artistImgPath;
+                {
+                    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/artist_images/";
+                    QByteArray hash = QCryptographicHash::hash(artist.toUtf8(), QCryptographicHash::Md5).toHex();
+                    QString candidate = cacheDir + hash + ".jpg";
+                    if (QFile::exists(candidate)) artistImgPath = candidate;
+                }
+
+                QRect thumbRect(rowRect.x() + 64, y + (rowH - thumbSz) / 2, thumbSz, thumbSz);
+                if (!artistImgPath.isEmpty()) {
+                    QImage art(artistImgPath);
+                    drawArtTile(p, art, thumbRect, 10);
+                } else {
+                    p.setBrush(accentDim);
+                    p.setPen(Qt::NoPen);
+                    p.drawRoundedRect(thumbRect, 10, 10);
+                }
+
+                // Track title & artist
+                int textX = thumbRect.right() + 16;
+                int textW = rowRect.right() - textX - 12;
+                p.setPen(textColor);
+                p.setFont(QFont("Sans Serif", 26, QFont::Bold));
+                QFontMetrics fmTitle(p.font());
+                p.drawText(QRect(textX, y + 12, textW, 36),
+                           Qt::AlignLeft | Qt::AlignVCenter,
+                           fmTitle.elidedText(title, Qt::ElideRight, textW));
+                p.setPen(dimColor);
+                p.setFont(QFont("Sans Serif", 22));
+                QFontMetrics fmArtist(p.font());
+                p.drawText(QRect(textX, y + 50, textW, 32),
+                           Qt::AlignLeft | Qt::AlignVCenter,
+                           fmArtist.elidedText(artist, Qt::ElideRight, textW));
+
+                y += rowH + 10;
+            }
+            y += 10;
         }
-        
-        p.setPen(dimColor);
-        p.setFont(QFont("Sans Serif", 24));
-        p.drawText(QRect(graphX, graphY - 50, graphW, 40), Qt::AlignCenter, "Listening Activity");
     }
 
-    QString fileName = QString("QuesterWrapped_%1_%2.png").arg(period, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    // ── Activity Graph ────────────────────────────────────────────────────────
+    {
+        int maxVal = 0;
+        QList<int> graphData = getActivityGraphData(period, maxVal);
+
+        if (maxVal > 0 && !graphData.isEmpty()) {
+            // Pin graph to bottom area; leave room if y is still above it
+            const int graphH = 180;
+            const int graphW = w - 140;
+            const int graphX = 70;
+            const int graphY = h - graphH - 120;
+
+            if (y < graphY - 60) {
+                p.setPen(dimColor);
+                p.setFont(QFont("Sans Serif", 24, QFont::Bold));
+                p.drawText(QRect(graphX, graphY - 54, graphW, 40), Qt::AlignCenter, "LISTENING ACTIVITY");
+
+                p.setPen(Qt::NoPen);
+                p.setBrush(accentColor);
+
+                int step = graphW / graphData.size();
+                int barWidth = step - 4;
+                if (barWidth < 2) barWidth = 2;
+
+                for (int i = 0; i < graphData.size(); ++i) {
+                    int val = graphData[i];
+                    if (val == 0) continue;
+                    int barH = (int)((double)val / maxVal * graphH);
+                    if (barH < 5) barH = 5;
+                    p.drawRoundedRect(graphX + i * step, graphY + (graphH - barH), barWidth, barH, 4, 4);
+                }
+            }
+        }
+    }
+
+    // ── Footer ────────────────────────────────────────────────────────────────
+    p.setPen(QColor("#555555"));
+    p.setFont(QFont("Sans Serif", 22));
+    p.drawText(QRect(50, h - 80, w - 100, 50), Qt::AlignCenter, "Quester · Your Music, Your Story");
+
+    QString fileName = QString("QuesterWrapped_%1_%2.png")
+                           .arg(period, QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
     QString path = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + "/" + fileName;
     img.save(path);
     emit wrappedGenerated(path);
@@ -497,6 +733,28 @@ auto StatisticsManager::getCachePath(const QString &artist, const QString &album
     QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
     QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
     return cacheDir + hashName + ".jpg";
+}
+
+auto StatisticsManager::albumArtUrl(const QString &artist, const QString &album) -> QString
+{
+    if (artist.isEmpty() || album.isEmpty())
+        return {};
+    QString path = getCachePath(artist, album);
+    if (QFile::exists(path))
+        return QStringLiteral("file://") + path;
+    return {};
+}
+
+auto StatisticsManager::artistImageUrl(const QString &artist) -> QString
+{
+    if (artist.isEmpty())
+        return {};
+    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/artist_images/";
+    QByteArray hashName = QCryptographicHash::hash(artist.toUtf8(), QCryptographicHash::Md5).toHex();
+    QString path = cacheDir + hashName + ".jpg";
+    if (QFile::exists(path))
+        return QStringLiteral("file://") + path;
+    return {};
 }
 
 void StatisticsManager::setListenBrainzCredentials(const QString &token, const QString &username)

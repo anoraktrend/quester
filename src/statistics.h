@@ -32,6 +32,8 @@ public:
     Q_INVOKABLE QString generateWrappedImage(const QString &period);
     Q_INVOKABLE QList<QString> getMostPlayedUris(int limit = FIFTY);
     Q_INVOKABLE void fetchExternalActivityData(const QString &period);
+    Q_INVOKABLE QString albumArtUrl(const QString &artist, const QString &album);
+    Q_INVOKABLE QString artistImageUrl(const QString &artist);
 
     // Playlist functions
     Q_INVOKABLE void sendQueueAsPlaylist(const QString &playlistName, const QVariantList &tracks);

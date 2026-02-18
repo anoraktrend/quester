@@ -1399,7 +1399,79 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         });
     };
 
-    auto tryAudioDb = [this, params, onArtFound, tryMusicHoarders]() -> void {
+    // Discogs search: uses Consumer Key + Secret for read-only database access (no user token required).
+    // The Authorization header format is the Discogs-specific key/secret scheme, not full OAuth 1.0a.
+    // We request per_page=1 and prefer cover_image; fall through to MusicHoarders on any failure.
+    auto tryDiscogs = std::make_shared<std::function<void()>>();
+    *tryDiscogs = [this, params, onArtFound, tryMusicHoarders]() -> void {
+        if (params.artist == "Unknown Artist" || params.album == "Unknown Album") {
+            if (tryMusicHoarders && *tryMusicHoarders) (*tryMusicHoarders)();
+            return;
+        }
+
+        QUrl url("https://api.discogs.com/database/search");
+        QUrlQuery query;
+        query.addQueryItem("type", "release");
+        query.addQueryItem("artist", params.artist);
+        query.addQueryItem("release_title", params.album);
+        query.addQueryItem("per_page", "1");
+        url.setQuery(query);
+
+        QNetworkRequest request(url);
+        request.setRawHeader("User-Agent", "Quester/1.0 +https://codeberg.org/anoraktrend/quester");
+        request.setRawHeader("Authorization", "Discogs key=nClZomotzUzfkIRzuLLJ, secret=pAVIDAYcijSWeKiarluDkRYsSjYRGSAI");
+        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+
+        QNetworkReply *reply = m_networkManager->get(request);
+        AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound, tryMusicHoarders]() -> void {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                qWarning() << "[Album Art] Discogs search failed:" << reply->errorString();
+                if (tryMusicHoarders && *tryMusicHoarders) (*tryMusicHoarders)();
+                return;
+            }
+
+            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            QJsonArray results = doc.object()["results"].toArray();
+            if (results.isEmpty()) {
+                qDebug() << "[Album Art] Discogs: no results";
+                if (tryMusicHoarders && *tryMusicHoarders) (*tryMusicHoarders)();
+                return;
+            }
+
+            // cover_image is a full-size scan; fall back to thumb if absent
+            QJsonObject first = results.first().toObject();
+            QString imageUrl = first["cover_image"].toString();
+            if (imageUrl.isEmpty())
+                imageUrl = first["thumb"].toString();
+
+            if (imageUrl.isEmpty()) {
+                qDebug() << "[Album Art] Discogs: result has no image";
+                if (tryMusicHoarders && *tryMusicHoarders) (*tryMusicHoarders)();
+                return;
+            }
+
+            qDebug() << "[Album Art] Discogs found:" << imageUrl;
+
+            QNetworkRequest imgReq((QUrl(imageUrl)));
+            imgReq.setRawHeader("User-Agent", "Quester/1.0 +https://codeberg.org/anoraktrend/quester");
+            imgReq.setRawHeader("Authorization", "Discogs key=nClZomotzUzfkIRzuLLJ, secret=pAVIDAYcijSWeKiarluDkRYsSjYRGSAI");
+            imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+            imgReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+            QNetworkReply *imgReply = m_networkManager->get(imgReq);
+            AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound, tryMusicHoarders]() -> void {
+                imgReply->deleteLater();
+                if (imgReply->error() == QNetworkReply::NoError) {
+                    onArtFound(imgReply->readAll());
+                } else {
+                    qWarning() << "[Album Art] Discogs image download failed:" << imgReply->errorString();
+                    if (tryMusicHoarders && *tryMusicHoarders) (*tryMusicHoarders)();
+                }
+            });
+        });
+    };
+
+    auto tryAudioDb = [this, params, onArtFound, tryDiscogs]() -> void {
         if (params.artist == "Unknown Artist" || params.album == "Unknown Album") return;
         
         QUrl url("https://www.theaudiodb.com/api/v1/json/123/searchalbum.php");
@@ -1413,29 +1485,23 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
         request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
         
         QNetworkReply *reply = m_networkManager->get(request);
-        AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound, tryMusicHoarders]() -> void {
+        AlbumModel::connect(reply, &QNetworkReply::finished, this, [this, reply, onArtFound, tryDiscogs]() -> void {
             reply->deleteLater();
             if (reply->error() != QNetworkReply::NoError) {
-                if (tryMusicHoarders && *tryMusicHoarders) {
-                    (*tryMusicHoarders)();
-                }
+                if (tryDiscogs && *tryDiscogs) (*tryDiscogs)();
                 return;
             }
             
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
             QJsonArray albumArray = doc.object()["album"].toArray();
             if (albumArray.isEmpty()) {
-                if (tryMusicHoarders && *tryMusicHoarders) {
-                    (*tryMusicHoarders)();
-                }
+                if (tryDiscogs && *tryDiscogs) (*tryDiscogs)();
                 return;
             }
             
             QString imageUrl = albumArray.first().toObject()["strAlbumThumb"].toString();
             if (imageUrl.isEmpty()) {
-                if (tryMusicHoarders && *tryMusicHoarders) {
-                    (*tryMusicHoarders)();
-                }
+                if (tryDiscogs && *tryDiscogs) (*tryDiscogs)();
                 return;
             }
             
@@ -1443,14 +1509,12 @@ void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
             imgReq.setRawHeader("User-Agent", "Quester/1.0");
             imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             QNetworkReply *imgReply = m_networkManager->get(imgReq);
-            AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound, tryMusicHoarders]() -> void {
+            AlbumModel::connect(imgReply, &QNetworkReply::finished, this, [imgReply, onArtFound, tryDiscogs]() -> void {
                 imgReply->deleteLater();
                 if (imgReply->error() == QNetworkReply::NoError) {
                     onArtFound(imgReply->readAll());
                 } else {
-                    if (tryMusicHoarders && *tryMusicHoarders) {
-                        (*tryMusicHoarders)();
-                    }
+                    if (tryDiscogs && *tryDiscogs) (*tryDiscogs)();
                 }
             });
         });
@@ -2458,42 +2522,11 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
         }
     };
 
-    // Last.fm placeholder image hashes - these URLs are returned when no artist image exists
-    // Last.fm uses multiple placeholder hashes for different sizes
-    static const QStringList lastfmPlaceholderHashes = {
-        "2a96cbd8b46e442fc41c2b86b821562f",  // Common placeholder
-        "c6f59c1e5e724b8ea9ddb9f84618a304",  // Another common placeholder  
-        "4128a6eb29f94943c9d206c171e36738",  // Additional placeholder
-        "8dc9e92e8c7f4e6b8f3d2a1e5c9b7d6f",  // Additional placeholder pattern
-    };
-    
-    // Helper to check if URL is a Last.fm placeholder
-    auto isLastfmPlaceholder = [](const QString &url) -> bool {
-        // Check for known placeholder hashes
-        for (const QString &hash : lastfmPlaceholderHashes) {
-            if (url.contains(hash)) {
-                return true;
-            }
-        }
-        // Also check for empty URL or the generic "noimage" pattern
-        if (url.isEmpty()) {
-            return true;
-        }
-        // Last.fm serves placeholder images from specific paths
-        if (url.contains("/noimage/") || url.contains("noimage")) {
-            return true;
-        }
-        // Check for very short URLs that are likely placeholders
-        // Real artist images have longer URLs with unique identifiers
-        if (url.length() < 50 && url.contains("lastfm")) {
-            return true;
-        }
-        return false;
-    };
-
-    // Define fallback chain in reverse order: Bandcamp <- Last.fm <- MusicBrainz
+    // Define fallback chain in reverse order: Bandcamp <- TheAudioDB
     
     // Try Bandcamp (LAST fallback - search for artist page and extract image)
+    // NOTE: The DotMatchesEverythingOption flag is required because the <img> tag
+    // is typically on a different line than its parent <div class="art"> in Bandcamp's HTML.
     auto tryBandcamp = std::make_shared<std::function<void()>>();
     *tryBandcamp = [this, artistName, callback, saveImageAndCallback]() -> void {
         QUrl bandcampUrl("https://bandcamp.com/search");
@@ -2511,14 +2544,18 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
             reply->deleteLater();
             
             if (reply->error() != QNetworkReply::NoError) {
-                qWarning() << "Bandcamp artist not found:" << artistName;
+                qWarning() << "[Artist Image] Bandcamp search failed for:" << artistName;
                 callback.call();
                 return;
             }
 
             QString html = QString::fromUtf8(reply->readAll());
             
-            static const QRegularExpression imgRegex("<div[^>]*class=\"art\"[^>]*>.*?<img[^>]*src=\"([^\"]+)\"");
+            // DotMatchesEverythingOption is required: the <img> is on a different line than the <div class="art">
+            static const QRegularExpression imgRegex(
+                "<div[^>]*class=\"art\"[^>]*>.*?<img[^>]*src=\"([^\"]+)\"",
+                QRegularExpression::DotMatchesEverythingOption
+            );
             QRegularExpressionMatch match = imgRegex.match(html);
             
             if (match.hasMatch()) {
@@ -2529,7 +2566,7 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
                     imageUrl = "https://bandcamp.com" + imageUrl;
                 }
                 
-                qDebug() << "Bandcamp found artist image:" << imageUrl;
+                qDebug() << "[Artist Image] Bandcamp found:" << imageUrl;
                 
                 QNetworkRequest imgReq((QUrl(imageUrl)));
                 imgReq.setRawHeader("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
@@ -2543,88 +2580,102 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
                             callback.call();
                         }
                     } else {
-                        qWarning() << "Bandcamp image download failed:" << imgReply->errorString();
+                        qWarning() << "[Artist Image] Bandcamp image download failed:" << imgReply->errorString();
                         callback.call();
                     }
                 });
             } else {
-                qWarning() << "Bandcamp artist not found:" << artistName;
+                qWarning() << "[Artist Image] Bandcamp: no result for:" << artistName;
                 callback.call();
             }
         });
     };
 
-    // Try Last.fm for artist image (MIDDLE fallback)
-    auto tryLastfm = std::make_shared<std::function<void()>>();
-    *tryLastfm = [this, artistName, callback, tryBandcamp, saveImageAndCallback, isLastfmPlaceholder]() -> void {
-        QUrl lastfmUrl("https://ws.audioscrobbler.com/2.0/");
+    // Try TheAudioDB for artist image (PRIMARY source)
+    // Returns strArtistThumb - a direct, downloadable image URL.
+    // NOTE: Last.fm stopped serving artist images in May 2019; their API returns empty
+    // placeholder URLs. MusicBrainz url-rels only link to Wikipedia/Wikidata *pages*,
+    // not downloadable images, and the Cover Art Archive has no artist image endpoint.
+    // TheAudioDB is the most reliable free source for artist thumbnails.
+    auto tryAudioDb = std::make_shared<std::function<void()>>();
+    *tryAudioDb = [this, artistName, callback, tryBandcamp, saveImageAndCallback]() -> void {
+        QUrl url("https://www.theaudiodb.com/api/v1/json/2/search.php");
         QUrlQuery query;
-        query.addQueryItem("method", "artist.getinfo");
-        query.addQueryItem("artist", artistName);
-        query.addQueryItem("api_key", "5b184bbfb5f3d1ac3a4955a6676d7dc3");
-        query.addQueryItem("format", "json");
-        lastfmUrl.setQuery(query);
+        query.addQueryItem("s", artistName);
+        url.setQuery(query);
 
-        QNetworkRequest request(lastfmUrl);
+        QNetworkRequest request(url);
         request.setRawHeader("User-Agent", "Quester/1.0");
         request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 
         QNetworkReply *reply = m_networkManager->get(request);
-        QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, artistName, callback, tryBandcamp, saveImageAndCallback, isLastfmPlaceholder]() -> void {
+        QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, artistName, callback, tryBandcamp, saveImageAndCallback]() -> void {
             reply->deleteLater();
-            
+
             if (reply->error() != QNetworkReply::NoError) {
-                qWarning() << "Last.fm artist request failed:" << reply->errorString();
+                qWarning() << "[Artist Image] TheAudioDB request failed:" << reply->errorString();
                 if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
                 else callback.call();
                 return;
             }
 
             QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-            QJsonObject artist = doc.object()["artist"].toObject();
-            
-            if (artist.isEmpty()) {
-                qWarning() << "Last.fm artist not found:" << artistName;
+            QJsonArray artists = doc.object()["artists"].toArray();
+
+            if (artists.isEmpty()) {
+                qDebug() << "[Artist Image] TheAudioDB: no result for:" << artistName;
                 if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
                 else callback.call();
                 return;
             }
 
-            QJsonArray images = artist["image"].toArray();
-            QString imageUrl;
-            
-            for (int i = images.size() - 1; i >= 0; --i) {
-                QJsonObject img = images[i].toObject();
-                QString imgUrl = img["#text"].toString();
-                if (!imgUrl.isEmpty() && !isLastfmPlaceholder(imgUrl)) {
-                    imageUrl = imgUrl;
-                    break;
-                }
-            }
-            
+            // Prefer strArtistThumb; fall back to strArtistWideThumb or strArtistFanart
+            QJsonObject artistObj = artists[0].toObject();
+            QString imageUrl = artistObj["strArtistThumb"].toString();
+            if (imageUrl.isEmpty())
+                imageUrl = artistObj["strArtistWideThumb"].toString();
+            if (imageUrl.isEmpty())
+                imageUrl = artistObj["strArtistFanart"].toString();
+
             if (imageUrl.isEmpty()) {
-                qWarning() << "Last.fm artist image not available:" << artistName;
+                qDebug() << "[Artist Image] TheAudioDB: no image fields for:" << artistName;
                 if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
                 else callback.call();
                 return;
             }
 
-            qDebug() << "Last.fm found artist image:" << imageUrl;
-            
-            QNetworkRequest imgReq((QUrl(imageUrl)));
+            qDebug() << "[Artist Image] TheAudioDB found:" << imageUrl;
+
+            // Append /preview for a smaller, faster-loading thumbnail
+            QString thumbUrl = imageUrl + "/preview";
+
+            QNetworkRequest imgReq((QUrl(thumbUrl)));
             imgReq.setRawHeader("User-Agent", "Quester/1.0");
             imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+            imgReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+
             QNetworkReply *imgReply = m_networkManager->get(imgReq);
-            QObject::connect(imgReply, &QNetworkReply::finished, this, [imgReply, saveImageAndCallback, tryBandcamp, callback]() -> void {
+            QObject::connect(imgReply, &QNetworkReply::finished, this, [this, imgReply, imageUrl, saveImageAndCallback, tryBandcamp, callback]() -> void {
                 imgReply->deleteLater();
-                
+
                 if (imgReply->error() == QNetworkReply::NoError) {
                     if (!saveImageAndCallback(imgReply->readAll())) {
-                        if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
-                        else callback.call();
+                        // Preview might be too small; retry with full-size image
+                        QNetworkRequest fullReq((QUrl(imageUrl)));
+                        fullReq.setRawHeader("User-Agent", "Quester/1.0");
+                        fullReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+                        fullReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+                        QNetworkReply *fullReply = m_networkManager->get(fullReq);
+                        QObject::connect(fullReply, &QNetworkReply::finished, this, [fullReply, saveImageAndCallback, tryBandcamp, callback]() -> void {
+                            fullReply->deleteLater();
+                            if (fullReply->error() == QNetworkReply::NoError && saveImageAndCallback(fullReply->readAll()))
+                                return;
+                            if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
+                            else callback.call();
+                        });
                     }
                 } else {
-                    qWarning() << "Last.fm image download failed:" << imgReply->errorString();
+                    qWarning() << "[Artist Image] TheAudioDB image download failed:" << imgReply->errorString();
                     if (tryBandcamp && *tryBandcamp) (*tryBandcamp)();
                     else callback.call();
                 }
@@ -2632,143 +2683,9 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
         });
     };
 
-    // Try MusicBrainz for artist image (PRIMARY source - most reliable)
-    auto tryMusicBrainz = std::make_shared<std::function<void()>>();
-    *tryMusicBrainz = [this, artistName, callback, tryLastfm, saveImageAndCallback]() -> void {
-        QUrl mbUrl("https://musicbrainz.org/ws/2/artist/");
-        QUrlQuery query;
-        query.addQueryItem("query", QString("artist:\"%1\"").arg(artistName));
-        query.addQueryItem("fmt", "json");
-        query.addQueryItem("limit", "1");
-        mbUrl.setQuery(query);
-
-        QNetworkRequest request(mbUrl);
-        request.setRawHeader("User-Agent", "Quester/1.0 (https://github.com/anoraktrend/quester)");
-        request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-
-        QNetworkReply *reply = m_networkManager->get(request);
-        QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, artistName, callback, tryLastfm, saveImageAndCallback]() -> void {
-            reply->deleteLater();
-            
-            if (reply->error() != QNetworkReply::NoError) {
-                qWarning() << "MusicBrainz artist search failed:" << reply->errorString();
-                if (tryLastfm && *tryLastfm) (*tryLastfm)();
-                else callback.call();
-                return;
-            }
-
-            QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-            QJsonArray artists = doc.object()["artists"].toArray();
-            
-            if (artists.isEmpty()) {
-                qWarning() << "MusicBrainz artist not found:" << artistName;
-                if (tryLastfm && *tryLastfm) (*tryLastfm)();
-                else callback.call();
-                return;
-            }
-
-            QString mbid = artists[0].toObject()["id"].toString();
-            if (mbid.isEmpty()) {
-                qWarning() << "MusicBrainz artist MBID not found:" << artistName;
-                if (tryLastfm && *tryLastfm) (*tryLastfm)();
-                else callback.call();
-                return;
-            }
-
-            // Get artist details with url-rels to find image URLs
-            QUrl artistUrl(QString("https://musicbrainz.org/ws/2/artist/%1?inc=url-rels&fmt=json").arg(mbid));
-            QNetworkRequest artistReq(artistUrl);
-            artistReq.setRawHeader("User-Agent", "Quester/1.0 (https://github.com/anoraktrend/quester)");
-            artistReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-            
-            QNetworkReply *artistReply = m_networkManager->get(artistReq);
-            QObject::connect(artistReply, &QNetworkReply::finished, this, [this, artistReply, mbid, callback, saveImageAndCallback, tryLastfm]() -> void {
-                artistReply->deleteLater();
-                
-                if (artistReply->error() != QNetworkReply::NoError) {
-                    qWarning() << "MusicBrainz artist details failed:" << artistReply->errorString();
-                    callback.call();
-                    return;
-                }
-
-                QJsonDocument artistDoc = QJsonDocument::fromJson(artistReply->readAll());
-                QJsonObject relations = artistDoc.object();
-                
-                // Check for image relationships - Cover Art Archive uses "image" relation type
-                // Also check for fanart, wikimedia, etc.
-                QJsonArray rels = relations["relations"].toArray();
-                QString imageUrl;
-                
-                for (const auto &rel : rels) {
-                    QJsonObject relObj = rel.toObject();
-                    QString type = relObj["type"].toString();
-                    QString url = relObj["url"].toObject()["resource"].toString();
-                    
-                    // Prioritize actual image URLs
-                    if (type == "image" || type == "wikidata" || type == "fanart") {
-                        if (url.contains("commons.wikimedia.org") || url.contains("fanart.tv") || url.contains("coverartarchive.org")) {
-                            imageUrl = url;
-                            break;
-                        }
-                    }
-                }
-                
-                if (imageUrl.isEmpty()) {
-                    // Try the Cover Art Archive artist endpoint directly
-                    QUrl caaUrl(QString("https://coverartarchive.org/artist/%1").arg(mbid));
-                    QNetworkRequest caaReq(caaUrl);
-                    caaReq.setRawHeader("User-Agent", "Quester/1.0 (https://github.com/anoraktrend/quester)");
-                    caaReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-                    caaReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-                    
-                    QNetworkReply *caaReply = m_networkManager->get(caaReq);
-                    QObject::connect(caaReply, &QNetworkReply::finished, this, [caaReply, saveImageAndCallback, callback, tryLastfm]() -> void {
-                        caaReply->deleteLater();
-                        
-                        if (caaReply->error() == QNetworkReply::NoError) {
-                            // Check if we got image data
-                            QByteArray data = caaReply->readAll();
-                            if (data.size() > 1024) {
-                                if (saveImageAndCallback(data)) {
-                                    return;
-                                }
-                            }
-                        }
-                        // Fallback to Last.fm
-                        if (tryLastfm && *tryLastfm) (*tryLastfm)();
-                        else callback.call();
-                    });
-                    return;
-                }
-                
-                qDebug() << "MusicBrainz found artist image URL:" << imageUrl;
-                
-                // Fetch the image
-                QNetworkRequest imgReq((QUrl(imageUrl)));
-                imgReq.setRawHeader("User-Agent", "Quester/1.0 (https://github.com/anoraktrend/quester)");
-                imgReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
-                imgReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-                
-                QNetworkReply *imgReply = m_networkManager->get(imgReq);
-                QObject::connect(imgReply, &QNetworkReply::finished, this, [imgReply, saveImageAndCallback, callback]() -> void {
-                    imgReply->deleteLater();
-                    
-                    if (imgReply->error() == QNetworkReply::NoError) {
-                        if (!saveImageAndCallback(imgReply->readAll())) {
-                            callback.call();
-                        }
-                    } else {
-                        qWarning() << "MusicBrainz image download failed:" << imgReply->errorString();
-                        callback.call();
-                    }
-                });
-            });
-        });
-    };
-
-    // Start with MusicBrainz (PRIMARY), which falls back to Last.fm, then Bandcamp
-    if (tryMusicBrainz && *tryMusicBrainz) {
-        (*tryMusicBrainz)();
+    // Start with TheAudioDB (PRIMARY), fall back to Bandcamp
+    if (tryAudioDb && *tryAudioDb) {
+        (*tryAudioDb)();
     } else {
         callback.call();
     }
