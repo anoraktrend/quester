@@ -798,6 +798,22 @@ void AudioVisualizer::setVisualizerBarGap(int gap)
     setWidth(m_width, true);
 }
 
+auto AudioVisualizer::fifoPath() const -> QString
+{
+    QSettings s(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    return s.value(QStringLiteral("fifoPath"), QStringLiteral("/tmp/mpd.fifo")).toString();
+}
+
+void AudioVisualizer::setFifoPath(const QString &path)
+{
+    QSettings s(QStringLiteral("Quester"), QStringLiteral("Quester"));
+    const QString current = s.value(QStringLiteral("fifoPath"), QStringLiteral("/tmp/mpd.fifo")).toString();
+    if (current == path) return;
+    s.setValue(QStringLiteral("fifoPath"), path);
+    if (m_active) { stop(); start(); }
+    Q_EMIT fifoPathChanged();
+}
+
 void AudioVisualizer::start()
 {
     if (m_active)
@@ -874,6 +890,9 @@ void AudioVisualizer::stop()
 
 void AudioVisualizer::onDataReady(const QByteArray &data)
 {
+    // Broadcast raw PCM so ProjectMItem (and any other consumer) can use it
+    emit pcmDataReady(data);
+
     if (!m_active || !m_gist) {
         return;
     }

@@ -192,6 +192,7 @@ class AudioVisualizer : public QObject
     Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
     Q_PROPERTY(int visualizerBarSize READ visualizerBarSize WRITE setVisualizerBarSize NOTIFY visualizerBarSizeChanged)
     Q_PROPERTY(int visualizerBarGap READ visualizerBarGap WRITE setVisualizerBarGap NOTIFY visualizerBarGapChanged)
+    Q_PROPERTY(QString fifoPath READ fifoPath WRITE setFifoPath NOTIFY fifoPathChanged)
 
 public:
     explicit AudioVisualizer(QObject *parent = nullptr);
@@ -221,6 +222,8 @@ public:
     void setVisualizerBarSize(int size);
     [[nodiscard]] auto visualizerBarGap() const -> int;
     void setVisualizerBarGap(int gap);
+    [[nodiscard]] auto fifoPath() const -> QString;
+    void setFifoPath(const QString &path);
 
 public slots:
     void start();
@@ -244,6 +247,10 @@ signals:
     void audioSourceChanged();
     void visualizerBarSizeChanged();
     void visualizerBarGapChanged();
+    void fifoPathChanged();
+    // Emitted with every raw stereo-interleaved int16 PCM chunk
+    // (same data that feeds Gist). Consumed by ProjectMItem.
+    void pcmDataReady(const QByteArray &data);
 
 private:
     // Gist audio analysis instance

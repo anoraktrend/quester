@@ -58,6 +58,7 @@ find_package(Qt6 COMPONENTS
     Widgets
     Sql
     Concurrent
+    OpenGL
     REQUIRED)
 
 # D-Bus is not available on macOS by default
@@ -140,6 +141,30 @@ endif()
 
 add_subdirectory(vendor/gist)
 
+# ── projectM 4 visualizer (Linux only; optional on macOS) ───────────────────
+# Use find_library + pkg-config for includes to bypass the -l:name bug in the
+# projectM-4 pkg-config files shipped on some distributions (Arch Linux).
+if(NOT APPLE)
+    pkg_check_modules(PROJECTM4_PC projectM-4)
+    pkg_check_modules(PROJECTM4_PLAYLIST_PC projectM-4-playlist)
+    find_library(PROJECTM4_LIB
+        NAMES projectM-4
+        HINTS ${PROJECTM4_PC_LIBRARY_DIRS} /usr/lib /usr/local/lib)
+    find_library(PROJECTM4_PLAYLIST_LIB
+        NAMES projectM-4-playlist
+        HINTS ${PROJECTM4_PLAYLIST_PC_LIBRARY_DIRS} /usr/lib /usr/local/lib)
+    if(PROJECTM4_LIB AND PROJECTM4_PLAYLIST_LIB)
+        message(STATUS "projectM-4 found: ${PROJECTM4_LIB}")
+        message(STATUS "projectM-4-playlist found: ${PROJECTM4_PLAYLIST_LIB}")
+        set(HAVE_PROJECTM TRUE)
+    else()
+        message(STATUS "projectM-4 not found – Milkdrop visualizer style disabled")
+        set(HAVE_PROJECTM FALSE)
+    endif()
+else()
+    set(HAVE_PROJECTM FALSE)
+endif()
+
 qt_add_executable(quester
     src/main.cpp
     src/quester.cpp
@@ -150,6 +175,14 @@ qt_add_executable(quester
     src/statistics.h
     ${quester_resources}
 )
+
+if(HAVE_PROJECTM)
+    target_sources(quester PRIVATE
+        src/projectmvisualizer.cpp
+        src/projectmvisualizer.h
+    )
+    target_compile_definitions(quester PRIVATE HAVE_PROJECTM)
+endif()
 
 # Include D-Bus related files only on non-macOS platforms
 if(NOT APPLE)
@@ -205,6 +238,7 @@ target_link_libraries(quester
     Qt6::Sql
     Qt6::Concurrent
     Qt6::Xml
+    Qt6::OpenGL
     PkgConfig::MPDCLIENT
     Gist
 )
@@ -218,6 +252,14 @@ if(NOT APPLE)
         PkgConfig::PIPEWIRE
         PkgConfig::SPA
     )
+    if(HAVE_PROJECTM)
+        target_link_libraries(quester PRIVATE
+            ${PROJECTM4_LIB}
+            ${PROJECTM4_PLAYLIST_LIB}
+        )
+        target_include_directories(quester PRIVATE ${PROJECTM4_PC_INCLUDE_DIRS})
+        target_compile_definitions(quester PRIVATE ${PROJECTM4_PC_CFLAGS_OTHER})
+    endif()
 else()
     target_link_libraries(quester PRIVATE
         "-framework AudioToolbox"
