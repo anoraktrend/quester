@@ -993,7 +993,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     Q_EMIT magnitudesChanged();
     static qint64 lastEmit = 0;
-    static qint64 now = QDateTime::currentMSecsSinceEpoch();
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (now - lastEmit > 30) {
         Q_EMIT magnitudesChanged();
         lastEmit = now;
@@ -1391,7 +1391,7 @@ OSStatus CoreAudioInput::audioTapCallback(void *inClientData, AudioUnitRenderAct
     return noErr;
 }
 
-void CoreAudioInput::setupAudioTap()
+OSStatus CoreAudioInput::setupAudioTap()
 {
     // Find the RemoteIO Audio Unit
     AudioComponentDescription desc;
@@ -1405,14 +1405,14 @@ void CoreAudioInput::setupAudioTap()
     m_remoteIOComponent = AudioComponentFindNext(nullptr, &desc);
     if (!m_remoteIOComponent) {
         qWarning() << "Failed to find RemoteIO Audio Unit";
-        return;
+        return kAudioUnitErr_InvalidProperty;
     }
 
     // Create an instance of the RemoteIO unit
     OSStatus status = AudioComponentInstanceNew(m_remoteIOComponent, &m_remoteIOUnit);
     if (status != noErr) {
         qWarning() << "Failed to create RemoteIO Audio Unit instance";
-        return;
+        return status;
     }
 
     // Enable input on the RemoteIO unit
@@ -1421,7 +1421,7 @@ void CoreAudioInput::setupAudioTap()
     if (status != noErr) {
         qWarning() << "Failed to enable input on RemoteIO unit";
         cleanupAudioTap();
-        return;
+        return status;
     }
 
     // Set the stream format for input
@@ -1429,7 +1429,7 @@ void CoreAudioInput::setupAudioTap()
     if (status != noErr) {
         qWarning() << "Failed to set stream format on RemoteIO unit";
         cleanupAudioTap();
-        return;
+        return status;
     }
 
     // Set the callback to tap into the audio
@@ -1440,7 +1440,7 @@ void CoreAudioInput::setupAudioTap()
     if (status != noErr) {
         qWarning() << "Failed to set input callback on RemoteIO unit";
         cleanupAudioTap();
-        return;
+        return status;
     }
 
     // Initialize the RemoteIO unit
@@ -1448,7 +1448,7 @@ void CoreAudioInput::setupAudioTap()
     if (status != noErr) {
         qWarning() << "Failed to initialize RemoteIO unit";
         cleanupAudioTap();
-        return;
+        return status;
     }
 
     // Start the RemoteIO unit
@@ -1456,8 +1456,10 @@ void CoreAudioInput::setupAudioTap()
     if (status != noErr) {
         qWarning() << "Failed to start RemoteIO unit";
         cleanupAudioTap();
-        return;
+        return status;
     }
+
+    return noErr;
 }
 
 void CoreAudioInput::cleanupAudioTap()

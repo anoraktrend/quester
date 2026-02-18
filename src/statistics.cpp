@@ -1122,7 +1122,7 @@ void StatisticsManager::fetchListenBrainzStats(const QString &period)
     }
     
     // Use ListenBrainz stats API
-    QUrl url(QString("https://api.listenbrainz.org/1/stats/user/%1/ listening-range?start=%2&end=%3")
+    QUrl url(QString("https://api.listenbrainz.org/1/stats/user/%1/listening-range?start=%2&end=%3")
         .arg(m_lbUsername)
         .arg(startTime)
         .arg(now));

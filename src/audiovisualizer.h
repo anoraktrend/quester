@@ -168,7 +168,7 @@ public:
 
 private:
     static OSStatus audioTapCallback(void *inClientData, AudioUnitRenderActionFlags *ioActionFlags, const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList *ioData);
-    void setupAudioTap();
+    OSStatus setupAudioTap();
     void cleanupAudioTap();
     
     AudioComponentInstance m_remoteIOUnit = nullptr;

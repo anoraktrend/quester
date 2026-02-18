@@ -77,6 +77,7 @@ struct QueueItem {
 class AlbumModel : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     friend class MpdClient;
 public:
     enum class AlbumRoles : std::uint16_t {
@@ -95,9 +96,15 @@ public:
     void setAlbums(const QList<AlbumItem> &albums);
     void updateArt(int index, const QString &url);
     
+    // QML-accessible method to get album data as a variant map
+    Q_INVOKABLE [[nodiscard]] QVariantMap get(int index) const;
+    
     // Thread-safe access for internal use
     [[nodiscard]] auto albums() const -> QList<AlbumItem>;
     void setAlbumsInternal(const QList<AlbumItem> &albums);
+
+Q_SIGNALS:
+    void countChanged();
 
 private:
     QList<AlbumItem> m_albums;
