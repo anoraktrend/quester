@@ -1477,14 +1477,108 @@ Kirigami.ApplicationWindow {
 
             }
 
+            // --- Browser Search Bar ---
+            Item {
+                id: browserSearchBar
+
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.topMargin: 8
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                height: 44
+                visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
+
+                // Load the root directory the first time the browser becomes visible,
+                // and clear stale search text whenever the browser is hidden.
+                onVisibleChanged: {
+                    if (visible) {
+                        mpdClient.browsePath(mpdClient.currentPath)
+                    } else {
+                        browserSearchField.text = ""
+                    }
+                }
+
+                // Debounce timer so we don't fire a search on every keystroke
+                Timer {
+                    id: searchDebounce
+                    interval: 300
+                    onTriggered: mpdClient.searchLibrary(browserSearchField.text)
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 6
+                    color: window.themeViewBackgroundColor
+                    border.color: browserSearchField.activeFocus
+                        ? window.themeHighlightColor
+                        : Qt.alpha(window.themeTextColor, 0.2)
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 6
+                        spacing: 6
+
+                        // Magnifier icon
+                        Text {
+                            text: "\u{1F50D}"
+                            font.pixelSize: 16
+                            color: Qt.alpha(window.themeTextColor, 0.5)
+                        }
+
+                        TextField {
+                            id: browserSearchField
+
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Search library\u2026")
+                            color: window.themeTextColor
+                            font.pixelSize: 14 * window.fontScale
+                            background: Item {}   // transparent – outer Rectangle provides the frame
+                            leftPadding: 0
+                            rightPadding: 0
+
+                            onTextChanged: searchDebounce.restart()
+
+                            Keys.onEscapePressed: {
+                                text = ""
+                                mpdClient.browsePath(mpdClient.currentPath)
+                                focus = false
+                            }
+                        }
+
+                        // Clear / back button – only shown when there is text
+                        ToolButton {
+                            visible: browserSearchField.text.length > 0
+                            icon.name: "edit-clear"
+                            icon.color: window.themeTextColor
+                            icon.width: 16
+                            icon.height: 16
+                            flat: true
+                            ToolTip.visible: hovered
+                            ToolTip.text: qsTr("Clear search")
+                            onClicked: {
+                                browserSearchField.text = ""
+                                mpdClient.browsePath(mpdClient.currentPath)
+                            }
+                        }
+                    }
+                }
+            }
+
             ListView {
                 id: browserListView
 
-                anchors.top: parent.top
+                anchors.top: browserSearchBar.bottom
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.margins: 10
+                anchors.topMargin: 4
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                anchors.bottomMargin: 10
                 clip: true
                 visible: coverFlow.state === "libraryView" && coverFlow.viewMode === "browser"
                 model: mpdClient.browserModel

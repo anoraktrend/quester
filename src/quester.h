@@ -391,6 +391,7 @@ public Q_SLOTS:
     Q_INVOKABLE void addTrack(const QString &uri);
     Q_INVOKABLE void addPath(const QString &path);
     Q_INVOKABLE void browsePath(const QString &path);
+    Q_INVOKABLE void searchLibrary(const QString &query);
     Q_INVOKABLE void refreshPlaylists();
     Q_INVOKABLE void loadPlaylist(const QString &name);
     Q_INVOKABLE void savePlaylist(const QString &name);

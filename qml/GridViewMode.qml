@@ -134,8 +134,8 @@ Item {
         clip: true
         visible: viewMode === "artists"
 
-        cellWidth: 160
-        cellHeight: 200
+        cellWidth: 180
+        cellHeight: 220
         model: artistModel
 
         delegate: Item {
@@ -156,61 +156,51 @@ Item {
 
             Rectangle {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.smallSpacing
-                color: themeViewBackgroundColor
-                radius: 5
-                border.color: themeHighlightColor
-                clip: true
+                anchors.margins: Kirigami.Units.mediumSpacing
+                color: "transparent"
 
-                // Square artist image at top
                 Rectangle {
                     id: artistImageContainer
+                    height: width
+                    width: parent.width
                     anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: width // Square aspect ratio
-                    color: themeBackgroundColor
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: themeViewBackgroundColor
+                    radius: 5
+                    border.width: imageUrl ? 2 : 0
+                    border.color: themeHighlightColor
 
                     Image {
-                        id: artistImage
                         anchors.fill: parent
-                        fillMode: Image.PreserveAspectCrop
+                        anchors.margins: 2
                         source: imageUrl
-                        smooth: true
-                        mipmap: true
+                        fillMode: Image.PreserveAspectCrop
 
-                        // Placeholder if no image - show first letter
                         Text {
                             anchors.centerIn: parent
-                            text: model.name.substring(0, 1).toUpperCase()
+                            width: parent.width - 10
+                            text: model.name
                             color: themeTextColor
-                            font.pixelSize: parent.height * 0.5
-                            font.bold: true
-                            visible: artistImage.status === Image.Null || artistImage.status === Image.Error || artistImage.status === Image.Loading
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
+                            visible: !imageUrl
                         }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: loadArtistAlbums(model.name)
                     }
                 }
 
-                // Artist name below the image
                 Text {
-                    anchors.top: artistImageContainer.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 5
+                    y: artistImageContainer.y + artistImageContainer.height + 5
+                    width: parent.width
                     text: model.name
-                    color: themeTextColor
-                    font.pixelSize: 12
-                    wrapMode: Text.Wrap
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
+                    font.bold: true
                     elide: Text.ElideRight
-                    maximumLineCount: 2
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: loadArtistAlbums(model.name)
+                    horizontalAlignment: Text.AlignHCenter
+                    color: themeTextColor
                 }
             }
         }

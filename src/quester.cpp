@@ -1267,6 +1267,73 @@ void MpdClient::browsePath(const QString &path)
     });
 }
 
+void MpdClient::searchLibrary(const QString &query)
+{
+    if (query.trimmed().isEmpty()) {
+        // Empty query: restore normal browser view at current path
+        browsePath(m_currentPath);
+        return;
+    }
+
+    const QString q = query.trimmed();
+
+    QThreadPool::globalInstance()->start([this, q]() -> void {
+        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
+            qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
+            mpd_connection_free(conn);
+            return;
+        }
+
+        QList<BrowserItem> items;
+
+        // MPD's "any" tag searches title, artist, album, and filename simultaneously
+        if (mpd_search_db_songs(conn, false)) {
+            mpd_search_add_any_tag_constraint(conn, MPD_OPERATOR_DEFAULT, q.toUtf8().constData());
+            if (mpd_search_commit(conn)) {
+                struct mpd_song *song = nullptr;
+                while ((song = mpd_recv_song(conn)) != nullptr) {
+                    const char *uri   = mpd_song_get_uri(song);
+                    const char *title = mpd_song_get_tag(song, MPD_TAG_TITLE, 0);
+                    const char *artist = mpd_song_get_tag(song, MPD_TAG_ARTIST, 0);
+                    const char *album  = mpd_song_get_tag(song, MPD_TAG_ALBUM, 0);
+
+                    // Build a human-readable label: "Artist – Title (Album)"
+                    QString label;
+                    if (title && artist) {
+                        label = QString::fromUtf8(artist) + " \u2013 " + QString::fromUtf8(title);
+                        if (album && *album)
+                            label += " (" + QString::fromUtf8(album) + ")";
+                    } else if (title) {
+                        label = QString::fromUtf8(title);
+                    } else if (uri) {
+                        label = QString::fromUtf8(uri).section('/', -1);
+                    }
+
+                    if (uri)
+                        items.append({.name = label, .path = QString::fromUtf8(uri), .isDir = false});
+
+                    mpd_song_free(song);
+                }
+                if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS)
+                    mpd_connection_clear_error(conn);
+                mpd_response_finish(conn);
+            } else {
+                mpd_connection_clear_error(conn);
+            }
+        } else {
+            mpd_connection_clear_error(conn);
+        }
+
+        mpd_connection_free(conn);
+
+        QMetaObject::invokeMethod(this, [this, items]() -> void {
+            m_browserModel->setItems(items);
+            // Don't update m_currentPath so "clear search" restores the previous directory
+        }, Qt::QueuedConnection);
+    });
+}
+
 void MpdClient::quitApplication()
 {
     QCoreApplication::quit();
