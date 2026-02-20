@@ -43,6 +43,7 @@ Kirigami.ScrollablePage {
         property string artUrl: ""
         property int size: 48
         property bool circle: false
+        property string artistName: ""
 
         width: size
         height: size
@@ -61,12 +62,20 @@ Kirigami.ScrollablePage {
             layer.effect: null // clip handled by parent Rectangle
         }
 
+        Text {
+            anchors.centerIn: parent
+            text: "∆"
+            font.pixelSize: parent.height * 0.5
+            color: Kirigami.Theme.textColor
+            visible: artThumb.artUrl === "" && artThumb.artistName === "alt-J"
+        }
+        
         Kirigami.Icon {
             anchors.centerIn: parent
             width: parent.width * 0.5
             height: width
             source: "audio-x-generic"
-            visible: artThumb.artUrl === ""
+            visible: artThumb.artUrl === "" && artThumb.artistName !== "alt-J"
             opacity: 0.4
         }
     }
@@ -217,6 +226,7 @@ Kirigami.ScrollablePage {
                             size: 40
                             circle: true
                             artUrl: statistics.artistImageUrl(modelData.name || "")
+                            artistName: modelData.name || ""
                             Layout.alignment: Qt.AlignVCenter
 
                             Component.onCompleted: {
@@ -276,6 +286,7 @@ Kirigami.ScrollablePage {
                             id: lfmTrackThumb
                             size: 40
                             artUrl: statistics.artistImageUrl(modelData.artist || "")
+                            artistName: modelData.artist || ""
                             Layout.alignment: Qt.AlignVCenter
 
                             Component.onCompleted: {
@@ -341,6 +352,7 @@ Kirigami.ScrollablePage {
                             size: 48
                             circle: true
                             artUrl: statistics.artistImageUrl(modelData.name || "")
+                            artistName: modelData.name || ""
                             Layout.alignment: Qt.AlignVCenter
 
                             Component.onCompleted: {
@@ -397,6 +409,7 @@ Kirigami.ScrollablePage {
                             id: trackThumb
                             size: 48
                             artUrl: statistics.artistImageUrl(modelData.artist || "")
+                            artistName: modelData.artist || ""
                             Layout.alignment: Qt.AlignVCenter
 
                             Component.onCompleted: {
@@ -461,7 +474,7 @@ Kirigami.ScrollablePage {
                         ArtThumbnail {
                             id: albumThumb
                             size: 48
-                            artUrl: statistics.albumArtUrl(modelData.artist || "", modelData.name || "")
+                            artUrl: mpdClient.albumArtUrl(modelData.artist || "", modelData.name || "", "")
                             Layout.alignment: Qt.AlignVCenter
                         }
 

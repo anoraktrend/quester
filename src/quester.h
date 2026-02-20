@@ -278,7 +278,9 @@ private:
         int modelIndex;
     };
     void fetchAlbumArtFromAPIs(const FetchParams &params);
-    QString getCachePath(const QString &artist, const QString &album, const QString &mbid = QString());
+public:
+    static QString getCachePath(const QString &artist, const QString &album, const QString &mbid = QString());
+private:
     void sortAlbums(QList<AlbumItem> &albums);
     QByteArray getMpdPicture(const QString &uri);
     void connectToMpd();
@@ -414,6 +416,7 @@ public Q_SLOTS:
 
     // Artist image fetching
     Q_INVOKABLE void fetchArtistImage(const QString &artistName, QJSValue callback);
+    Q_INVOKABLE QString albumArtUrl(const QString &artist, const QString &album, const QString &mbid = "");
 
 Q_SIGNALS:
     void artistChanged();

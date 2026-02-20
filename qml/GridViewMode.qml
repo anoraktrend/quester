@@ -179,7 +179,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             width: parent.width - 10
-                            text: model.name
+                            text: model.name == "alt-J" ? "∆" : model.name
                             color: themeTextColor
                             wrapMode: Text.Wrap
                             horizontalAlignment: Text.AlignHCenter

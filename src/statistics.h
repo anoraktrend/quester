@@ -32,7 +32,6 @@ public:
     Q_INVOKABLE QString generateWrappedImage(const QString &period);
     Q_INVOKABLE QList<QString> getMostPlayedUris(int limit = FIFTY);
     Q_INVOKABLE void fetchExternalActivityData(const QString &period);
-    Q_INVOKABLE QString albumArtUrl(const QString &artist, const QString &album);
     Q_INVOKABLE QString artistImageUrl(const QString &artist);
 
     // Playlist functions
@@ -81,7 +80,6 @@ private:
     void initDb();
     void checkAutomaticWrapped();
     QVariantMap getStatsForPeriod(qint64 startTime);
-    QString getCachePath(const QString &artist, const QString &album);
     QList<int> getActivityGraphData(const QString &period, int &outMax);
     void sendListenBrainzRequest(const QString &listenType, const QVariantMap &payload);
     void setCredentialsValid(bool valid) { 

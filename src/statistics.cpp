@@ -1,4 +1,5 @@
 #include "statistics.h"
+#include "quester.h"
 #include <QStandardPaths>
 #include <QDir>
 #include <QSqlQuery>
@@ -487,7 +488,7 @@ auto StatisticsManager::generateWrappedImage(const QString &period) -> QString
                 QRect tileRect(50 + i * (tileW + gap), y, tileW, tileH);
 
                 // Try to load cached art
-                QString artPath = getCachePath(artistName, albumName);
+                QString artPath = MpdClient::getCachePath(artistName, albumName);
                 QImage art(artPath);
 
                 if (!art.isNull()) {
@@ -728,22 +729,7 @@ auto StatisticsManager::getActivityGraphData(const QString &period, int &outMax)
     return data;
 }
 
-auto StatisticsManager::getCachePath(const QString &artist, const QString &album) -> QString
-{
-    QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/covers/";
-    QByteArray hashName = QCryptographicHash::hash((artist + album).toUtf8(), QCryptographicHash::Md5).toHex();
-    return cacheDir + hashName + ".jpg";
-}
 
-auto StatisticsManager::albumArtUrl(const QString &artist, const QString &album) -> QString
-{
-    if (artist.isEmpty() || album.isEmpty())
-        return {};
-    QString path = getCachePath(artist, album);
-    if (QFile::exists(path))
-        return QStringLiteral("file://") + path;
-    return {};
-}
 
 auto StatisticsManager::artistImageUrl(const QString &artist) -> QString
 {

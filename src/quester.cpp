@@ -676,7 +676,7 @@ void MpdClient::fetchAlbumArt(const QString &album)
     m_albumArt.clear();
     emit albumArtChanged();
 
-    QString cachePath = getCachePath(m_artist, album, m_currentMbid);
+    QString cachePath = MpdClient::getCachePath(m_artist, album, m_currentMbid);
 
     if (QFile::exists(cachePath)) {
         m_albumArt = "file://" + cachePath;
@@ -875,7 +875,7 @@ void MpdClient::refreshLibrary()
                         const char *date_tag = mpd_song_get_tag(song, MPD_TAG_DATE, 0);
                         int year = date_tag ? QString::fromUtf8(date_tag).left(4).toInt() : 0;
                         
-                        QString cachePath = getCachePath(artistName, albumName, mbid);
+                        QString cachePath = MpdClient::getCachePath(artistName, albumName, mbid);
                         QString art = QFile::exists(cachePath) ? "file://" + cachePath : "";
 
                         albumsMap.insert(key, AlbumItem{
@@ -1407,7 +1407,7 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
     if (!uri.isEmpty()) {
         QByteArray mpdData = getMpdPicture(uri);
         if (!mpdData.isEmpty()) {
-            QString cachePath = getCachePath(artist, albumName, mbid);
+            QString cachePath = MpdClient::getCachePath(artist, albumName, mbid);
             QFile file(cachePath);
             if (file.open(QIODevice::WriteOnly)) {
                 file.write(mpdData);
@@ -1418,7 +1418,7 @@ void MpdClient::fetchCoverForModel(int index, const QString &albumName)
         }
     }
 
-    fetchAlbumArtFromAPIs({.artist=artist, .album=albumName, .mbid=mbid, .cachePath=getCachePath(artist, albumName, mbid), .isMainArt=false, .modelIndex=index});
+    fetchAlbumArtFromAPIs({.artist=artist, .album=albumName, .mbid=mbid, .cachePath=MpdClient::getCachePath(artist, albumName, mbid), .isMainArt=false, .modelIndex=index});
 }
 
 void MpdClient::fetchAlbumArtFromAPIs(const FetchParams &params)
@@ -2523,6 +2523,16 @@ void MpdClient::refreshLibraryAfterDelete()
     // Kept for source compatibility
 }
 
+QString MpdClient::albumArtUrl(const QString &artist, const QString &album, const QString &mbid)
+{
+    if (artist.isEmpty() || album.isEmpty())
+        return {};
+    QString path = MpdClient::getCachePath(artist, album, mbid);
+    if (QFile::exists(path))
+        return QStringLiteral("file://") + path;
+    return {};
+}
+
 void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
 {
     if (artistName.isEmpty() || artistName == "Unknown Artist" || !callback.isCallable())
@@ -2696,11 +2706,13 @@ void MpdClient::fetchArtistImage(const QString &artistName, QJSValue callback)
                 return;
             }
 
-            // Prefer strArtistThumb; fall back to strArtistWideThumb or strArtistFanart
+            // Prefer strArtistThumb; fall back to strArtistWideThumb, strArtistLogo or strArtistFanart
             QJsonObject artistObj = artists[0].toObject();
             QString imageUrl = artistObj["strArtistThumb"].toString();
             if (imageUrl.isEmpty())
                 imageUrl = artistObj["strArtistWideThumb"].toString();
+            if (imageUrl.isEmpty())
+                imageUrl = artistObj["strArtistLogo"].toString();
             if (imageUrl.isEmpty())
                 imageUrl = artistObj["strArtistFanart"].toString();
 
