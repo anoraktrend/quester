@@ -106,7 +106,7 @@ public:
         if (sd.hasPcm && !sd.pcmData.isEmpty()) {
             const auto *samples = reinterpret_cast<const int16_t *>(sd.pcmData.constData());
             unsigned int sampleCount =
-                static_cast<unsigned int>(sd.pcmData.size()) / (2 * sizeof(int16_t));
+                static_cast<unsigned int>(sd.pcmData.size()) / sizeof(int16_t);
             if (sampleCount > 0)
                 projectm_pcm_add_int16(m_pm, samples, sampleCount, PROJECTM_STEREO);
         }
