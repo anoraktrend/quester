@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -511,12 +512,13 @@ void ProjectMItem::scanPresets()
         return;
     }
 
+    // Scan recursively for preset files
     const QStringList filters = {QStringLiteral("*.milk"), QStringLiteral("*.prjm")};
-    const auto entries = dir.entryInfoList(filters, QDir::Files, QDir::Name);
-    m_presetFiles.reserve(entries.size());
-    m_presetNames.reserve(entries.size());
-
-    for (const QFileInfo &fi : entries) {
+    QDirIterator it(m_presetPath, filters, QDir::Files, QDirIterator::Subdirectories);
+    
+    while (it.hasNext()) {
+        it.next();
+        const QFileInfo &fi = it.fileInfo();
         m_presetFiles.append(fi.absoluteFilePath());
         m_presetNames.append(fi.completeBaseName());
     }
