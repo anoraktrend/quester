@@ -4,8 +4,9 @@
 #include <QMutex>
 #include <QStringList>
 #include <QByteArray>
-#include <QTimer>
-#include <QOpenGLFramebufferObject>
+
+class QTimer;
+class QOpenGLFramebufferObject;
 
 // Forward declarations of projectM opaque types (avoids including heavy headers in .h)
 struct projectm;

@@ -2,16 +2,18 @@
 #define STATISTICS_H
 
 #include <QObject>
-#include <QSqlDatabase>
 #include <QVariantMap>
 #include <QMutex>
 #include <QFuture>
-#include <QNetworkAccessManager>
-const int FIFTY = 50;
+
+class QNetworkAccessManager;
+class QSqlDatabase;
+
 class StatisticsManager : public QObject
 {
     Q_OBJECT
 public:
+    static constexpr int FIFTY = 50;
     explicit StatisticsManager(QObject *parent = nullptr);
     ~StatisticsManager() override;
 

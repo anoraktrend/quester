@@ -3,24 +3,25 @@
 
 #include <QObject>
 #include <QString>
-#include <QTimer>
-#include <QSocketNotifier>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QAbstractListModel>
-#include <QDir>
-#include <QStandardPaths>
-#include <QQuickWindow>
-#include <QSystemTrayIcon>
-#include <QMenu>
-#include <QAction>
 #include <mpd/client.h>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QFutureWatcher>
-#include <QJSValue>
-#include "statistics.h"
 #include <QDataStream>
+
+class QTimer;
+class QSocketNotifier;
+class QNetworkAccessManager;
+class QNetworkReply;
+class QDir;
+class QStandardPaths;
+class QQuickWindow;
+class QSystemTrayIcon;
+class QMenu;
+class QAction;
+class QJSValue;
+class StatisticsManager;
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches
@@ -93,21 +94,21 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setAlbums(const QList<AlbumItem> &albums);
+    void setAlbums(const QVector<AlbumItem> &albums);
     void updateArt(int index, const QString &url);
     
     // QML-accessible method to get album data as a variant map
     Q_INVOKABLE [[nodiscard]] QVariantMap get(int index) const;
     
     // Thread-safe access for internal use
-    [[nodiscard]] auto albums() const -> QList<AlbumItem>;
-    void setAlbumsInternal(const QList<AlbumItem> &albums);
+    [[nodiscard]] auto albums() const -> QVector<AlbumItem>;
+    void setAlbumsInternal(const QVector<AlbumItem> &albums);
 
 Q_SIGNALS:
     void countChanged();
 
 private:
-    QList<AlbumItem> m_albums;
+    QVector<AlbumItem> m_albums;
     mutable QMutex m_mutex;
 };
 
@@ -126,8 +127,8 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setTracks(const QList<TrackItem> &tracks);
-    QList<TrackItem> m_tracks;
+    void setTracks(const QVector<TrackItem> &tracks);
+    QVector<TrackItem> m_tracks;
 };
 
 class BrowserModel : public QAbstractListModel
@@ -145,8 +146,8 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setItems(const QList<BrowserItem> &items);
-    QList<BrowserItem> m_items;
+    void setItems(const QVector<BrowserItem> &items);
+    QVector<BrowserItem> m_items;
 };
 
 class QueueModel : public QAbstractListModel
@@ -168,9 +169,9 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setQueue(const QList<QueueItem> &queue);
+    void setQueue(const QVector<QueueItem> &queue);
     void setCurrentSongId(int id);
-    QList<QueueItem> m_queue;
+    QVector<QueueItem> m_queue;
     int m_currentSongId = -1;
 };
 
@@ -191,8 +192,8 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setPlaylists(const QList<PlaylistItem> &playlists);
-    QList<PlaylistItem> m_playlists;
+    void setPlaylists(const QVector<PlaylistItem> &playlists);
+    QVector<PlaylistItem> m_playlists;
 };
 
 class PlaylistTrackModel : public QAbstractListModel
@@ -212,8 +213,8 @@ public:
     [[nodiscard]] auto rowCount(const QModelIndex &parent = QModelIndex()) const -> int override;
     [[nodiscard]] auto data(const QModelIndex &index, int role = Qt::DisplayRole) const -> QVariant override;
     [[nodiscard]] auto roleNames() const -> QHash<int, QByteArray> override;
-    void setTracks(const QList<PlaylistTrackItem> &tracks);
-    QList<PlaylistTrackItem> m_tracks;
+    void setTracks(const QVector<PlaylistTrackItem> &tracks);
+    QVector<PlaylistTrackItem> m_tracks;
 };
 
 struct SortableSong {
@@ -259,12 +260,12 @@ class MpdClient : public QObject
 private Q_SLOTS:
     void updateStatus();
     void handleMpdEvent();
-    void handleLibraryUpdate(const QList<AlbumItem> &albums);
-    void handleAlbumTracksLoaded(const QList<TrackItem> &tracks);
-    void playAlbumInternal(const QList<SortableSong> &songs);
-    void addAlbumInternal(const QList<SortableSong> &songs);
-    void handleQueueUpdate(const QList<QueueItem> &queue);
-    void handleBrowseUpdate(const QList<BrowserItem> &items);
+    void handleLibraryUpdate(const QVector<AlbumItem> &albums);
+    void handleAlbumTracksLoaded(const QVector<TrackItem> &tracks);
+    void playAlbumInternal(const QVector<SortableSong> &songs);
+    void addAlbumInternal(const QVector<SortableSong> &songs);
+    void handleQueueUpdate(const QVector<QueueItem> &queue);
+    void handleBrowseUpdate(const QVector<BrowserItem> &items);
 
 private:
     void fetchAlbumArt(const QString &album);
@@ -281,14 +282,14 @@ private:
 public:
     static QString getCachePath(const QString &artist, const QString &album, const QString &mbid = QString());
 private:
-    void sortAlbums(QList<AlbumItem> &albums);
+    void sortAlbums(QVector<AlbumItem> &albums);
     QByteArray getMpdPicture(const QString &uri);
     void connectToMpd();
     void sendIdle();
     void leaveIdle();
-    void saveLibraryToCache(const QList<AlbumItem> &albums);
-    static QList<AlbumItem> loadLibraryFromCacheInternal();
-    QList<SortableSong> getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid = QString());
+    void saveLibraryToCache(const QVector<AlbumItem> &albums);
+    static QVector<AlbumItem> loadLibraryFromCacheInternal();
+    QVector<SortableSong> getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid = QString());
     
     enum class SortMode : std::uint8_t {
         Artist,
@@ -449,16 +450,16 @@ Q_SIGNALS:
     // Deduplicator signals
     void duplicatesFound(const QVariantList &duplicates);
     void duplicatesDeleted(int count);
-    void libraryUpdated(const QList<AlbumItem> &albums);
-    void albumTracksLoaded(const QList<TrackItem> &tracks);
+    void libraryUpdated(const QVector<AlbumItem> &albums);
+    void albumTracksLoaded(const QVector<TrackItem> &tracks);
 
 private:
     struct mpd_connection *m_connection{nullptr};
     QSocketNotifier *m_notifier{nullptr};
     QNetworkAccessManager *m_networkManager;
     QTimer *m_timer;
-    QFutureWatcher<QList<QueueItem>> m_queueWatcher;
-    QFutureWatcher<QList<BrowserItem>> m_browseWatcher;
+    QFutureWatcher<QVector<QueueItem>> m_queueWatcher;
+    QFutureWatcher<QVector<BrowserItem>> m_browseWatcher;
     bool m_isIdle = false;
 
     QString m_artist;

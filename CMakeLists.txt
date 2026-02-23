@@ -37,14 +37,100 @@ endif()
 find_package(ECM ${REQUIRED_KF_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 # set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${ECM_MODULE_PATH})
-
-find_package(KF6 REQUIRED COMPONENTS Kirigami)
-
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     include(KDEInstallDirs)
     include(KDECMakeSettings)
 endif()
+# Find all required KF6 Kirigami components to ensure plugin targets are available
+find_package(KF6 REQUIRED COMPONENTS
+    Kirigami
+    KirigamiPlatform
+)
 
+# Create aliases for the plugin targets that Qt6's qml plugin detection expects.
+# Qt6's qt6_import_qml_plugins() automatically discovers QML plugins from imported
+# targets and tries to link them. If the target doesn't exist in the current scope,
+# it issues a warning. We create these aliases to satisfy the linker.
+#
+# The actual plugins are defined in the KF6KirigamiTargets.cmake as internal
+# targets with _qt_qml_module_* properties. We create public aliases so that
+# Qt6 can find and link them.
+
+# Helper macro to create plugin target aliases
+macro(create_kirigami_plugin_alias plugin_name target_base)
+    set(target_name "${target_base}${plugin_name}")
+    set(alias_name "${target_base}${plugin_name}")
+    
+    # Create alias without :: prefix
+    if(NOT TARGET ${target_name})
+        if(TARGET ${target_base})
+            # The base target exists, create alias to it
+            add_library(${target_name} ALIAS ${target_base})
+        endif()
+    endif()
+endmacro()
+
+# Create aliases for all Kirigami plugin targets
+# Main Kirigami plugin
+if(NOT TARGET KF6Kirigamiplugin AND TARGET KF6::Kirigami)
+    # In recent KF6 versions, KF6::Kirigami is an ALIAS target.
+    # add_library(... ALIAS ...) cannot take an alias as its target, so we
+    # resolve the underlying target first.
+    get_target_property(_target KF6::Kirigami ALIASED_TARGET)
+    if(_target)
+        # KF6::Kirigami is an alias, use the underlying target.
+        add_library(KF6Kirigamiplugin ALIAS ${_target})
+    else()
+        # KF6::Kirigami is not an alias (older KF6 versions), use it directly.
+        add_library(KF6Kirigamiplugin ALIAS KF6::Kirigami)
+    endif()
+endif()
+
+# Kirigami private plugin  
+if(NOT TARGET KF6KirigamiPrivateplugin AND TARGET KF6KirigamiPrivate)
+    add_library(KF6KirigamiPrivateplugin ALIAS KF6KirigamiPrivate)
+endif()
+
+# Kirigami polyfill plugin
+if(NOT TARGET KF6KirigamiPolyfillplugin AND TARGET KF6KirigamiPolyfill)
+    add_library(KF6KirigamiPolyfillplugin ALIAS KF6KirigamiPolyfill)
+endif()
+
+# Kirigami platform plugin (with :: prefix)
+if(NOT TARGET KF6::KirigamiPlatformplugin AND TARGET KF6::KirigamiPlatform)
+    add_library(KF6::KirigamiPlatformplugin ALIAS KF6::KirigamiPlatform)
+endif()
+
+# Kirigami dialogs plugin
+if(NOT TARGET KF6KirigamiDialogsplugin AND TARGET KF6KirigamiDialogs)
+    add_library(KF6KirigamiDialogsplugin ALIAS KF6KirigamiDialogs)
+endif()
+
+# Kirigami layouts plugin
+if(NOT TARGET KF6KirigamiLayoutsplugin AND TARGET KF6KirigamiLayouts)
+    add_library(KF6KirigamiLayoutsplugin ALIAS KF6KirigamiLayouts)
+endif()
+
+# Kirigami layouts private plugin
+if(NOT TARGET KF6KirigamiLayoutsPrivateplugin AND TARGET KF6KirigamiLayoutsPrivate)
+    add_library(KF6KirigamiLayoutsPrivateplugin ALIAS KF6KirigamiLayoutsPrivate)
+endif()
+
+# KDEInstallDirs must be included BEFORE find_package(Qt6 ...) since Qt6
+# internally includes GNUInstallDirs which sets CMAKE_INSTALL_* variables.
+# This avoids warnings about KDE_INSTALL_*DIR variables getting their
+# values from CMAKE_INSTALL_*DIR.
+
+set(QT_NO_PRIVATE_MODULE_WARNING ON)
+
+# QtQuick Controls 2 Desktop Style plugin
+# This is typically from Qt6::QuickPrivate or Qt6::QuickControls2Private
+find_package(Qt6 QUIET COMPONENTS QuickPrivate)
+if(Qt6QuickPrivate_FOUND)
+    if(NOT TARGET qqc2desktopstyleplugin AND TARGET Qt6::QuickPrivate)
+        add_library(qqc2desktopstyleplugin ALIAS Qt6::QuickPrivate)
+    endif()
+endif()
 
 find_package(Qt6 COMPONENTS
     Core

@@ -213,7 +213,7 @@ public:
     void setCurrentPreset(const QString &name);
     [[nodiscard]] auto barColors() const -> QVariantList;
     Q_INVOKABLE void updateSystemColors(const QColor &highlight, const QColor &text);
-    Q_INVOKABLE QString loadVisualizerGradients();
+    Q_INVOKABLE [[nodiscard]] QString loadVisualizerGradients();
     [[nodiscard]] auto topDownMode() const -> bool;
     void setTopDownMode(bool topDownMode);
     [[nodiscard]] auto audioSource() const -> QString;
@@ -253,13 +253,15 @@ signals:
     void pcmDataReady(const QByteArray &data);
 
 private:
+    void processFrame(const QByteArray &frameData);
+    void pcmToMono(const QByteArray &frameData, std::vector<double> &monoFrame);
     // Gist audio analysis instance
     std::unique_ptr<Gist<double>> m_gist;
 
     AudioInput *m_input{nullptr};
-    QList<qreal> m_magnitudes;
-    QList<double> m_smoothBuffer;
-    QList<double> m_bars;
+    std::vector<qreal> m_magnitudes;
+    std::vector<double> m_smoothBuffer;
+    std::vector<double> m_bars;
     std::vector<double> m_monoFrame;
     std::vector<double> m_logScaleFactors;
     QByteArray m_buffer;

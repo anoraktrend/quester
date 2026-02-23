@@ -33,6 +33,16 @@
 #include <QRegularExpression>
 #include <QtConcurrent/QtConcurrent>
 #include <QThreadPool>
+#include <QTimer>
+#include <QSocketNotifier>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QQuickWindow>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QAction>
+#include <QJSValue>
+#include <QVector>
 
 constexpr int TIMER_INTERVAL = 100;
 constexpr int MPD_PORT = 6600;
@@ -84,7 +94,7 @@ auto AlbumModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void AlbumModel::setAlbums(const QList<AlbumItem> &albums)
+void AlbumModel::setAlbums(const QVector<AlbumItem> &albums)
 {
     beginResetModel();
     m_albums = albums;
@@ -118,13 +128,13 @@ void AlbumModel::updateArt(int index, const QString &url)
     emit dataChanged(this->index(index), this->index(index), {static_cast<int>(AlbumRoles::ArtRole)});
 }
 
-auto AlbumModel::albums() const -> QList<AlbumItem>
+auto AlbumModel::albums() const -> QVector<AlbumItem>
 {
     QMutexLocker locker(&m_mutex);
     return m_albums;
 }
 
-void AlbumModel::setAlbumsInternal(const QList<AlbumItem> &albums)
+void AlbumModel::setAlbumsInternal(const QVector<AlbumItem> &albums)
 {
     QMutexLocker locker(&m_mutex);
     m_albums = albums;
@@ -161,7 +171,7 @@ auto TrackModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void TrackModel::setTracks(const QList<TrackItem> &tracks)
+void TrackModel::setTracks(const QVector<TrackItem> &tracks)
 {
     beginResetModel();
     m_tracks = tracks;
@@ -199,7 +209,7 @@ auto BrowserModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void BrowserModel::setItems(const QList<BrowserItem> &items)
+void BrowserModel::setItems(const QVector<BrowserItem> &items)
 {
     beginResetModel();
     m_items = items;
@@ -249,7 +259,7 @@ auto QueueModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void QueueModel::setQueue(const QList<QueueItem> &queue)
+void QueueModel::setQueue(const QVector<QueueItem> &queue)
 {
     beginResetModel();
     m_queue = queue;
@@ -301,7 +311,7 @@ auto PlaylistModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void PlaylistModel::setPlaylists(const QList<PlaylistItem> &playlists)
+void PlaylistModel::setPlaylists(const QVector<PlaylistItem> &playlists)
 {
     beginResetModel();
     m_playlists = playlists;
@@ -345,7 +355,7 @@ auto PlaylistTrackModel::roleNames() const -> QHash<int, QByteArray>
     return roles;
 }
 
-void PlaylistTrackModel::setTracks(const QList<PlaylistTrackItem> &tracks)
+void PlaylistTrackModel::setTracks(const QVector<PlaylistTrackItem> &tracks)
 {
     beginResetModel();
     m_tracks = tracks;
@@ -379,9 +389,9 @@ MpdClient::MpdClient(QObject *parent)
     , 
      m_stats(new StatisticsManager(this))
 {
-    qRegisterMetaType<QList<AlbumItem>>("QList<AlbumItem>");
-    qRegisterMetaType<QList<TrackItem>>("QList<TrackItem>");
-    qRegisterMetaType<QList<SortableSong>>("QList<SortableSong>");
+    qRegisterMetaType<QVector<AlbumItem>>("QVector<AlbumItem>");
+    qRegisterMetaType<QVector<TrackItem>>("QVector<TrackItem>");
+    qRegisterMetaType<QVector<SortableSong>>("QVector<SortableSong>");
     connect(this, &MpdClient::libraryUpdated, this, &MpdClient::handleLibraryUpdate);
     connect(this, &MpdClient::albumTracksLoaded, this, &MpdClient::handleAlbumTracksLoaded);
 
@@ -422,7 +432,7 @@ MpdClient::MpdClient(QObject *parent)
     // This significantly improves startup time by not blocking on MPD connection.
     QTimer::singleShot(100, this, [this]() -> void {
         // Load library from cache first for instant display
-        QList<AlbumItem> cachedAlbums = loadLibraryFromCacheInternal();
+        QVector<AlbumItem> cachedAlbums = loadLibraryFromCacheInternal();
         if (!cachedAlbums.isEmpty()) {
             handleLibraryUpdate(cachedAlbums);
         }
@@ -791,7 +801,7 @@ void MpdClient::setSortMode(SortMode mode) {
     settings.setValue("sortMode", static_cast<int>(m_sortMode));
     emit sortModeChanged();
     if (m_albumModel) {
-        QList<AlbumItem> albums = m_albumModel->m_albums;
+        QVector<AlbumItem> albums = m_albumModel->m_albums;
         sortAlbums(albums);
         m_albumModel->setAlbums(albums);
     }
@@ -908,7 +918,7 @@ void MpdClient::refreshLibrary()
         mpd_connection_free(conn);
 
         if (!albumsMap.isEmpty()) {
-            QList<AlbumItem> albums = albumsMap.values();
+            QVector<AlbumItem> albums = QVector<AlbumItem>::fromList(albumsMap.values());
             saveLibraryToCache(albums);
             QMetaObject::invokeMethod(this, [this, albums]() -> void {
                 handleLibraryUpdate(albums);
@@ -917,7 +927,7 @@ void MpdClient::refreshLibrary()
     });
 }
 
-void MpdClient::handleAlbumTracksLoaded(const QList<TrackItem> &tracks)
+void MpdClient::handleAlbumTracksLoaded(const QVector<TrackItem> &tracks)
 {
     m_trackModel->setTracks(tracks);
 }
@@ -940,8 +950,8 @@ void MpdClient::loadAlbumTracks(int index)
             return;
         }
 
-        QList<SortableSong> sortedTracks = getSongsForAlbum(conn, artistName, albumName, mbid);
-        QList<TrackItem> tracks;
+        QVector<SortableSong> sortedTracks = getSongsForAlbum(conn, artistName, albumName, mbid);
+        QVector<TrackItem> tracks;
 
         for (const auto &t : sortedTracks) {
             tracks.append({.title=t.title, .duration=t.duration, .uri=t.uri});
@@ -966,7 +976,7 @@ void MpdClient::refreshQueue()
             return;
         }
 
-        QList<QueueItem> queue;
+        QVector<QueueItem> queue;
         if (mpd_send_list_queue_meta(conn)) {
             struct mpd_entity *entity = nullptr;
             while ((entity = mpd_recv_entity(conn)) != nullptr) {
@@ -1047,11 +1057,11 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName, c
             return;
         }
 
-        QList<SortableSong> songList = getSongsForAlbum(conn, artistName, albumName, mbid);
+        QVector<SortableSong> songVector = getSongsForAlbum(conn, artistName, albumName, mbid);
 
-        if (!songList.isEmpty()) {
+        if (!songVector.isEmpty()) {
             mpd_command_list_begin(conn, false);
-            for (const auto &s : songList) {
+            for (const auto &s : songVector) {
                 mpd_send_add(conn, s.uri.toUtf8().constData());
             }
             mpd_command_list_end(conn);
@@ -1086,11 +1096,11 @@ void MpdClient::addAlbum(const QString &artistName, const QString &albumName, co
             return;
         }
 
-        QList<SortableSong> songList = getSongsForAlbum(conn, artistName, albumName, mbid);
+        QVector<SortableSong> songVector = getSongsForAlbum(conn, artistName, albumName, mbid);
 
-        if (!songList.isEmpty()) {
+        if (!songVector.isEmpty()) {
             mpd_command_list_begin(conn, false);
-            for (const auto &s : songList) {
+            for (const auto &s : songVector) {
                 mpd_send_add(conn, s.uri.toUtf8().constData());
             }
             mpd_command_list_end(conn);
@@ -1120,9 +1130,9 @@ void MpdClient::addPath(const QString &path)
     addTrack(path);
 }
 
-auto MpdClient::getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid) -> QList<SortableSong>
+auto MpdClient::getSongsForAlbum(struct mpd_connection *conn, const QString &artistName, const QString &albumName, const QString &mbid) -> QVector<SortableSong>
 {
-    QList<SortableSong> songs;
+    QVector<SortableSong> songs;
     if (!conn) return songs;
 
     auto fetchSongs = [&]() -> bool {
@@ -1217,7 +1227,7 @@ void MpdClient::browsePath(const QString &path)
             return;
         }
 
-        QList<BrowserItem> items;
+        QVector<BrowserItem> items;
 
         if (!path.isEmpty()) {
             QString parent = "";
@@ -1285,7 +1295,7 @@ void MpdClient::searchLibrary(const QString &query)
             return;
         }
 
-        QList<BrowserItem> items;
+        QVector<BrowserItem> items;
 
         // MPD's "any" tag searches title, artist, album, and filename simultaneously
         if (mpd_search_db_songs(conn, false)) {
@@ -1366,7 +1376,7 @@ void MpdClient::toggleWindow()
 void MpdClient::fetchCoverForModel(int index, const QString &albumName)
 {
     // Get safe copies of album data using thread-safe accessor
-    QList<AlbumItem> albums = m_albumModel->albums();
+    QVector<AlbumItem> albums = m_albumModel->albums();
     if (index < 0 || index >= albums.count()) return;
     
     QString mbid = albums[index].mbid;
@@ -1621,7 +1631,7 @@ auto MpdClient::getCachePath(const QString &artist, const QString &album, const 
     return cacheDir + hashName + ".jpg";
 }
 
-void MpdClient::sortAlbums(QList<AlbumItem> &albums)
+void MpdClient::sortAlbums(QVector<AlbumItem> &albums)
 {
     QCollator collator;
     collator.setNumericMode(true);
@@ -1722,7 +1732,7 @@ auto MpdClient::getMpdPicture(const QString &uri) -> QByteArray
     return {};
 }
 
-void MpdClient::saveLibraryToCache(const QList<AlbumItem> &albums)
+void MpdClient::saveLibraryToCache(const QVector<AlbumItem> &albums)
 {
     QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     QDir dir(cacheDir);
@@ -1749,7 +1759,7 @@ void MpdClient::saveLibraryToCache(const QList<AlbumItem> &albums)
     }
 }
 
-auto MpdClient::loadLibraryFromCacheInternal() -> QList<AlbumItem>
+auto MpdClient::loadLibraryFromCacheInternal() -> QVector<AlbumItem>
 {
     QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     QString cachePath = cacheDir + "/library.cache.bin";
@@ -1773,7 +1783,7 @@ auto MpdClient::loadLibraryFromCacheInternal() -> QList<AlbumItem>
         }
 
         QJsonArray jsonArray = doc.array();
-        QList<AlbumItem> albums;
+        QVector<AlbumItem> albums;
         albums.reserve(jsonArray.size());
 
         for (const auto &value : jsonArray) {
@@ -1801,7 +1811,7 @@ auto MpdClient::loadLibraryFromCacheInternal() -> QList<AlbumItem>
 
     QDataStream in(&file);
     in.setVersion(QDataStream::Qt_6_2);
-    QList<AlbumItem> albums;
+    QVector<AlbumItem> albums;
     in >> albums;
 
     file.close();
@@ -1875,7 +1885,7 @@ void MpdClient::fetchJspfPlaylist(const QString &playlistIdentifier)
         
         // Parse tracks
         QJsonArray trackArray = playlist["track"].toArray();
-        QList<PlaylistTrackItem> tracks;
+        QVector<PlaylistTrackItem> tracks;
         
         for (const auto &trackValue : trackArray) {
             QJsonObject track = trackValue.toObject();

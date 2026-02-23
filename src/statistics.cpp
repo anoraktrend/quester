@@ -1,5 +1,7 @@
 #include "statistics.h"
 #include "quester.h"
+#include <QSqlDatabase>
+#include <QMutex>
 #include <QStandardPaths>
 #include <QDir>
 #include <QSqlQuery>
@@ -284,46 +286,43 @@ auto StatisticsManager::getAllTimeStats() -> QVariantMap
 static void drawArtTile(QPainter &p, const QImage &art, const QRect &rect, int radius = 16)
 {
     if (art.isNull()) return;
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(rect, radius, radius);
+    p.setClipPath(clipPath);
+
     QImage scaled = art.scaled(rect.size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    // Centre-crop to exact rect size
-    QRect src((scaled.width() - rect.width()) / 2, (scaled.height() - rect.height()) / 2,
-              rect.width(), rect.height());
-
-    // Draw into a temp image so we can apply a round-rect clip
-    QImage tile(rect.size(), QImage::Format_ARGB32_Premultiplied);
-    tile.fill(Qt::transparent);
-    QPainter tp(&tile);
-    tp.setRenderHint(QPainter::Antialiasing);
-    tp.setRenderHint(QPainter::SmoothPixmapTransform);
-    QPainterPath clip;
-    clip.addRoundedRect(tile.rect(), radius, radius);
-    tp.setClipPath(clip);
-    tp.drawImage(QPoint(0, 0), scaled, src);
-    tp.end();
-
-    p.drawImage(rect, tile);
+    QRect srcRect((scaled.width() - rect.width()) / 2, (scaled.height() - rect.height()) / 2, rect.width(), rect.height());
+    
+    p.drawImage(rect, scaled, srcRect);
+    
+    p.restore();
 }
 
 // Helper: draw a circle-clipped image (artist portrait)
 static void drawCircleArt(QPainter &p, const QImage &art, const QPoint &center, int diameter)
 {
     if (art.isNull()) return;
-    QSize sz(diameter, diameter);
-    QImage scaled = art.scaled(sz, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    QRect src((scaled.width() - diameter) / 2, (scaled.height() - diameter) / 2, diameter, diameter);
 
-    QImage tile(sz, QImage::Format_ARGB32_Premultiplied);
-    tile.fill(Qt::transparent);
-    QPainter tp(&tile);
-    tp.setRenderHint(QPainter::Antialiasing);
-    tp.setRenderHint(QPainter::SmoothPixmapTransform);
-    QPainterPath clip;
-    clip.addEllipse(tile.rect());
-    tp.setClipPath(clip);
-    tp.drawImage(QPoint(0, 0), scaled, src);
-    tp.end();
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    p.drawImage(center.x() - diameter / 2, center.y() - diameter / 2, tile);
+    QRect rect(center.x() - diameter / 2, center.y() - diameter / 2, diameter, diameter);
+    QPainterPath clipPath;
+    clipPath.addEllipse(rect);
+    p.setClipPath(clipPath);
+
+    QImage scaled = art.scaled(rect.size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QRect srcRect((scaled.width() - rect.width()) / 2, (scaled.height() - rect.height()) / 2, rect.width(), rect.height());
+    
+    p.drawImage(rect, scaled, srcRect);
+
+    p.restore();
 }
 
 auto StatisticsManager::generateWrappedImage(const QString &period) -> QString

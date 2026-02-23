@@ -10,6 +10,7 @@
 #include <QOpenGLFramebufferObjectFormat>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 
 // projectM 4 C API
 #include <projectM-4/projectM.h>

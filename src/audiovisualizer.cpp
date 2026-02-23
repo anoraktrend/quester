@@ -39,7 +39,7 @@ constexpr double DECAY_FACTOR = 0.75;
 constexpr double MIN_SIGNAL_THRESHOLD = 0.001;
 
 template<class T>
-auto max(const T &a, const T &b) -> T
+[[nodiscard]] auto max(const T &a, const T &b) -> T
 {
     return (a < b) ? b : a;
 }
@@ -53,9 +53,9 @@ struct MonstercatParams {
 // KISS: A standalone, stateless function for the specific "Monstercat" smoothing algorithm.
 // Keeps the visualizer logic decoupled from the math.
 static void monstercat_filter(
-    QList<double> &bars, const MonstercatParams &params)
+    std::vector<double> &bars, const MonstercatParams &params)
 {
-    int number_of_bars = static_cast<int>(bars.size());
+    const int number_of_bars = static_cast<int>(bars.size());
 
     if (params.waves > 0) {
         int z = 0;
@@ -639,8 +639,8 @@ AudioVisualizer::AudioVisualizer(QObject *parent)
 {
     
     connect(m_decayTimer, &QTimer::timeout, this, &AudioVisualizer::performDecay);
-    m_magnitudes.fill(0.0, m_numBars);
-    m_smoothBuffer.fill(0.0, m_numBars);
+    m_magnitudes.assign(m_numBars, 0.0);
+    m_smoothBuffer.assign(m_numBars, 0.0);
     loadPresets();
 
     // Ensure System preset exists
@@ -703,12 +703,12 @@ void AudioVisualizer::setWidth(int width, bool forceUpdate)
         m_numBars = newNumBars;
 
         // Preserve existing magnitude data when possible by resampling
-        if (!m_magnitudes.isEmpty() && m_magnitudes.size() > 0) {
+        if (!m_magnitudes.empty() && m_magnitudes.size() > 0) {
             // Keep old values for smooth transition - they will naturally fade
-            m_smoothBuffer.fill(0.0, m_numBars);
+            m_smoothBuffer.assign(m_numBars, 0.0);
         } else {
-            m_magnitudes.fill(0.0, m_numBars);
-            m_smoothBuffer.fill(0.0, m_numBars);
+            m_magnitudes.assign(m_numBars, 0.0);
+            m_smoothBuffer.assign(m_numBars, 0.0);
         }
         
         updateBarColors();
@@ -828,7 +828,7 @@ void AudioVisualizer::start()
     computeBarRanges();
 
     m_buffer.clear();
-    m_smoothBuffer.fill(0.0, m_numBars);
+    m_smoothBuffer.assign(m_numBars, 0.0);
 
     QSettings settings(QStringLiteral("Quester"), QStringLiteral("Quester"));
 
@@ -888,42 +888,24 @@ void AudioVisualizer::stop()
     m_gist.reset();
 }
 
-void AudioVisualizer::onDataReady(const QByteArray &data)
+void AudioVisualizer::pcmToMono(const QByteArray &frameData, std::vector<double> &monoFrame)
 {
-    // Broadcast raw PCM so ProjectMItem (and any other consumer) can use it
-    emit pcmDataReady(data);
-
-    if (!m_active || !m_gist) {
-        return;
-    }
-
-    m_buffer.append(data);
-
-    // Gist expects mono audio frames of m_fft_size samples
-    int requiredBytes = m_fft_size * 2; // 2 bytes per sample (16-bit)
-
-    if (m_buffer.size() < requiredBytes) {
-        return;
-    }
-
-    // Keep only the latest requiredBytes
-    if (m_buffer.size() > requiredBytes) {
-        m_buffer = m_buffer.right(requiredBytes);
-    }
-
-    const auto *pcm = reinterpret_cast<const int16_t *>(m_buffer.constData());
-
-    // Process both channels and combine them
-    std::vector<double> monoFrame(m_fft_size);
+    const auto *pcm = reinterpret_cast<const int16_t *>(frameData.constData());
     for (int i = 0; i < m_fft_size; ++i) {
         // Average left and right channels
         double left = static_cast<double>(pcm[i * 2]) / MAX_PCM_VALUE;
         double right = static_cast<double>(pcm[i * 2 + 1]) / MAX_PCM_VALUE;
         monoFrame[i] = (left + right) / 2.0;
     }
+}
+
+void AudioVisualizer::processFrame(const QByteArray &frameData)
+{
+    // Process both channels and combine them
+    pcmToMono(frameData, m_monoFrame);
 
     // Process with Gist - this calculates the magnitude spectrum internally
-    m_gist->processAudioFrame(monoFrame);
+    m_gist->processAudioFrame(m_monoFrame);
 
     // Get the magnitude spectrum from Gist
     const std::vector<double> &magnitudeSpectrum = m_gist->getMagnitudeSpectrum();
@@ -995,7 +977,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
 
     m_magnitudes.clear();
     if (m_smoothBuffer.size() != m_numBars) {
-        m_smoothBuffer.fill(0.0, m_numBars);
+        m_smoothBuffer.assign(m_numBars, 0.0);
     }
 
     for (int i = 0; i < m_numBars; i++) {
@@ -1007,7 +989,7 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         smoothVal = smoothVal * factor + val * (1.0 - factor);
 
         val = std::min(1.0, std::max(0.0, smoothVal));
-        m_magnitudes.append(val);
+        m_magnitudes.push_back(val);
     }
 
     Q_EMIT magnitudesChanged();
@@ -1018,6 +1000,28 @@ void AudioVisualizer::onDataReady(const QByteArray &data)
         lastEmit = now;
     }
     m_decayTimer->start(DECAY_TIMER_MS);
+}
+
+void AudioVisualizer::onDataReady(const QByteArray &data)
+{
+    // Broadcast raw PCM so ProjectMItem (and any other consumer) can use it
+    emit pcmDataReady(data);
+
+    if (!m_active || !m_gist) {
+        return;
+    }
+
+    m_buffer.append(data);
+
+    // Gist expects mono audio frames of m_fft_size samples
+    const int requiredBytes = m_fft_size * 2; // 2 bytes per sample (16-bit)
+
+    while (m_buffer.size() >= requiredBytes) {
+        // Process the oldest frame
+        processFrame(m_buffer.left(requiredBytes));
+        // Remove the processed frame from the buffer
+        m_buffer.remove(0, requiredBytes);
+    }
 }
 
 void AudioVisualizer::onPulseError(const QString &errorString)
@@ -1032,7 +1036,7 @@ void AudioVisualizer::performDecay()
     m_magnitudes.clear();
 
     if (m_smoothBuffer.size() != m_numBars) {
-        m_smoothBuffer.fill(0.0, m_numBars);
+        m_smoothBuffer.assign(m_numBars, 0.0);
     }
 
     for (int i = 0; i < m_numBars; i++) {
@@ -1040,7 +1044,7 @@ void AudioVisualizer::performDecay()
         smoothVal *= DECAY_FACTOR;
         if (smoothVal < MIN_SIGNAL_THRESHOLD) smoothVal = 0.0;
 
-        m_magnitudes.append(smoothVal);
+        m_magnitudes.push_back(smoothVal);
 
         if (smoothVal > 0.0) hasSignal = true;
     }
@@ -1056,7 +1060,7 @@ void AudioVisualizer::performDecay()
 
 auto AudioVisualizer::magnitudes() const -> QList<qreal>
 {
-    return m_magnitudes;
+    return QList<qreal>(m_magnitudes.begin(), m_magnitudes.end());
 }
 
 auto AudioVisualizer::active() const -> bool
@@ -1392,19 +1396,15 @@ OSStatus CoreAudioInput::audioTapCallback(void *inClientData, AudioUnitRenderAct
     bufferList.mNumberBuffers = 1;
     bufferList.mBuffers[0].mNumberChannels = self->m_streamFormat.mChannelsPerFrame;
     bufferList.mBuffers[0].mDataByteSize = inNumberFrames * self->m_streamFormat.mBytesPerFrame;
-    bufferList.mBuffers[0].mData = malloc(bufferList.mBuffers[0].mDataByteSize);
+    std::vector<char> audioBuffer(bufferList.mBuffers[0].mDataByteSize);
+    bufferList.mBuffers[0].mData = audioBuffer.data();
 
     // Render the audio into our buffer
     OSStatus status = AudioUnitRender(self->m_remoteIOUnit, ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, &bufferList);
-    if (status == noErr && bufferList.mBuffers[0].mData) {
+    if (status == noErr) {
         // Convert to QByteArray and emit signal
-        QByteArray data(static_cast<char *>(bufferList.mBuffers[0].mData), bufferList.mBuffers[0].mDataByteSize);
+        QByteArray data(audioBuffer.data(), audioBuffer.size());
         emit self->dataReady(data);
-    }
-
-    // Clean up
-    if (bufferList.mBuffers[0].mData) {
-        free(bufferList.mBuffers[0].mData);
     }
 
     return noErr;
