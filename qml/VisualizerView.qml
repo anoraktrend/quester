@@ -178,12 +178,14 @@ Item {
         blur: 1
         saturation: 0.8
         brightness: -0.5
+        visible: visualizerSettings.visualizerStyle !== 2
     }
 
     MultiEffect {
         anchors.fill: parent
         source: bg
         brightness: -0.3
+        visible: visualizerSettings.visualizerStyle !== 2
     }
 
     Canvas {
