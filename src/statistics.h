@@ -132,4 +132,6 @@ private:
     QString m_pendingLastfmToken;
 };
 
+Q_DECLARE_METATYPE(StatisticsManager*)
+
 #endif // STATISTICS_H

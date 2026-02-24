@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QAbstractListModel>
+#include <QMetaType>
 #include <mpd/client.h>
 #include <QElapsedTimer>
 #include <QMutex>
@@ -22,6 +23,10 @@ class QMenu;
 class QAction;
 class QJSValue;
 class StatisticsManager;
+
+#include "statistics.h"
+
+Q_DECLARE_OPAQUE_POINTER(StatisticsManager)
 
 struct AlbumItem {
     QString artist; // Added artist for more accurate searches

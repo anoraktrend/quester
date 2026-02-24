@@ -5,6 +5,7 @@
 #include <QDBusObjectPath>
 #include <algorithm>
 #include <utility>
+#include <QQuickWindow>
 
 const int PLAYLIST_PATH_PREFIX_LENGTH = 34;
 const qint64 MICROSECONDS_PER_SECOND = 1000000;
