@@ -45,7 +45,6 @@
 #include <QVector>
 
 constexpr int TIMER_INTERVAL = 100;
-constexpr int MPD_PORT = 6600;
 constexpr int MPD_TIMEOUT_MS = 30000;
 constexpr int SECONDS_PER_MINUTE = 60;
 constexpr int DECIMAL_BASE = 10;
@@ -398,6 +397,8 @@ MpdClient::MpdClient(QObject *parent)
     QSettings settings("Quester", "Quester");
     m_sortMode = static_cast<SortMode>(settings.value("sortMode", static_cast<int>(SortMode::Artist)).toInt());
     m_audioSource = settings.value("audioSource", "pipewire").toString();
+    m_mpdHost = settings.value("mpdHost", "localhost").toString();
+    m_mpdPort = settings.value("mpdPort", 6600).toInt();
 
     m_stats->setListenBrainzCredentials(settings.value("listenBrainzToken").toString(),
                                         settings.value("listenBrainzUsername").toString());
@@ -457,7 +458,7 @@ MpdClient::~MpdClient()
 
 void MpdClient::connectToMpd()
 {
-    m_connection = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+    m_connection = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
     if (mpd_connection_get_error(m_connection) != MPD_ERROR_SUCCESS) {
         qWarning() << "Failed to connect to MPD:" << mpd_connection_get_error_message(m_connection);
         mpd_connection_free(m_connection);
@@ -814,6 +815,38 @@ void MpdClient::setAudioSource(const QString &source) {
     emit audioSourceChanged();
 }
 
+void MpdClient::setMpdHost(const QString &host) {
+    if (m_mpdHost == host) return;
+    m_mpdHost = host;
+    QSettings settings("Quester", "Quester");
+    settings.setValue("mpdHost", m_mpdHost);
+    emit mpdHostChanged();
+    
+    // Reconnect to MPD with new settings
+    if (m_connection) {
+        leaveIdle();
+        mpd_connection_free(m_connection);
+        m_connection = nullptr;
+    }
+    connectToMpd();
+}
+
+void MpdClient::setMpdPort(int port) {
+    if (m_mpdPort == port) return;
+    m_mpdPort = port;
+    QSettings settings("Quester", "Quester");
+    settings.setValue("mpdPort", m_mpdPort);
+    emit mpdPortChanged();
+    
+    // Reconnect to MPD with new settings
+    if (m_connection) {
+        leaveIdle();
+        mpd_connection_free(m_connection);
+        m_connection = nullptr;
+    }
+    connectToMpd();
+}
+
 // KISS: The MpdClient acts as the main controller. While separating window management
 // might be architecturally "purer", keeping it here simplifies the QML interface
 // and reduces the number of context properties / singletons required.
@@ -846,7 +879,7 @@ void MpdClient::seekTo(double time)
 void MpdClient::refreshLibrary()
 {
     QThreadPool::globalInstance()->start([this]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -943,7 +976,7 @@ void MpdClient::loadAlbumTracks(int index)
     QString mbid = album.mbid;
 
     QThreadPool::globalInstance()->start([this, artistName, albumName, mbid]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -969,7 +1002,7 @@ void MpdClient::refreshQueue()
         return;
 
     QThreadPool::globalInstance()->start([this]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -1044,7 +1077,7 @@ void MpdClient::playAlbum(const QString &artistName, const QString &albumName, c
         return;
 
     QThreadPool::globalInstance()->start([this, artistName, albumName, mbid]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -1089,7 +1122,7 @@ void MpdClient::addAlbum(const QString &artistName, const QString &albumName, co
         return;
 
     QThreadPool::globalInstance()->start([this, artistName, albumName, mbid]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -1220,7 +1253,7 @@ auto MpdClient::getSongsForAlbum(struct mpd_connection *conn, const QString &art
 void MpdClient::browsePath(const QString &path)
 {
     QThreadPool::globalInstance()->start([this, path]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -1288,7 +1321,7 @@ void MpdClient::searchLibrary(const QString &query)
     const QString q = query.trimmed();
 
     QThreadPool::globalInstance()->start([this, q]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);
@@ -2284,7 +2317,7 @@ struct DuplicateGroup {
 void MpdClient::findDuplicates()
 {
     QThreadPool::globalInstance()->start([this]() -> void {
-        struct mpd_connection *conn = mpd_connection_new("localhost", MPD_PORT, MPD_TIMEOUT_MS);
+        struct mpd_connection *conn = mpd_connection_new(m_mpdHost.toUtf8().constData(), m_mpdPort, MPD_TIMEOUT_MS);
         if (mpd_connection_get_error(conn) != MPD_ERROR_SUCCESS) {
             qWarning() << "Failed to connect to MPD in background thread:" << mpd_connection_get_error_message(conn);
             mpd_connection_free(conn);

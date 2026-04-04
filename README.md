@@ -97,7 +97,7 @@ sudo apt install build-essential cmake \
 
 ## Usage
 
-Ensure your MPD server is running. By default, Quester attempts to connect to `localhost` on port `6600`.
+Ensure your MPD server is running. By default, Quester attempts to connect to `localhost` on port `6600`. You can change these settings in the **General** tab of the **Settings** window.
 
 Run the application from the build directory:
 

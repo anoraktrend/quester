@@ -258,6 +258,8 @@ class MpdClient : public QObject
     Q_PROPERTY(QVariantMap yearlyStats READ yearlyStats NOTIFY yearlyStatsChanged)
     Q_PROPERTY(QVariantMap allTimeStats READ allTimeStats NOTIFY allTimeStatsChanged)
     Q_PROPERTY(QString audioSource READ audioSource WRITE setAudioSource NOTIFY audioSourceChanged)
+    Q_PROPERTY(QString mpdHost READ mpdHost WRITE setMpdHost NOTIFY mpdHostChanged)
+    Q_PROPERTY(int mpdPort READ mpdPort WRITE setMpdPort NOTIFY mpdPortChanged)
     Q_PROPERTY(StatisticsManager* statistics READ statistics CONSTANT)
     Q_PROPERTY(PlaylistModel* playlistModel READ playlistModel CONSTANT)
     Q_PROPERTY(PlaylistTrackModel* playlistTrackModel READ playlistTrackModel CONSTANT)
@@ -356,6 +358,8 @@ public:
     [[nodiscard]] QString albumArt() const;
     [[nodiscard]] auto random() const -> bool { return m_random; }
     [[nodiscard]] auto audioSource() const -> QString { return m_audioSource; }
+    [[nodiscard]] auto mpdHost() const -> QString { return m_mpdHost; }
+    [[nodiscard]] auto mpdPort() const -> int { return m_mpdPort; }
     [[nodiscard]] auto playlists() const -> QStringList { return m_playlists; }
     [[nodiscard]] auto state() const -> QString { return m_state; }
     [[nodiscard]] auto single() const -> bool { return m_single; }
@@ -376,6 +380,8 @@ public Q_SLOTS:
     void setVolume(int volume);
     void setSortMode(SortMode mode);
     void setAudioSource(const QString &source);
+    void setMpdHost(const QString &host);
+    void setMpdPort(int port);
     void cleanup();
 
     // Playback controls
@@ -447,6 +453,8 @@ Q_SIGNALS:
     void yearlyStatsChanged();
     void allTimeStatsChanged();
     void audioSourceChanged();
+    void mpdHostChanged();
+    void mpdPortChanged();
     void listenBrainzTokenChanged();
     void listenBrainzUsernameChanged();
     void lastfmCredentialsValidChanged();
@@ -487,6 +495,8 @@ private:
     QStringList m_playlists;
     SortMode m_sortMode = SortMode::Artist;
     QString m_audioSource;
+    QString m_mpdHost;
+    int m_mpdPort;
 
     QQuickWindow *m_window = nullptr;
 

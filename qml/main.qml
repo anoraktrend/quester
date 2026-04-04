@@ -991,7 +991,6 @@ Kirigami.ApplicationWindow {
                         icon.height: 32 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.previous()
-                        flat: true
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Previous Track")
                     }
@@ -1002,7 +1001,6 @@ Kirigami.ApplicationWindow {
                         icon.height: 48 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.togglePlayPause()
-                        flat: true
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Play/Pause")
                     }
@@ -1013,7 +1011,6 @@ Kirigami.ApplicationWindow {
                         icon.height: 32 * window.fontScale
                         icon.color: window.themeTextColor
                         onClicked: mpdClient.next()
-                        flat: true
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Next Track")
                     }
@@ -1027,7 +1024,6 @@ Kirigami.ApplicationWindow {
                     icon.name: "go-previous"
                     icon.color: window.themeTextColor
                     onClicked: coverFlow.state = "libraryView"
-                    flat: true
                 }
             }
 

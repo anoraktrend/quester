@@ -31,6 +31,8 @@ Window {
             // General settings
             "sortMode": mpdClient.sortMode,
             "consume": mpdClient.consume,
+            "mpdHost": mpdClient.mpdHost,
+            "mpdPort": mpdClient.mpdPort,
             "listenBrainzUsername": mpdClient.listenBrainzUsername,
             "listenBrainzToken": mpdClient.listenBrainzToken,
             // Visualizer settings
@@ -60,6 +62,8 @@ Window {
         // General settings
         mpdClient.sortMode = initialValues.sortMode;
         mpdClient.consume = initialValues.consume;
+        mpdClient.mpdHost = initialValues.mpdHost;
+        mpdClient.mpdPort = initialValues.mpdPort;
         mpdClient.listenBrainzUsername = initialValues.listenBrainzUsername;
         mpdClient.listenBrainzToken = initialValues.listenBrainzToken;
         // Visualizer settings
@@ -114,13 +118,39 @@ Window {
             Kirigami.FormLayout {
                 Kirigami.Heading {
                     level: 4
+                    text: qsTr("MPD Connection")
+                }
+
+                TextField {
+                    id: mpdHostField
+                    Kirigami.FormData.label: qsTr("MPD Host:")
+                    text: mpdClient.mpdHost
+                    onEditingFinished: mpdClient.mpdHost = text
+                }
+
+                SpinBox {
+                    id: mpdPortField
+                    Kirigami.FormData.label: qsTr("MPD Port:")
+                    from: 1
+                    to: 65535
+                    editable: true
+                    value: mpdClient.mpdPort
+                    onValueModified: mpdClient.mpdPort = value
+                }
+
+                Kirigami.Separator {
+                    Layout.fillWidth: true
+                }
+
+                Kirigami.Heading {
+                    level: 4
                     text: qsTr("Sort Library By:")
                 }
 
                 RadioButton {
                     text: qsTr("Artist")
-                    checked: mpdClient.sortMode === MpdClient.AlbumArtist
-                    onClicked: mpdClient.sortMode = MpdClient.AlbumArtist
+                    checked: mpdClient.sortMode === MpdClient.Artist
+                    onClicked: mpdClient.sortMode = MpdClient.Artist
                 }
 
                 RadioButton {
