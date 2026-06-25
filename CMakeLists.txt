@@ -162,7 +162,6 @@ find_package(Qt6 REQUIRED COMPONENTS Xml)
 # Find libmpdclient using pkg-config
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MPDCLIENT REQUIRED IMPORTED_TARGET libmpdclient)
-
 qt_add_resources(quester_resources resources/resources.qrc)
 
 # Linux-specific audio libraries
@@ -181,19 +180,15 @@ if(APPLE)
     message(STATUS "Apple platform detected - using Accelerate FFT")
     set(GIST_USE_FFT "ACCELERATE")
 elseif(UNIX AND NOT ANDROID)
-    # Check for FFTW on Linux/Unix
-    # First try pkg-config
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(FFTW3 QUIET libfftw3)
     endif()
-    
-    # If pkg-config didn't find it, try CMake's FindFFTW3 module
+
     if(NOT FFTW3_FOUND)
         find_package(FFTW3 QUIET)
     endif()
-    
-    # Manual fallback: check for known FFTW3 locations
+
     if(NOT FFTW3_FOUND)
         if(EXISTS "/usr/include/fftw3.h")
             message(STATUS "FFTW3 found manually at /usr/include/fftw3.h")
@@ -202,11 +197,10 @@ elseif(UNIX AND NOT ANDROID)
             set(FFTW3_LIBRARIES "/usr/lib/libfftw3.so")
         endif()
     endif()
-    
+
     if(FFTW3_FOUND)
         message(STATUS "FFTW3 found - using FFTW")
         set(GIST_USE_FFT "FFTW")
-        # Create imported target for FFTW3 if not already available
         if(NOT TARGET FFTW3::FFTW)
             if(FFTW3_LIBRARIES)
                 add_library(FFTW3::FFTW STATIC IMPORTED)
@@ -346,18 +340,15 @@ else()
     set(MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION})
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
     
-    # Install the application bundle
     install(TARGETS quester
         BUNDLE DESTINATION .
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
     
-    # Install presets into the application bundle
     install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/presets/visualizerGradients/
         DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources/presets
     )
     
-    # Install application icon
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/Quester512.png
         DESTINATION ${CMAKE_INSTALL_PREFIX}/Quester.app/Contents/Resources
         RENAME Quester.icns
