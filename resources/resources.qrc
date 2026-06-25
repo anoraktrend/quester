@@ -2,9 +2,5 @@
     <qresource prefix="/">
         <file>Quester.svg</file>
         <file>Quester512.png</file>
-        <file>../qml/main.qml</file>
-        <file>../qml/VisualizerView.qml</file>
-        <file>../qml/WrappedView.qml</file>
-        <file>../qml/SettingsWindow.qml</file>
     </qresource>
 </RCC>

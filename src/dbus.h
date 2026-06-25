@@ -11,8 +11,6 @@
 #include <QDBusVariant>
 #include <QVariantMap>
 #include <QVariantList>
-#include <QtDBus>
-#include <QtCore>
 
 #include "quester.h"
 

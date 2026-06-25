@@ -18,7 +18,6 @@
 #include <QThread>
 #include <QNetworkAccessManager>
 #include <QXmlStreamReader>
-#include <QDesktopServices>
 #include <QUrl>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -1156,54 +1155,29 @@ void StatisticsManager::getLastfmToken()
         }
         
         if (reply->error() == QNetworkReply::NoError) {
-
             QXmlStreamReader reader(response);
-
             QString token;
-
             bool statusOk = false;
-
             while (!reader.atEnd()) {
-
                 reader.readNext();
-
                 if (reader.isStartElement()) {
-
                     if (reader.name() == "lfm") {
-
                         if (reader.attributes().value("status") == "ok") {
-
                             statusOk = true;
-
                         }
-
                     } else if (reader.name() == "token" && statusOk) {
-
                         token = reader.readElementText();
-
                         break;
-
                     }
-
                 }
-
             }
-
             if (reader.hasError()) {
-
                 qWarning() << "[Last.fm] Failed to parse XML token response:" << reader.errorString();
-
             } else if (statusOk && !token.isEmpty()) {
-
                 qDebug() << "[Last.fm] Got token:" << token;
-
                 QString authUrl = getLastfmAuthUrl(token);
-
                 qDebug() << "[Last.fm] Opening auth URL:" << authUrl;
-
                 emit lastfmAuthTokenReceived(token, authUrl);
-
-                QDesktopServices::openUrl(QUrl(authUrl));
                 
                 // Automatically complete authentication after token is received
                 // This eliminates the need for the "Complete Last.fm Auth" button
@@ -1213,15 +1187,10 @@ void StatisticsManager::getLastfmToken()
                 });
 
             } else {
-
                 qWarning() << "[Last.fm] Bad response status or no token";
-
             }
-
         } else {
-
             qWarning() << "[Last.fm] Token request error:" << reply->errorString();
-
         }
     });
 }
@@ -1266,67 +1235,36 @@ void StatisticsManager::getLastfmSessionKey(const QString &token)
         }
 
         if (reply->error() == QNetworkReply::NoError) {
-
             QXmlStreamReader reader(response);
-
             QString sessionKey;
-
             QString username;
-
             bool statusOk = false;
-
             while (!reader.atEnd()) {
-
                 reader.readNext();
-
                 if (reader.isStartElement()) {
-
                     if (reader.name() == "lfm") {
-
                         if (reader.attributes().value("status") == "ok") {
-
                             statusOk = true;
-
                         }
-
                     } else if (reader.name() == "key" && statusOk) {
-
                         sessionKey = reader.readElementText();
-
                     } else if (reader.name() == "name" && statusOk) {
-
                         username = reader.readElementText();
-
                     }
-
                 }
-
             }
-
             if (reader.hasError()) {
-
                 qWarning() << "[Last.fm] Failed to parse XML session response:" << reader.errorString();
-
             } else if (statusOk && !sessionKey.isEmpty()) {
-
                 setLastfmCredentialsInternal(m_lastfmApiKey, m_lastfmSecret, sessionKey);
-
                 m_lastfmUsername = username;
-
                 emit lastfmUsernameChanged();
-
                 qDebug() << "[Last.fm] Authenticated as:" << username << "with session key:" << sessionKey;
-
             } else {
-
                 qWarning() << "[Last.fm] Bad response status or no session key";
-
             }
-
         } else {
-
             qWarning() << "[Last.fm] Session key request error:" << reply->errorString();
-
         }
     });
 }

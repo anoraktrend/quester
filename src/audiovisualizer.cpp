@@ -1004,7 +1004,7 @@ void AudioVisualizer::processFrame(const QByteArray &frameData)
 
 void AudioVisualizer::onDataReady(const QByteArray &data)
 {
-    // Broadcast raw PCM so ProjectMItem (and any other consumer) can use it
+    // Broadcast raw PCM for any consumer (e.g., external visualizer)
     emit pcmDataReady(data);
 
     if (!m_active || !m_gist) {

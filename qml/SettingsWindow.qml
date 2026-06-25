@@ -42,19 +42,7 @@ Window {
             "visualizerBarGap": visualizerView.settings.visualizerBarGap,
             "visualizerBarOpacity": visualizerView.settings.visualizerBarOpacity,
             "visualizerGradient": visualizerView.settings.visualizerGradient,
-            // ProjectM settings
-            "projectMPresetPath": visualizerView.settings.projectMPresetPath,
-            "projectMTextureSize": visualizerView.settings.projectMTextureSize,
-            "projectMMeshX": visualizerView.settings.projectMMeshX,
-            "projectMMeshY": visualizerView.settings.projectMMeshY,
-            "projectMFPS": visualizerView.settings.projectMFPS,
-            "projectMSmoothPresetDuration": visualizerView.settings.projectMSmoothPresetDuration,
-            "projectMPresetDuration": visualizerView.settings.projectMPresetDuration,
-            "projectMBeatSensitivity": visualizerView.settings.projectMBeatSensitivity,
-            "projectMShuffleEnabled": visualizerView.settings.projectMShuffleEnabled,
-            "projectMSelectedPreset": visualizerView.settings.projectMSelectedPreset,
-            "projectMShowBars": visualizerView.settings.projectMShowBars,
-            "projectMBarOpacity": visualizerView.settings.projectMBarOpacity
+            // (projectM settings removed)
         };
     }
 
@@ -73,17 +61,7 @@ Window {
         visualizerView.settings.visualizerBarGap = initialValues.visualizerBarGap;
         visualizerView.settings.visualizerBarOpacity = initialValues.visualizerBarOpacity;
         visualizerView.settings.visualizerGradient = initialValues.visualizerGradient;
-        // projectM settings
-        visualizerView.settings.projectMPresetPath        = initialValues.projectMPresetPath;
-        visualizerView.settings.projectMBeatSensitivity   = initialValues.projectMBeatSensitivity;
-        visualizerView.settings.projectMPresetDuration    = initialValues.projectMPresetDuration;
-        visualizerView.settings.projectMSoftCutDuration   = initialValues.projectMSoftCutDuration ?? 3.0;
-        visualizerView.settings.projectMMeshX             = initialValues.projectMMeshX;
-        visualizerView.settings.projectMMeshY             = initialValues.projectMMeshY;
-        visualizerView.settings.projectMFPS               = initialValues.projectMFPS;
-        visualizerView.settings.projectMShuffleEnabled    = initialValues.projectMShuffleEnabled;
-        visualizerView.settings.projectMShowBars          = initialValues.projectMShowBars;
-        visualizerView.settings.projectMBarOpacity        = initialValues.projectMBarOpacity;
+        // (projectM settings removed)
     }
 
     Settings {
@@ -118,19 +96,19 @@ Window {
             Kirigami.FormLayout {
                 Kirigami.Heading {
                     level: 4
-                    text: qsTr("MPD Connection")
+                    text: qsTr("MPD / Mopidy Connection")
                 }
 
                 TextField {
                     id: mpdHostField
-                    Kirigami.FormData.label: qsTr("MPD Host:")
+                    Kirigami.FormData.label: qsTr("Host:")
                     text: mpdClient.mpdHost
                     onEditingFinished: mpdClient.mpdHost = text
                 }
 
                 SpinBox {
                     id: mpdPortField
-                    Kirigami.FormData.label: qsTr("MPD Port:")
+                    Kirigami.FormData.label: qsTr("Port:")
                     from: 1
                     to: 65535
                     editable: true
@@ -273,7 +251,7 @@ Window {
                     }
 
                     ComboBox {
-                        model: [qsTr("Bars"), qsTr("Wave Circle"), qsTr("Milkdrop (projectM)")]
+                        model: [qsTr("Bars"), qsTr("Wave Circle")]
                         currentIndex: visualizerView.settings.visualizerStyle
                         onActivated: visualizerView.settings.visualizerStyle = currentIndex
                     }
@@ -309,150 +287,6 @@ Window {
                         to: 1
                         value: visualizerView.settings.visualizerBarOpacity
                         onValueChanged: visualizerView.settings.visualizerBarOpacity = value
-                    }
-
-                    // ── projectM / Milkdrop Settings ──────────────────────────────
-                    // Shown only when style 2 (Milkdrop) is selected.
-                    Kirigami.Separator {
-                        Layout.fillWidth: true
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    Kirigami.Heading {
-                        level: 4
-                        text: qsTr("Milkdrop (projectM) Settings")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    Label {
-                        text: qsTr("Preset Folder:")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    RowLayout {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        Layout.fillWidth: true
-                        TextField {
-                            id: presetPathField
-                            Layout.fillWidth: true
-                            placeholderText: qsTr("/usr/share/projectM/presets")
-                            text: visualizerView.settings.projectMPresetPath
-                            onEditingFinished: visualizerView.settings.projectMPresetPath = text
-                        }
-                    }
-
-                    Label {
-                        text: qsTr("Beat Sensitivity:")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    Slider {
-                        id: beatSensSlider
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        from: 0.0
-                        to: 5.0
-                        stepSize: 0.05
-                        value: visualizerView.settings.projectMBeatSensitivity
-                        onValueChanged: visualizerView.settings.projectMBeatSensitivity = value
-                        Label {
-                            anchors { left: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 4 }
-                            text: beatSensSlider.value.toFixed(2)
-                        }
-                    }
-
-                    Label {
-                        text: qsTr("Preset Duration (s):")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    SpinBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        from: 1
-                        to: 300
-                        value: visualizerView.settings.projectMPresetDuration
-                        onValueChanged: visualizerView.settings.projectMPresetDuration = value
-                    }
-
-                    Label {
-                        text: qsTr("Soft-cut Duration (s):")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    SpinBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        from: 1
-                        to: 30
-                        value: visualizerView.settings.projectMSoftCutDuration
-                        onValueChanged: visualizerView.settings.projectMSoftCutDuration = value
-                    }
-
-                    Label {
-                        text: qsTr("Target FPS:")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    SpinBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        from: 15
-                        to: 144
-                        value: visualizerView.settings.projectMFPS
-                        onValueChanged: visualizerView.settings.projectMFPS = value
-                    }
-
-                    Label {
-                        text: qsTr("Mesh Size:")
-                        visible: visualizerView.settings.visualizerStyle === 2
-                    }
-
-                    RowLayout {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        Label { text: qsTr("W:") }
-                        SpinBox {
-                            from: 4; to: 256
-                            value: visualizerView.settings.projectMMeshX
-                            onValueChanged: visualizerView.settings.projectMMeshX = value
-                        }
-                        Label { text: qsTr("H:") }
-                        SpinBox {
-                            from: 4; to: 256
-                            value: visualizerView.settings.projectMMeshY
-                            onValueChanged: visualizerView.settings.projectMMeshY = value
-                        }
-                    }
-
-                    CheckBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        text: qsTr("Shuffle Presets")
-                        checked: visualizerView.settings.projectMShuffleEnabled
-                        onToggled: visualizerView.settings.projectMShuffleEnabled = checked
-                    }
-
-                    CheckBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        text: qsTr("Lock Current Preset")
-                        checked: visualizerView.settings.projectMPresetLocked
-                        onToggled: visualizerView.settings.projectMPresetLocked = checked
-                    }
-
-                    CheckBox {
-                        visible: visualizerView.settings.visualizerStyle === 2
-                        text: qsTr("Overlay Spectrum Bars")
-                        checked: visualizerView.settings.projectMShowBars
-                        onToggled: visualizerView.settings.projectMShowBars = checked
-                    }
-
-                    Label {
-                        text: qsTr("Overlay Bar Opacity:")
-                        visible: visualizerView.settings.visualizerStyle === 2 && visualizerView.settings.projectMShowBars
-                    }
-
-                    Slider {
-                        visible: visualizerView.settings.visualizerStyle === 2 && visualizerView.settings.projectMShowBars
-                        from: 0.05
-                        to: 1.0
-                        stepSize: 0.05
-                        value: visualizerView.settings.projectMBarOpacity
-                        onValueChanged: visualizerView.settings.projectMBarOpacity = value
                     }
 
                 }

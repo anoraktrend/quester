@@ -13,7 +13,7 @@ class StatisticsManager : public QObject
 {
     Q_OBJECT
 public:
-    static constexpr int FIFTY = 50;
+    static constexpr int DEFAULT_LIMIT = 50;
     explicit StatisticsManager(QObject *parent = nullptr);
     ~StatisticsManager() override;
 
@@ -32,7 +32,7 @@ public:
     Q_INVOKABLE QVariantMap getYearlyStats();
     Q_INVOKABLE QVariantMap getAllTimeStats();
     Q_INVOKABLE QString generateWrappedImage(const QString &period);
-    Q_INVOKABLE QList<QString> getMostPlayedUris(int limit = FIFTY);
+    Q_INVOKABLE QList<QString> getMostPlayedUris(int limit = DEFAULT_LIMIT);
     Q_INVOKABLE void fetchExternalActivityData(const QString &period);
     Q_INVOKABLE QString artistImageUrl(const QString &artist);
 

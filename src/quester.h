@@ -15,8 +15,6 @@ class QTimer;
 class QSocketNotifier;
 class QNetworkAccessManager;
 class QNetworkReply;
-class QDir;
-class QStandardPaths;
 class QQuickWindow;
 class QSystemTrayIcon;
 class QMenu;
@@ -305,6 +303,7 @@ private:
     };
     Q_ENUM(SortMode)
 
+public:
     [[nodiscard]] qint64 duration() const;
     [[nodiscard]] int currentAlbumIndex() const;
     [[nodiscard]] QString currentPath() const;

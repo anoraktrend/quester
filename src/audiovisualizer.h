@@ -22,7 +22,6 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <Accelerate/Accelerate.h>
 #endif
-#include <QMutex>
 #include <QColor>
 #include <QVariantList>
 #include <thread>
@@ -249,7 +248,7 @@ signals:
     void visualizerBarGapChanged();
     void fifoPathChanged();
     // Emitted with every raw stereo-interleaved int16 PCM chunk
-    // (same data that feeds Gist). Consumed by ProjectMItem.
+    // (same data that feeds Gist).
     void pcmDataReady(const QByteArray &data);
 
 private:

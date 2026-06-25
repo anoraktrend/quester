@@ -1,6 +1,6 @@
 # Quester [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> ## A modern, visually rich MPD client built with Qt 6 and QML
+> ## A modern, visually rich MPD and Mopidy client built with Qt 6 and QML
 
 ## Table of Contents
 
@@ -9,6 +9,7 @@
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Mopidy Support](#mopidy-support)
 - [Visualizer Configuration](#visualizer-configuration)
 - [Statistics & Scrobbling](#statistics--scrobbling)
 - [Contributing](#contributing)
@@ -16,7 +17,7 @@
 
 ## About
 
-Quester is a desktop client for the Music Player Daemon (MPD). It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your music library.
+Quester is a desktop client for the Music Player Daemon (MPD) and **Mopidy**. It provides a fluid user interface focused on album art and visual feedback. Built using C++ and Qt Quick (QML), it aims to offer a lightweight yet visually appealing way to browse and play your music library.
 
 ## Features
 
@@ -24,8 +25,8 @@ Quester is a desktop client for the Music Player Daemon (MPD). It provides a flu
 - **Dual Visualizers:**
   - **Spectrum Analyzer:** Custom bar visualizer using FFTW with customizable color presets.
 - **MPRIS Support:** Full D-Bus integration for control via system media keys, desktop widgets, and multimedia keyboards.
-- **Multiple Audio Sources:** Support for PulseAudio, PipeWire, FIFO (MPD audio output), and macOS CoreAudio.
-- **Automatic Artwork:** Fetches album art from MPD (embedded/local), TheAudioDB, or Last.fm.
+- **Multiple Audio Sources:** Support for PulseAudio, PipeWire, FIFO (MPD/Mopidy audio output), and macOS CoreAudio.
+- **Automatic Artwork:** Fetches album art from MPD/Mopidy (embedded/local), TheAudioDB, or Last.fm.
 - **Playback Control:** Standard controls (Play, Pause, Next, Previous) and seek bar.
 - **Queue Management:** Manage your play queue and playlists easily.
 - **Statistics Tracking:** Track your listening habits with weekly, monthly, yearly, and all-time stats.
@@ -104,6 +105,28 @@ Run the application from the build directory:
 ```bash
 ./quester
 ```
+
+## Mopidy Support
+
+Quester fully supports **Mopidy** through its MPD extension. Mopidy allows you to play music from various sources like Spotify, SoundCloud, TuneIn, and your local library.
+
+### Setup
+
+To set up Mopidy for use with Quester, you can use the provided setup script:
+
+```bash
+python3 setup_mopidy.py
+```
+
+This script will:
+1. Install Mopidy and required extensions for your platform.
+2. Create a default configuration at `~/.config/mopidy/mopidy.conf`.
+3. Configure the **MPD extension** on port 6600.
+4. Set up the **audio output** to use a FIFO pipe (`/tmp/mpd.fifo`) so the Quester visualizer works correctly.
+
+### Configuration
+
+In Quester's **Settings > General**, ensure the host and port match your Mopidy server (default is `127.0.0.1` and `6600`).
 
 ## Visualizer Configuration
 

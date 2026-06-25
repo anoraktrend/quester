@@ -1,9 +1,6 @@
 #include "audiovisualizer.h"
 #include "quester.h"
 #include "dbus.h"
-#ifdef HAVE_PROJECTM
-#include "projectmvisualizer.h"
-#endif
 #include <QFileInfo>
 #include <QApplication>
 #include <QIcon>
@@ -146,7 +143,6 @@ auto main(int argc, char *argv[]) -> int
     bool showHelp = false;
     bool startMinimized = false;
     bool startFullscreen = false;
-    QString presetPath;
     QString audioSource;
     QString startView = "library";  // Possible values: library, visualizer, queue, playlists, wrapped
     QString startViewMode = "flow"; // Possible values: flow, grid, browser
@@ -165,8 +161,6 @@ auto main(int argc, char *argv[]) -> int
             startMinimized = true;
         } else if (std::strcmp(arg, "--fullscreen") == 0 || std::strcmp(arg, "-f") == 0) {
             startFullscreen = true;
-        } else if (std::strcmp(arg, "--preset-path") == 0 && (i + 1 < argc)) {
-            presetPath = QString::fromUtf8(argv[++i]); // NOLINT
         } else if (std::strcmp(arg, "--audio-source") == 0 && (i + 1 < argc)) {
             audioSource = QString::fromUtf8(argv[++i]); // NOLINT
         } else if (std::strcmp(arg, "--view") == 0 && (i + 1 < argc)) {
@@ -192,7 +186,6 @@ auto main(int argc, char *argv[]) -> int
         std::cout << "  --view-mode <mode>        Start with specific coverflow mode (flow, grid, browser)\n";
         std::cout << "  --minimized, -m           Start minimized to system tray\n";
         std::cout << "  --fullscreen, -f          Start in fullscreen mode\n";
-        std::cout << "  --preset-path <path>      Set custom projectM preset path\n";
 #ifdef __APPLE__
         std::cout << "  --audio-source <source>   Set audio input source (coreaudio, fifo)\n";
 #else
@@ -375,9 +368,6 @@ auto main(int argc, char *argv[]) -> int
 
     // Apply command-line settings to QSettings for persistence
     QSettings settings("Quester", "Quester");
-    if (!presetPath.isEmpty()) {
-        settings.setValue("projectMPresetPath", presetPath);
-    }
     if (!audioSource.isEmpty()) {
         settings.setValue("audioSource", audioSource);
         mpdClient.setAudioSource(audioSource);
@@ -387,9 +377,6 @@ auto main(int argc, char *argv[]) -> int
     qmlRegisterUncreatableType<MpdClient>("Quester", 1, 0, "MpdClient", "Enums");
     qmlRegisterUncreatableType<DBusService>("Quester", 1, 0, "DBusService", "Enums");
     qmlRegisterUncreatableType<StatisticsManager>("Quester", 1, 0, "StatisticsManager", "Managed by MpdClient");
-#ifdef HAVE_PROJECTM
-    qmlRegisterType<ProjectMItem>("Quester", 1, 0, "ProjectMVisualizer");
-#endif
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeImageProvider); // NOLINT(cppcoreguidelines-owning-memory)
@@ -402,7 +389,7 @@ auto main(int argc, char *argv[]) -> int
     engine.rootContext()->setContextProperty(QStringLiteral("startMinimized"), startMinimized);
     engine.rootContext()->setContextProperty(QStringLiteral("startFullscreen"), startFullscreen);
 
-const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
+    const QUrl url(u"qrc:/qml/net/helltop/quester/qml/main.qml"_s);
 
     QObject::connect(
         &engine,

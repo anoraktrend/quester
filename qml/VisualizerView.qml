@@ -5,8 +5,6 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import Quester 1.0
 import org.kde.kirigami as Kirigami
-// ProjectMVisualizer is only registered when built with HAVE_PROJECTM.
-// Guard all ProjectM usage with visualizerSettings.visualizerStyle === 2.
 
 Item {
     id: root
@@ -112,38 +110,17 @@ Item {
         } else {
             AudioVisualizer.stop();
         }
-        if (projectMLoader.item)
-            projectMLoader.item.active = visible && (visualizerSettings.visualizerStyle === 2);
     }
 
     Settings {
         id: visualizerSettings
 
         property int  visualizerMode:       0
-        property int  visualizerStyle:      0 // 0: Bars, 1: Wave Circle, 2: Milkdrop (projectM)
+        property int  visualizerStyle:      0 // 0: Bars, 1: Wave Circle
         property int  visualizerBarSize:    20
         property int  visualizerBarGap:     2
         property real visualizerBarOpacity: 1.0
         property string visualizerGradient: "rainbow"
-
-        // ── projectM settings (persisted via QSettings) ──────────────────
-        // These are written through to the C++ ProjectMItem via property binding.
-        property string projectMPresetPath:        ""
-        property double projectMBeatSensitivity:   1.0
-        property double projectMSoftCutDuration:   3.0
-        property double projectMPresetDuration:    30.0
-        property bool   projectMHardCutEnabled:    false
-        property double projectMHardCutSensitivity: 0.1
-        property int    projectMMeshX:             32
-        property int    projectMMeshY:             24
-        property bool   projectMAspectCorrection:  true
-        property int    projectMFPS:               60
-        property bool   projectMShuffleEnabled:    true
-        property bool   projectMPresetLocked:      false
-        property int    projectMSelectedPreset:    0
-        // Overlay bars on top of projectM render
-        property bool   projectMShowBars:          false
-        property real   projectMBarOpacity:        0.5
 
         category: "Quester"
 
@@ -178,14 +155,14 @@ Item {
         blur: 1
         saturation: 0.8
         brightness: -0.5
-        visible: visualizerSettings.visualizerStyle !== 2
+        visible: true
     }
 
     MultiEffect {
         anchors.fill: parent
         source: bg
         brightness: -0.3
-        visible: visualizerSettings.visualizerStyle !== 2
+        visible: true
     }
 
     Canvas {
@@ -288,110 +265,6 @@ Item {
                 opacity: root.barOpacity * visualizerSettings.visualizerBarOpacity
                 radius: 1
             }
-        }
-    }
-
-    // ── projectM / Milkdrop style (style 2) ──────────────────────────────
-    // Loaded lazily so it does not pull in OpenGL state when not used.
-    Loader {
-        id: projectMLoader
-        anchors.fill: parent
-        z: 5
-        active: visualizerSettings.visualizerStyle === 2
-        visible: active
-
-        sourceComponent: Component {
-            // ProjectMVisualizer is a QQuickFramebufferObject registered in main.cpp
-            // only when HAVE_PROJECTM is defined. If the type is unknown this Loader
-            // simply fails silently (the error is caught in onStatusChanged below).
-            ProjectMVisualizer {
-                id: pmViz
-                anchors.fill: parent
-
-                // ── Bind settings from QML → C++ ──
-                presetPath:         visualizerSettings.projectMPresetPath
-                beatSensitivity:    visualizerSettings.projectMBeatSensitivity
-                softCutDuration:    visualizerSettings.projectMSoftCutDuration
-                presetDuration:     visualizerSettings.projectMPresetDuration
-                hardCutEnabled:     visualizerSettings.projectMHardCutEnabled
-                hardCutSensitivity: visualizerSettings.projectMHardCutSensitivity
-                meshX:              visualizerSettings.projectMMeshX
-                meshY:              visualizerSettings.projectMMeshY
-                aspectCorrection:   visualizerSettings.projectMAspectCorrection
-                targetFps:          visualizerSettings.projectMFPS
-                shuffleEnabled:     visualizerSettings.projectMShuffleEnabled
-                presetLocked:       visualizerSettings.projectMPresetLocked
-                active:             root.visible && (visualizerSettings.visualizerStyle === 2)
-
-                // ── Sync selected preset back to QML ──
-                onCurrentPresetIndexChanged: {
-                    visualizerSettings.projectMSelectedPreset = currentPresetIndex;
-                }
-
-                // ── Wire up audio (one-shot: AudioVisualizer is a context property) ──
-                Component.onCompleted: {
-                    setAudioVisualizerSource(AudioVisualizer);
-                    // Restore saved preset selection
-                    if (visualizerSettings.projectMSelectedPreset >= 0)
-                        currentPresetIndex = visualizerSettings.projectMSelectedPreset;
-                }
-            }
-        }
-
-        onStatusChanged: {
-            if (status === Loader.Error)
-                console.warn("[VisualizerView] ProjectMVisualizer not available (built without HAVE_PROJECTM?)");
-        }
-    }
-
-    // ── Optional bars overlay on top of projectM ─────────────────────────
-    Item {
-        anchors.fill: parent
-        z: 7
-        visible: visualizerSettings.visualizerStyle === 2 && visualizerSettings.projectMShowBars
-
-        Repeater {
-            model: root.magnitudes
-
-            Rectangle {
-                width: visualizerSettings.visualizerBarSize
-                height: root.height * (modelData || 0) * 0.6
-                x: index * (visualizerSettings.visualizerBarSize + visualizerSettings.visualizerBarGap)
-                anchors.bottom: parent.bottom
-                color: root.barColors && root.barColors.length > index ? root.barColors[index] : root.fallbackColor
-                opacity: visualizerSettings.projectMBarOpacity
-                radius: 1
-            }
-        }
-    }
-
-    // ── Preset navigation overlay (shown in projectM mode) ───────────────
-    Row {
-        id: presetNav
-        anchors {
-            bottom: parent.bottom
-            horizontalCenter: parent.horizontalCenter
-            bottomMargin: 12
-        }
-        z: 10
-        spacing: 8
-        visible: visualizerSettings.visualizerStyle === 2
-
-        RoundButton {
-            text: "◀"
-            onClicked: if (projectMLoader.item) projectMLoader.item.previousPreset()
-        }
-        Label {
-            text: (projectMLoader.item && projectMLoader.item.presetNames.length > 0)
-                  ? projectMLoader.item.presetNames[projectMLoader.item.currentPresetIndex] ?? ""
-                  : ""
-            color: "white"
-            anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: 11
-        }
-        RoundButton {
-            text: "▶"
-            onClicked: if (projectMLoader.item) projectMLoader.item.nextPreset()
         }
     }
 
