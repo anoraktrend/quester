@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Quester.svg</file>
+        <file>Quester512.png</file>
+    </qresource>
+</RCC>
