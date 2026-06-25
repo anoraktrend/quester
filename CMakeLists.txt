@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project("Quester" VERSION 1.0)
+project("Quester" VERSION 0.2.0)
 
 message("Project name: ${PROJECT_NAME}")
 message("Project source dir: ${PROJECT_SOURCE_DIR}")
