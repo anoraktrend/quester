@@ -10,6 +10,7 @@
 #include <QMutex>
 #include <QFutureWatcher>
 #include <QDataStream>
+#include <QJSValue>
 
 class QTimer;
 class QSocketNotifier;

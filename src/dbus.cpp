@@ -1,8 +1,11 @@
 #include "dbus.h"
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusVariant>
 #include <QDBusObjectPath>
+#include <QQuickWindow>
+#include <QUrl>
 #include <algorithm>
 #include <utility>
 
